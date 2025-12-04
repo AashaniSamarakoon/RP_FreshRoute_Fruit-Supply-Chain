@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "freshroute-supplier",
-    "slug": "freshroute-supplier",
+    "name": "freshroute-mobile",
+    "slug": "freshroute-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "freshroutesupplier2",
+    "scheme": "freshroutemobile",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
