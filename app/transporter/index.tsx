@@ -47,24 +47,48 @@ export default function TransporterDashboard() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Transporter Dashboard</Text>
-      <Text style={styles.subtitle}>{data?.message}</Text>
+      <View style={styles.content}>
+        <Text style={styles.title}>Transporter Dashboard</Text>
+        <Text style={styles.subtitle}>{data?.message}</Text>
 
-      <Text style={{ marginTop: 16 }}>
-        Today&apos;s jobs: {data?.todayJobs?.length ?? 0}
-      </Text>
+        <Text style={{ marginTop: 16 }}>
+          Today&apos;s jobs: {data?.todayJobs?.length ?? 0}
+        </Text>
 
-      <TouchableOpacity style={styles.logoutButton} onPress={logout}>
-        <Text style={styles.logoutText}>Logout</Text>
+        <TouchableOpacity style={styles.logoutButton} onPress={logout}>
+          <Text style={styles.logoutText}>Logout</Text>
+        </TouchableOpacity>
+      </View>
+
+      <TouchableOpacity
+        style={styles.gradingButton}
+        onPress={() => router.push("/transporter/fruit-grading")}
+      >
+        <Text style={styles.gradingButtonText}>AI Fruit Grading</Text>
       </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 24, backgroundColor: "#fff" },
+  container: {
+    flex: 1,
+    padding: 24,
+    backgroundColor: "#fff",
+  },
+  content: {
+    flex: 1,
+  },
   title: { fontSize: 24, fontWeight: "bold" },
   subtitle: { marginTop: 8, fontSize: 16 },
+  gradingButton: {
+    backgroundColor: "#2f855a",
+    padding: 16,
+    borderRadius: 10,
+    alignItems: "center",
+    marginTop: 16,
+  },
+  gradingButtonText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
   logoutButton: {
     marginTop: 24,
     borderWidth: 1,

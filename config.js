@@ -1,1 +1,5 @@
-export const BACKEND_URL = "http://192.168.1.101:4000";
+// For Expo Go on physical device, use your computer's local network IP
+// For Android Emulator, use: http://10.0.2.2:4000
+// For iOS Simulator, use: http://localhost:4000
+// Find your IP: Windows (ipconfig) or Mac/Linux (ifconfig)
+export const BACKEND_URL = "http://192.168.1.12:4000";

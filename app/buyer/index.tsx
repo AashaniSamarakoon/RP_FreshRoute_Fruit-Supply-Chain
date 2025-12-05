@@ -54,6 +54,20 @@ export default function BuyerDashboard() {
         Open orders: {data?.openOrders?.length ?? 0}
       </Text>
 
+      <TouchableOpacity
+        style={styles.complaintButton}
+        onPress={() => router.push("/buyer/make-complaint")}
+      >
+        <Text style={styles.complaintButtonText}>Make a Complaint</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.complaintButton}
+        onPress={() => router.push("/buyer/my-complaints")}
+      >
+        <Text style={styles.complaintButtonText}>My Complaints</Text>
+      </TouchableOpacity>
+
       <TouchableOpacity style={styles.logoutButton} onPress={logout}>
         <Text style={styles.logoutText}>Logout</Text>
       </TouchableOpacity>
@@ -65,6 +79,18 @@ const styles = StyleSheet.create({
   container: { flex: 1, padding: 24, backgroundColor: "#fff" },
   title: { fontSize: 24, fontWeight: "bold" },
   subtitle: { marginTop: 8, fontSize: 16 },
+  complaintButton: {
+    marginTop: 16,
+    backgroundColor: "#2f855a",
+    padding: 14,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  complaintButtonText: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: 16,
+  },
   logoutButton: {
     marginTop: 24,
     borderWidth: 1,
