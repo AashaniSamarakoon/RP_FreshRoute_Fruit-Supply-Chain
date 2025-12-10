@@ -1,21 +1,21 @@
-import React, { useState, useEffect, useRef } from "react";
+import { MaterialIcons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Audio } from "expo-av";
+import { CameraType, CameraView, useCameraPermissions } from "expo-camera";
+import * as Haptics from "expo-haptics";
+import { useRouter } from "expo-router";
+import React, { useEffect, useRef, useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
+  ActivityIndicator,
   Alert,
+  Animated,
   Image,
   ScrollView,
-  ActivityIndicator,
-  Animated,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { CameraView, CameraType, useCameraPermissions } from "expo-camera";
-import { useRouter } from "expo-router";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { MaterialIcons } from "@expo/vector-icons";
-import { Audio } from "expo-av";
-import * as Haptics from "expo-haptics";
 import { BACKEND_URL } from "../../config";
 
 const TOTAL_IMAGES = 5;
@@ -215,42 +215,56 @@ export default function FruitGrading() {
           name: `fruit_${index + 1}.jpg`,
         } as any);
       });
-      formData.append("farmerDeclaredGrade", farmerDeclaredGrade);
 
-      let results;
-      try {
-        // Attempt to call the backend API
-        const response = await fetch(
-          `${BACKEND_URL}/api/transporter/verify-fruit-grade`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-            body: formData,
-          }
+      // Call the fruit grading API endpoint
+      console.log("📤 Sending request to:", `${BACKEND_URL}/api/fruit-grading/predict`);
+      console.log("📤 Number of images:", capturedImages.length);
+
+      const response = await fetch(`${BACKEND_URL}/api/fruit-grading/predict`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      console.log("📥 Response status:", response.status, response.statusText);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error("❌ API Error Response:", errorData);
+        throw new Error(
+          errorData.message || `API error: ${response.status} ${response.statusText}`
         );
-
-        // Simulate minimum loading time
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-
-        if (response.ok) {
-          const data = await response.json();
-          results = capturedImages.map((uri: string, index: number) => ({
-            imageUri: uri,
-            detectedGrade: data.grades?.[index] || "Grade A",
-          }));
-        } else {
-          throw new Error("API call failed");
-        }
-      } catch (apiError) {
-        // If backend is not ready, use mock data
-        console.log("Using mock data - backend not available:", apiError);
-        results = capturedImages.map((uri: string, index: number) => ({
-          imageUri: uri,
-          detectedGrade: index % 2 === 0 ? "Grade A" : "Grade B",
-        }));
       }
+
+      const data = await response.json();
+      console.log("✅ Backend Response:", JSON.stringify(data, null, 2));
+      console.log("✅ Predictions count:", data.predictions?.length || 0);
+
+      if (!data.success || !data.predictions) {
+        console.error("❌ Invalid response structure:", data);
+        throw new Error("Invalid response from server");
+      }
+
+      // Map backend response to frontend format
+      const results = capturedImages.map((uri: string, index: number) => {
+        const prediction = data.predictions[index];
+        console.log(`📊 Prediction ${index + 1}:`, {
+          predictedClass: prediction?.predictedClass,
+          confidence: prediction?.confidence,
+        });
+        // Normalize grade format: "Grade_A" -> "Grade A"
+        const detectedGrade =
+          prediction?.predictedClass?.replace(/_/g, " ") || "Grade A";
+        return {
+          imageUri: uri,
+          detectedGrade,
+          confidence: prediction?.confidence || 0,
+        };
+      });
+
+      console.log("✅ Mapped Results:", JSON.stringify(results, null, 2));
 
       setIsVerifying(false);
       setShowVerifyingPopup(false);
@@ -267,7 +281,12 @@ export default function FruitGrading() {
       console.error("Verification error:", error);
       setIsVerifying(false);
       setShowVerifyingPopup(false);
-      Alert.alert("Error", "Failed to verify images. Please try again.");
+      Alert.alert(
+        "Error",
+        error instanceof Error
+          ? error.message
+          : "Failed to verify images. Please try again."
+      );
     }
   };
 
