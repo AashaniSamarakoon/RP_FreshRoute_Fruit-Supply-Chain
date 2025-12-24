@@ -253,8 +253,14 @@ export default function AddStock() {
 
                 <Text style={styles.label}>Delivery Location</Text>
                 <View style={styles.locationContainer}>
-                  <Text style={styles.locationText}>{formData.deliveryLocation}</Text>
-                  <TouchableOpacity onPress={() => Alert.alert("Change Location", "Feature coming soon")}>
+                  <Text style={styles.locationText}>
+                    {formData.deliveryLocation}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() =>
+                      Alert.alert("Change Location", "Feature coming soon")
+                    }
+                  >
                     <Text style={styles.changeText}>Change</Text>
                   </TouchableOpacity>
                 </View>
@@ -319,16 +325,16 @@ const styles = StyleSheet.create({
   },
 
   locationContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     backgroundColor: LIGHT_GRAY,
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
   locationText: { color: "#000", fontSize: 18 },
-  changeText: { color: PRIMARY_GREEN, fontSize: 18, fontWeight: '600' },
+  changeText: { color: PRIMARY_GREEN, fontSize: 18, fontWeight: "600" },
 
   tabsContainer: {
     flexDirection: "row",
