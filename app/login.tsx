@@ -45,7 +45,7 @@ export default function Login() {
       await AsyncStorage.setItem("user", JSON.stringify(user));
 
       const route = getDashboardRoute(user.role as Role);
-      router.replace(route);
+      router.replace(route as any);
     } catch (err) {
       console.error(err);
       Alert.alert("Error", "Could not connect to backend");

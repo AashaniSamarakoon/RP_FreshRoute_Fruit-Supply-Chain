@@ -27,6 +27,17 @@ export const Colors = {
   },
 };
 
+export const BuyerColors = {
+  primaryGreen: '#2E7D32',
+  primaryLight: '#E8F5E9',
+  background: '#F9FAFB',
+  cardWhite: '#FFFFFF',
+  textBlack: '#111827',
+  textGray: '#6B7280',
+  border: '#E5E7EB',
+  price: '#1F2937',
+};
+
 export const Fonts = Platform.select({
   ios: {
     /** iOS `UIFontDescriptorSystemDesignDefault` */
