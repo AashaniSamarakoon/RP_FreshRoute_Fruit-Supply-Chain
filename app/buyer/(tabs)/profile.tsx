@@ -1,14 +1,27 @@
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View, TouchableOpacity } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BuyerColors } from "../../../constants/theme";
+import { useRouter } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export default function BuyerProfile() {
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    await AsyncStorage.removeItem("token");
+    await AsyncStorage.removeItem("user");
+    router.replace("/login");
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
         <Text style={styles.title}>Profile</Text>
         <Text style={styles.subtitle}>Manage your account settings here.</Text>
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+          <Text style={styles.logoutButtonText}>Logout</Text>
+        </TouchableOpacity>
       </View>
     </SafeAreaView>
   );
@@ -28,5 +41,16 @@ const styles = StyleSheet.create({
     color: BuyerColors?.textBlack || "#000",
     marginBottom: 8,
   },
-  subtitle: { fontSize: 16, color: "#666", textAlign: "center" },
+  subtitle: { fontSize: 16, color: "#666", textAlign: "center", marginBottom: 20 },
+  logoutButton: {
+    backgroundColor: "red",
+    paddingVertical: 12,
+    paddingHorizontal: 30,
+    borderRadius: 25,
+  },
+  logoutButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
 });

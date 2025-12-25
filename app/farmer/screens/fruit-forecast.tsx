@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import Header from "../../../components/Header";
 
 const PRIMARY_GREEN = "#2f855a";
 const LIGHT_GREEN = "#e8f4f0";
@@ -35,15 +36,15 @@ export default function FruitForecastScreen() {
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Ionicons name="chevron-back" size={24} color="#000" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>7-Day Forecast</Text>
-          <TouchableOpacity>
-            <Ionicons name="ellipsis-vertical" size={24} color="#000" />
-          </TouchableOpacity>
-        </View>
+        <Header
+          title="7-Day Forecast"
+          onBack={() => router.back()}
+          rightComponent={
+            <TouchableOpacity>
+              <Ionicons name="ellipsis-vertical" size={24} color="#000" />
+            </TouchableOpacity>
+          }
+        />
 
         <ScrollView
           style={styles.scrollView}
@@ -246,21 +247,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#fff",
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingTop: 40,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
-  },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#000",
   },
   scrollView: {
     flex: 1,

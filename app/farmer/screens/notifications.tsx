@@ -9,6 +9,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import Header from "../../../components/Header";
 
 const PRIMARY_GREEN = "#2f855a";
 const LIGHT_GREEN = "#e8f4f0";
@@ -92,15 +93,15 @@ export default function NotificationsScreen() {
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Ionicons name="chevron-back" size={24} color="#000" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Notifications</Text>
-          <TouchableOpacity>
-            <Ionicons name="checkmark-done" size={24} color={PRIMARY_GREEN} />
-          </TouchableOpacity>
-        </View>
+        <Header
+          title="Notifications"
+          onBack={() => router.back()}
+          rightComponent={
+            <TouchableOpacity>
+              <Ionicons name="checkmark-done" size={24} color={PRIMARY_GREEN} />
+            </TouchableOpacity>
+          }
+        />
 
         {/* Filter Pills */}
         <ScrollView
@@ -188,9 +189,10 @@ export default function NotificationsScreen() {
                   key={notification.id}
                   style={styles.notificationCard}
                   onPress={() =>
-                    router.push(
-                      `/farmer/notification-detail?id=${notification.id}`
-                    )
+                    router.push({
+                      pathname: "/farmer/notification-detail" as any,
+                      params: { id: notification.id },
+                    })
                   }
                 >
                   <View style={styles.notificationLeft}>
@@ -233,9 +235,10 @@ export default function NotificationsScreen() {
                   key={notification.id}
                   style={styles.notificationCard}
                   onPress={() =>
-                    router.push(
-                      `/farmer/notification-detail?id=${notification.id}`
-                    )
+                    router.push({
+                      pathname: "/farmer/notification-detail" as any,
+                      params: { id: notification.id },
+                    })
                   }
                 >
                   <View style={styles.notificationLeft}>
@@ -292,21 +295,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#fff",
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingTop: 40,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
-  },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#000",
   },
   filterScrollView: {
     maxHeight: 60,

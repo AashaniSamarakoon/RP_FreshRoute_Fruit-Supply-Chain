@@ -15,6 +15,7 @@ import {
   View,
 } from "react-native";
 import RNPickerSelect from "react-native-picker-select";
+import Header from "../../../components/Header";
 import { useOrderForm } from "../forms/useOrderForm";
 
 const PRIMARY_GREEN = "#2f855a";
@@ -131,13 +132,7 @@ export default function AddStock() {
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         {/* Header - always displayed */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Ionicons name="chevron-back" size={24} color="#000" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Place Order</Text>
-          <View style={{ width: 24 }} />
-        </View>
+        <Header title="Place Order" onBack={() => router.back()} />
 
         {loading ? (
           <SkeletonLoader />
@@ -286,17 +281,6 @@ export default function AddStock() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#fff" },
   container: { flex: 1, backgroundColor: "#fff" },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingTop: 40,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
-  },
-  headerTitle: { fontSize: 18, fontWeight: "600", color: "#000" },
 
   formCard: {
     backgroundColor: "#fff",

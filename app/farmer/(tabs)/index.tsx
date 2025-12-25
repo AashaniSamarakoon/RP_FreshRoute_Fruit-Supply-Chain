@@ -94,15 +94,9 @@ export default function FarmerDashboard() {
         </View>
         <View style={styles.headerIcons}>
           <TouchableOpacity
-            onPress={() => router.push("/farmer/notifications")}
+            onPress={() => router.push("/farmer/screens/notifications" as any)}
           >
             <Ionicons name="notifications-outline" size={24} color="#000" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => router.push("/farmer/profile")}
-            style={{ marginLeft: 12 }}
-          >
-            <Ionicons name="person-outline" size={24} color="#000" />
           </TouchableOpacity>
         </View>
       </View>
@@ -129,7 +123,7 @@ export default function FarmerDashboard() {
               <Text style={styles.newStockTitle}>Have new stock?</Text>
               <TouchableOpacity
                 style={styles.addStockButton}
-                onPress={() => router.push("/farmer/add-stock" as any)}
+                onPress={() => router.push("/farmer/screens/add-stock" as any)}
               >
                 <Ionicons
                   name="add"
@@ -174,7 +168,7 @@ export default function FarmerDashboard() {
         <View style={styles.gridContainer}>
           <TouchableOpacity
             style={styles.gridCard}
-            onPress={() => router.push("/farmer/forecast")}
+            onPress={() => router.push("/farmer/forecast" as any)}
           >
             <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
               <Ionicons name="calendar" size={24} color={PRIMARY_GREEN} />
@@ -185,7 +179,7 @@ export default function FarmerDashboard() {
 
           <TouchableOpacity
             style={styles.gridCard}
-            onPress={() => router.push("/farmer/live-market")}
+            onPress={() => router.push("/farmer/live-market" as any)}
           >
             <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
               <Ionicons name="trending-up" size={24} color={PRIMARY_GREEN} />
@@ -196,7 +190,9 @@ export default function FarmerDashboard() {
 
           <TouchableOpacity
             style={styles.gridCard}
-            onPress={() => router.push("/farmer/accuracy-insights")}
+            onPress={() =>
+              router.push("/farmer/screens/accuracy-insights" as any)
+            }
           >
             <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
               <Ionicons
@@ -211,7 +207,7 @@ export default function FarmerDashboard() {
 
           <TouchableOpacity
             style={styles.gridCard}
-            onPress={() => router.push("/farmer/feedback")}
+            onPress={() => router.push("/farmer/screens/feedback" as any)}
           >
             <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
               <Ionicons name="chatbubble" size={24} color={PRIMARY_GREEN} />
@@ -233,7 +229,7 @@ export default function FarmerDashboard() {
 
           <TouchableOpacity
             style={styles.gridCard}
-            onPress={() => router.push("/farmer/daily-prices")}
+            onPress={() => router.push("/farmer/screens/daily-prices" as any)}
           >
             <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
               <Ionicons name="pricetag" size={24} color={PRIMARY_GREEN} />
@@ -246,99 +242,6 @@ export default function FarmerDashboard() {
         {/* Bottom spacing */}
         <View style={{ height: 80 }} />
       </ScrollView>
-
-      {/* Bottom Navigation Bar */}
-      <View style={styles.bottomNav}>
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() => {
-            setActiveTab("home");
-            router.push("/farmer");
-          }}
-        >
-          <Ionicons
-            name={activeTab === "home" ? "home" : "home-outline"}
-            size={24}
-            color={activeTab === "home" ? PRIMARY_GREEN : "#999"}
-          />
-          <Text
-            style={[
-              styles.navLabel,
-              activeTab === "home" && styles.navLabelActive,
-            ]}
-          >
-            Home
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() => {
-            setActiveTab("forecast");
-            router.push("/farmer/forecast");
-          }}
-        >
-          <Ionicons
-            name={activeTab === "forecast" ? "calendar" : "calendar-outline"}
-            size={24}
-            color={activeTab === "forecast" ? PRIMARY_GREEN : "#999"}
-          />
-          <Text
-            style={[
-              styles.navLabel,
-              activeTab === "forecast" && styles.navLabelActive,
-            ]}
-          >
-            Forecast
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() => {
-            setActiveTab("market");
-            router.push("/farmer/live-market");
-          }}
-        >
-          <Ionicons
-            name={
-              activeTab === "market" ? "trending-up" : "trending-up-outline"
-            }
-            size={24}
-            color={activeTab === "market" ? PRIMARY_GREEN : "#999"}
-          />
-          <Text
-            style={[
-              styles.navLabel,
-              activeTab === "market" && styles.navLabelActive,
-            ]}
-          >
-            Market
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() => {
-            setActiveTab("profile");
-            router.push("/farmer/profile");
-          }}
-        >
-          <Ionicons
-            name={activeTab === "profile" ? "person" : "person-outline"}
-            size={24}
-            color={activeTab === "profile" ? PRIMARY_GREEN : "#999"}
-          />
-          <Text
-            style={[
-              styles.navLabel,
-              activeTab === "profile" && styles.navLabelActive,
-            ]}
-          >
-            Profile
-          </Text>
-        </TouchableOpacity>
-      </View>
     </SafeAreaView>
   );
 }
@@ -354,7 +257,7 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 16,
-    paddingTop: 50,
+    paddingTop: 0, // Reduced from 50 to fix extra top padding issue
     paddingBottom: 12,
     flexDirection: "row",
     justifyContent: "space-between",

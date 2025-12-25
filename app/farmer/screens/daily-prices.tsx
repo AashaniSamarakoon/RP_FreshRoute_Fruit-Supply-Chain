@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import Header from "../../../components/Header";
 
 const PRIMARY_GREEN = "#2f855a";
 const LIGHT_GREEN = "#e8f4f0";
@@ -65,16 +66,15 @@ export default function DailyPricesScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Ionicons name="chevron-back" size={24} color="#000" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Daily Prices</Text>
-          <TouchableOpacity>
-            <Ionicons name="notifications-outline" size={22} color="#000" />
-          </TouchableOpacity>
-        </View>
+        <Header
+          title="Daily Prices"
+          onBack={() => router.back()}
+          rightComponent={
+            <TouchableOpacity>
+              <Ionicons name="notifications-outline" size={22} color="#000" />
+            </TouchableOpacity>
+          }
+        />
 
         {/* Date */}
         <View style={styles.dateRow}>
@@ -162,17 +162,6 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 16,
     paddingTop: 32,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 12,
-  },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#000",
   },
   dateRow: {
     flexDirection: "row",
