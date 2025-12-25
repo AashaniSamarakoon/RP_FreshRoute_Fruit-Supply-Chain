@@ -1,7 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
+    ActivityIndicator,
+    Alert,
     Image,
     SafeAreaView,
     ScrollView,
@@ -11,52 +14,74 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import { BACKEND_URL } from "../../config";
+import { useTranslation } from "../../hooks/useTranslation";
 
 const PRIMARY_GREEN = "#2f855a";
 const LIGHT_GREEN = "#e8f4f0";
 const LIGHT_GRAY = "#f5f5f5";
 
-const fruits = [
-  {
-    name: "Mango",
-    variety: "TJC",
-    price: "Rs. 400.00",
-    unit: "/ kg",
-    status: "High Demand",
-    statusColor: "#fef3c7",
-    delta: "+3.2%",
-    deltaColor: "#16a34a",
-    image:
-      "https://images.unsplash.com/photo-1599599810694-b5ac4dd19e1d?w=120&h=120&fit=crop",
-  },
-  {
-    name: "Banana",
-    variety: "Cavendish",
-    price: "Rs. 150.00",
-    unit: "/ kg",
-    status: "Stable",
-    statusColor: "#e5e7eb",
-    delta: "-1.5%",
-    deltaColor: "#dc2626",
-    image:
-      "https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?w=120&h=120&fit=crop",
-  },
-  {
-    name: "Pineapple",
-    variety: "Kew",
-    price: "Rs. 250.00",
-    unit: "/ unit",
-    status: "Stable",
-    statusColor: "#e5e7eb",
-    delta: "+0.8%",
-    deltaColor: "#16a34a",
-    image:
-      "https://images.unsplash.com/photo-1587883012610-e3e2b3a0c2e1?w=120&h=120&fit=crop",
-  },
-];
+interface DailyFruit {
+  name: string;
+  variety: string;
+  price: string;
+  unit: string;
+  image: string;
+  delta?: string;
+  deltaColor?: string;
+  status?: string;
+  statusColor?: string;
+}
 
 export default function DailyPricesScreen() {
   const router = useRouter();
+  const { t } = useTranslation();
+  const [fruits, setFruits] = useState<DailyFruit[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [date, setDate] = useState<string>("");
+
+  useEffect(() => {
+    loadDailyPrices();
+  }, []);
+
+  const loadDailyPrices = async () => {
+    console.log("[DAILY-PRICES] Loading prices...");
+    setLoading(true);
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) {
+        console.log("[DAILY-PRICES] No token found");
+        setFruits([]);
+        setLoading(false);
+        return;
+      }
+
+      console.log("[DAILY-PRICES] Fetching:", `${BACKEND_URL}/api/farmer/prices/daily-v2`);
+      const res = await fetch(`${BACKEND_URL}/api/farmer/prices/daily-v2`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      console.log("[DAILY-PRICES] Response status:", res.status);
+      const data = await res.json();
+      console.log("[DAILY-PRICES] Response data:", data);
+
+      if (!res.ok) {
+        console.log("[DAILY-PRICES] Error:", data.message);
+        Alert.alert("Error", data.message || "Failed to load prices");
+        return;
+      }
+
+      setFruits(data.fruits || []);
+      setDate(data.date || new Date().toISOString().split('T')[0]);
+      console.log("[DAILY-PRICES] Loaded", data.fruits?.length || 0, "fruits");
+    } catch (err) {
+      console.error("[DAILY-PRICES] Error:", err);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      Alert.alert("Error", "Failed to load daily prices: " + errorMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -66,7 +91,7 @@ export default function DailyPricesScreen() {
           <TouchableOpacity onPress={() => router.back()}>
             <Ionicons name="chevron-back" size={24} color="#000" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Daily Prices</Text>
+          <Text style={styles.headerTitle}>{t("dailyPrices.headerTitle")}</Text>
           <TouchableOpacity>
             <Ionicons name="notifications-outline" size={22} color="#000" />
           </TouchableOpacity>
@@ -77,38 +102,55 @@ export default function DailyPricesScreen() {
           <TouchableOpacity style={styles.dateArrow}>
             <Ionicons name="chevron-back" size={18} color="#000" />
           </TouchableOpacity>
-          <Text style={styles.dateText}>Today, October 26</Text>
+          <View style={styles.dateBox}>
+            <Text style={styles.dateLabel}>{t("dailyPrices.today")}</Text>
+            <Text style={styles.dateValue}>
+              {date ? new Date(date).toLocaleDateString() : new Date().toLocaleDateString()}
+            </Text>
+          </View>
           <TouchableOpacity style={styles.dateArrow}>
             <Ionicons name="chevron-forward" size={18} color="#000" />
           </TouchableOpacity>
         </View>
 
-        {/* Search */}
-        <View style={styles.searchContainer}>
-          <Ionicons name="search" size={16} color="#7b8b9a" />
-          <TextInput
-            placeholder="Search for a fruit"
-            placeholderTextColor="#7b8b9a"
-            style={styles.searchInput}
-          />
-        </View>
-
-        {/* Sort Row */}
-        <View style={styles.sortRow}>
-          {[
-            "Sort by Price",
-            "Sort by Name",
-            "Sort by Demand",
-          ].map((label) => (
-            <TouchableOpacity key={label} style={styles.sortChip}>
-              <Text style={styles.sortChipText}>{label}</Text>
-              <Ionicons name="chevron-down" size={14} color="#637381" />
+        {/* Content */}
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={PRIMARY_GREEN} />
+            <Text style={styles.loadingText}>Loading prices...</Text>
+          </View>
+        ) : fruits.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="file-tray-outline" size={64} color="#ccc" />
+            <Text style={styles.emptyText}>No prices available for today</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={loadDailyPrices}>
+              <Text style={styles.retryText}>Retry</Text>
             </TouchableOpacity>
-          ))}
-        </View>
+          </View>
+        ) : (
+          <>
+            {/* Search */}
+            <View style={styles.searchContainer}>
+              <Ionicons name="search" size={16} color="#7b8b9a" />
+              <TextInput
+                placeholder={t("dailyPrices.searchPlaceholder")}
+                placeholderTextColor="#7b8b9a"
+                style={styles.searchInput}
+              />
+            </View>
 
-        <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-          {fruits.map((fruit, idx) => (
+            {/* Sort Row */}
+            <View style={styles.sortRow}>
+              {[t("dailyPrices.sortPrice"), t("dailyPrices.sortName"), t("dailyPrices.sortDemand")].map((label) => (
+                <TouchableOpacity key={label} style={styles.sortChip}>
+                  <Text style={styles.sortChipText}>{label}</Text>
+                  <Ionicons name="chevron-down" size={14} color="#637381" />
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+              {fruits.map((fruit, idx) => (
             <View key={idx} style={styles.card}>
               <View style={styles.cardLeft}>
                 <Image source={{ uri: fruit.image }} style={styles.cardImage} />
@@ -116,7 +158,11 @@ export default function DailyPricesScreen() {
                   <Text style={styles.cardName}>{fruit.name}</Text>
                   <Text style={styles.cardVariety}>{fruit.variety}</Text>
                   <View style={[styles.badge, { backgroundColor: fruit.statusColor }]}>
-                    <Text style={styles.badgeText}>{fruit.status}</Text>
+                    <Text style={styles.badgeText}>
+                      {fruit.status === "High Demand"
+                        ? t("dailyPrices.status.highDemand")
+                        : t("dailyPrices.status.stable")}
+                    </Text>
                   </View>
                 </View>
               </View>
@@ -132,11 +178,13 @@ export default function DailyPricesScreen() {
 
           <View style={{ height: 16 }} />
         </ScrollView>
+          </>
+        )}
 
         {/* Bottom CTA */}
         <TouchableOpacity style={styles.ctaButton}>
           <Ionicons name="storefront" size={18} color="#fff" style={{ marginRight: 8 }} />
-          <Text style={styles.ctaText}>Open for Sell</Text>
+          <Text style={styles.ctaText}>{t("dailyPrices.cta")}</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -312,5 +360,52 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 13,
     fontWeight: "700",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 60,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: "#666",
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 60,
+  },
+  emptyText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: "#666",
+    textAlign: "center",
+  },
+  retryButton: {
+    marginTop: 16,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    backgroundColor: PRIMARY_GREEN,
+    borderRadius: 8,
+  },
+  retryText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 14,
+  },
+  dateBox: {
+    alignItems: "center",
+  },
+  dateLabel: {
+    fontSize: 12,
+    color: "#666",
+  },
+  dateValue: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#000",
   },
 });

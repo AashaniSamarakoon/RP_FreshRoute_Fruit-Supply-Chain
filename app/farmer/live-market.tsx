@@ -1,7 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
+    ActivityIndicator,
+    Alert,
     Image,
     SafeAreaView,
     ScrollView,
@@ -10,6 +13,8 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import { BACKEND_URL } from "../../config";
+import { useTranslation } from "../../hooks/useTranslation";
 
 const PRIMARY_GREEN = "#2f855a";
 const LIGHT_GREEN = "#e8f4f0";
@@ -59,9 +64,58 @@ const mockFruits: FruitPrice[] = [
 
 export default function LiveMarketScreen() {
   const router = useRouter();
+  const { t } = useTranslation();
   const [selectedTab, setSelectedTab] = useState<"Dambulla" | "Manning Market" | "Meegoda" | "Pettah">("Dambulla");
   const [sortBy, setSortBy] = useState<"Price" | "Demand">("Price");
   const [order, setOrder] = useState<"High" | "Low">("High");
+  const [fruits, setFruits] = useState<FruitPrice[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<string>("");
+
+  useEffect(() => {
+    loadLiveMarketPrices();
+  }, [selectedTab]);
+
+  const loadLiveMarketPrices = async () => {
+    console.log("[LIVE-MARKET] Loading prices for:", selectedTab);
+    setLoading(true);
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) {
+        console.log("[LIVE-MARKET] No token found");
+        setFruits([]);
+        setLoading(false);
+        return;
+      }
+
+      const location = selectedTab === "Dambulla" ? "Dambulla Dedicated Economic Centre" : selectedTab;
+      console.log("[LIVE-MARKET] Fetching:", `${BACKEND_URL}/api/farmer/live-market?location=${location}`);
+      
+      const res = await fetch(`${BACKEND_URL}/api/farmer/live-market?location=${encodeURIComponent(location)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      console.log("[LIVE-MARKET] Response status:", res.status);
+      const data = await res.json();
+      console.log("[LIVE-MARKET] Response data:", data);
+
+      if (!res.ok) {
+        console.log("[LIVE-MARKET] Error:", data.message);
+        Alert.alert("Error", data.message || "Failed to load prices");
+        return;
+      }
+
+      setFruits(data.fruits || []);
+      setLastUpdated(data.lastUpdated || new Date().toISOString());
+      console.log("[LIVE-MARKET] Loaded", data.fruits?.length || 0, "fruits");
+    } catch (err) {
+      console.error("[LIVE-MARKET] Error:", err);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      Alert.alert("Error", "Failed to load market prices: " + errorMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -71,7 +125,7 @@ export default function LiveMarketScreen() {
           <TouchableOpacity onPress={() => router.back()}>
             <Ionicons name="chevron-back" size={24} color="#000" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Prices & Demand</Text>
+          <Text style={styles.headerTitle}>{t("liveMarket.headerTitle")}</Text>
           <TouchableOpacity>
             <Ionicons name="search" size={24} color="#000" />
           </TouchableOpacity>
@@ -87,10 +141,10 @@ export default function LiveMarketScreen() {
           </View>
           <View style={{ flex: 1 }}>
             <View style={styles.ctaPill}>
-              <Text style={styles.ctaPillText}>FreshRoute Prices</Text>
+              <Text style={styles.ctaPillText}>{t("liveMarket.ctaPill")}</Text>
             </View>
-            <Text style={styles.ctaTitle}>Check Today FreshRoute Price</Text>
-            <Text style={styles.ctaSubtitle}>Daily curated prices for our 3 fruits</Text>
+            <Text style={styles.ctaTitle}>{t("liveMarket.ctaTitle")}</Text>
+            <Text style={styles.ctaSubtitle}>{t("liveMarket.ctaSubtitle")}</Text>
           </View>
           <Ionicons name="arrow-forward-circle" size={30} color={PRIMARY_GREEN} />
         </TouchableOpacity>
@@ -162,27 +216,51 @@ export default function LiveMarketScreen() {
             style={styles.sortButton}
             onPress={() => setSortBy(sortBy === "Price" ? "Demand" : "Price")}
           >
-            <Text style={styles.sortText}>Sort by: {sortBy}</Text>
+            <Text style={styles.sortText}>
+              {t("liveMarket.sortBy", {
+                value: sortBy === "Price" ? t("liveMarket.sortOptions.price") : t("liveMarket.sortOptions.demand"),
+              })}
+            </Text>
             <Ionicons name="chevron-down" size={16} color="#666" />
           </TouchableOpacity>
           <TouchableOpacity 
             style={styles.sortButton}
             onPress={() => setOrder(order === "High" ? "Low" : "High")}
           >
-            <Text style={styles.sortText}>Demand: {order}</Text>
+            <Text style={styles.sortText}>
+              {t("liveMarket.demandOrder", {
+                value: order === "High" ? t("liveMarket.order.high") : t("liveMarket.order.low"),
+              })}
+            </Text>
             <Ionicons name="chevron-down" size={16} color="#666" />
           </TouchableOpacity>
         </View>
 
         {/* Last Updated */}
-        <Text style={styles.lastUpdated}>Last updated: 3 mins ago</Text>
+        <Text style={styles.lastUpdated}>
+          {lastUpdated ? new Date(lastUpdated).toLocaleString() : t("liveMarket.lastUpdated")}
+        </Text>
 
         {/* Fruit List */}
-        <ScrollView
-          style={styles.scrollView}
-          showsVerticalScrollIndicator={false}
-        >
-          {mockFruits.map((fruit, index) => (
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={PRIMARY_GREEN} />
+            <Text style={styles.loadingText}>Loading prices...</Text>
+          </View>
+        ) : fruits.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="file-tray-outline" size={64} color="#ccc" />
+            <Text style={styles.emptyText}>No prices available for {selectedTab}</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={loadLiveMarketPrices}>
+              <Text style={styles.retryText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <ScrollView
+            style={styles.scrollView}
+            showsVerticalScrollIndicator={false}
+          >
+            {fruits.map((fruit, index) => (
             <TouchableOpacity
               key={index}
               style={styles.fruitCard}
@@ -222,7 +300,7 @@ export default function LiveMarketScreen() {
                       },
                     ]}
                   >
-                    {fruit.status}
+                    {t(`liveMarket.status.${fruit.status.toLowerCase()}`)}
                   </Text>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color="#ccc" />
@@ -232,6 +310,7 @@ export default function LiveMarketScreen() {
 
           <View style={{ height: 30 }} />
         </ScrollView>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -440,5 +519,40 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 11,
     fontWeight: "600",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 60,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: "#666",
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 60,
+  },
+  emptyText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: "#666",
+    textAlign: "center",
+  },
+  retryButton: {
+    marginTop: 16,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    backgroundColor: PRIMARY_GREEN,
+    borderRadius: 8,
+  },
+  retryText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 14,
   },
 });

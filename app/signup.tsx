@@ -1,15 +1,15 @@
 // app/signup.tsx
-import React, { useState } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-} from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
+import React, { useState } from "react";
+import {
+    Alert,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from "react-native";
 import { BACKEND_URL } from "../config";
 
 type Role = "farmer" | "transporter" | "buyer";
@@ -27,30 +27,41 @@ export default function Signup() {
       return Alert.alert("Error", "Please fill all fields");
     }
 
+    console.log("[SIGNUP] Starting signup...");
+    console.log("[SIGNUP] Backend URL:", BACKEND_URL);
     setLoading(true);
     try {
+      console.log("[SIGNUP] Fetching:", `${BACKEND_URL}/api/auth/signup`);
       const res = await fetch(`${BACKEND_URL}/api/auth/signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, email, password, role }),
       });
+      console.log("[SIGNUP] Response status:", res.status);
 
       const data = await res.json();
+      console.log("[SIGNUP] Response data:", data);
 
       if (!res.ok) {
+        console.log("[SIGNUP] Signup failed:", data.message);
         return Alert.alert("Signup failed", data.message || "Unknown error");
       }
 
       const { token, user } = data;
+      console.log("[SIGNUP] Token received:", token?.substring(0, 20) + "...");
+      console.log("[SIGNUP] User role:", user?.role);
 
       await AsyncStorage.setItem("token", token);
       await AsyncStorage.setItem("user", JSON.stringify(user));
+      console.log("[SIGNUP] Token saved to AsyncStorage");
 
       const route = getDashboardRoute(user.role as Role);
+      console.log("[SIGNUP] Navigating to:", route);
       router.replace(route);
     } catch (err) {
-      console.error(err);
-      Alert.alert("Error", "Could not connect to backend");
+      console.error("[SIGNUP] Error:", err);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      Alert.alert("Error", "Could not connect to backend: " + errorMsg);
     } finally {
       setLoading(false);
     }

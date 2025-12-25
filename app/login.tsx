@@ -1,15 +1,15 @@
 // app/login.tsx
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Link, useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
+    Alert,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useRouter, Link } from "expo-router";
 import { BACKEND_URL } from "../config";
 
 type Role = "farmer" | "transporter" | "buyer";
@@ -25,30 +25,41 @@ export default function Login() {
       return Alert.alert("Error", "Please enter email and password");
     }
 
+    console.log("[LOGIN] Starting login...");
+    console.log("[LOGIN] Backend URL:", BACKEND_URL);
     setLoading(true);
     try {
+      console.log("[LOGIN] Fetching:", `${BACKEND_URL}/api/auth/login`);
       const res = await fetch(`${BACKEND_URL}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
+      console.log("[LOGIN] Response status:", res.status);
 
       const data = await res.json();
+      console.log("[LOGIN] Response data:", data);
 
       if (!res.ok) {
+        console.log("[LOGIN] Login failed:", data.message);
         return Alert.alert("Login failed", data.message || "Unknown error");
       }
 
       const { token, user } = data;
+      console.log("[LOGIN] Token received:", token?.substring(0, 20) + "...");
+      console.log("[LOGIN] User role:", user?.role);
 
       await AsyncStorage.setItem("token", token);
       await AsyncStorage.setItem("user", JSON.stringify(user));
+      console.log("[LOGIN] Token saved to AsyncStorage");
 
       const route = getDashboardRoute(user.role as Role);
+      console.log("[LOGIN] Navigating to:", route);
       router.replace(route);
     } catch (err) {
-      console.error(err);
-      Alert.alert("Error", "Could not connect to backend");
+      console.error("[LOGIN] Error:", err);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      Alert.alert("Error", "Could not connect to backend: " + errorMsg);
     } finally {
       setLoading(false);
     }

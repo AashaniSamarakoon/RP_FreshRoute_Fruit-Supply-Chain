@@ -3,14 +3,15 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-    Image,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Image,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
+import { useTranslation } from "../../hooks/useTranslation";
 
 const PRIMARY_GREEN = "#2f855a";
 const LIGHT_GREEN = "#e8f4f0";
@@ -51,6 +52,7 @@ const mockActivities: Activity[] = [
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const { t } = useTranslation();
   const [user, setUser] = useState<UserData | null>(null);
 
   useEffect(() => {
@@ -80,7 +82,7 @@ export default function ProfileScreen() {
           <TouchableOpacity onPress={() => router.back()}>
             <Ionicons name="chevron-back" size={24} color="#000" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Farmer Profile</Text>
+          <Text style={styles.headerTitle}>{t("profile.headerTitle")}</Text>
           <View style={{ width: 24 }} />
         </View>
 
@@ -102,17 +104,15 @@ export default function ProfileScreen() {
             <Text style={styles.farmName}>
               {user?.farmName || "Dumas Family Farm"}
             </Text>
-            <Text style={styles.memberSince}>
-              Member since Jan 2020
-            </Text>
+            <Text style={styles.memberSince}>{t("profile.memberSince")}</Text>
             <TouchableOpacity style={styles.messageButton}>
-              <Text style={styles.messageButtonText}>Message</Text>
+              <Text style={styles.messageButtonText}>{t("profile.message")}</Text>
             </TouchableOpacity>
           </View>
 
           {/* Farm Location */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Farm Location</Text>
+            <Text style={styles.sectionTitle}>{t("profile.farmLocation")}</Text>
             <View style={styles.mapContainer}>
               <Image
                 source={{
@@ -128,7 +128,7 @@ export default function ProfileScreen() {
 
           {/* Grows These Fruits */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Grows These Fruits</Text>
+            <Text style={styles.sectionTitle}>{t("profile.grows")}</Text>
             <View style={styles.fruitsGrid}>
               <View style={styles.fruitItem}>
                 <Image
@@ -171,7 +171,7 @@ export default function ProfileScreen() {
 
           {/* Recent Activity */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Recent Activity</Text>
+            <Text style={styles.sectionTitle}>{t("profile.recentActivity")}</Text>
             {mockActivities.map((activity, index) => (
               <View key={index} style={styles.activityItem}>
                 <View style={styles.activityLeft}>
@@ -185,7 +185,7 @@ export default function ProfileScreen() {
 
           {/* Logout Button */}
           <TouchableOpacity style={styles.logoutButton} onPress={logout}>
-            <Text style={styles.logoutText}>Logout</Text>
+            <Text style={styles.logoutText}>{t("profile.logout")}</Text>
           </TouchableOpacity>
 
           <View style={{ height: 30 }} />

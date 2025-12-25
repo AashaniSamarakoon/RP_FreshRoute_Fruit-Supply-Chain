@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { BACKEND_URL } from "../../config";
+import { useTranslation } from "../../hooks/useTranslation";
 
 interface FarmerDashboardData {
   message?: string;
@@ -33,6 +34,7 @@ const LIGHT_GRAY = "#f5f5f5";
 
 export default function FarmerDashboard() {
   const router = useRouter();
+  const { t, locale, setLocale } = useTranslation();
   const [data, setData] = useState<FarmerDashboardData | null>(null);
   const [user, setUser] = useState<UserData | null>(null);
   const [activeTab, setActiveTab] = React.useState<"home" | "forecast" | "market" | "profile">("home");
@@ -46,30 +48,42 @@ export default function FarmerDashboard() {
 
   useEffect(() => {
     const load = async () => {
+      console.log("[DASHBOARD] Loading dashboard...");
       try {
         const userJson = await AsyncStorage.getItem("user");
+        console.log("[DASHBOARD] User from storage:", userJson);
         if (userJson) {
           setUser(JSON.parse(userJson));
         }
 
         const token = await AsyncStorage.getItem("token");
-        if (!token) return;
+        console.log("[DASHBOARD] Token from storage:", token?.substring(0, 20) + "...");
+        if (!token) {
+          console.log("[DASHBOARD] No token found, skipping API call");
+          return;
+        }
 
+        console.log("[DASHBOARD] Fetching:", `${BACKEND_URL}/api/farmer/dashboard`);
         const res = await fetch(`${BACKEND_URL}/api/farmer/dashboard`, {
           headers: { Authorization: `Bearer ${token}` },
         });
+        console.log("[DASHBOARD] Response status:", res.status);
 
         const body = await res.json();
+        console.log("[DASHBOARD] Response body:", body);
         if (!res.ok) {
+          console.log("[DASHBOARD] Error response:", body.message);
           return Alert.alert(
-            "Error",
-            body.message || "Failed to load dashboard"
+            t("common.error"),
+            body.message || t("farmer.errors.failed")
           );
         }
+        console.log("[DASHBOARD] Data loaded successfully");
         setData(body);
       } catch (err) {
-        console.error(err);
-        Alert.alert("Error", "Could not load dashboard");
+        console.error("[DASHBOARD] Error:", err);
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        Alert.alert(t("common.error"), t("farmer.errors.generic") + ": " + errorMsg);
       }
     };
     load();
@@ -88,7 +102,7 @@ export default function FarmerDashboard() {
       <View style={styles.header}>
         <View>
           <Text style={styles.logo}>🍃 FreshRoute</Text>
-          <Text style={styles.greeting}>Good morning, {userName}</Text>
+          <Text style={styles.greeting}>{t("farmer.greeting", { name: userName })}</Text>
         </View>
         <View style={styles.headerIcons}>
           <TouchableOpacity onPress={() => router.push("/farmer/notifications")}>
@@ -96,6 +110,12 @@ export default function FarmerDashboard() {
           </TouchableOpacity>
           <TouchableOpacity onPress={() => router.push("/farmer/profile")} style={{ marginLeft: 12 }}>
             <Ionicons name="person-outline" size={24} color="#000" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.langToggle, { marginLeft: 12 }]}
+            onPress={() => setLocale(locale === "en" ? "si" : "en")}
+          >
+            <Text style={styles.langToggleText}>{locale === "en" ? "සි" : "EN"}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -107,7 +127,7 @@ export default function FarmerDashboard() {
         <Ionicons name="search" size={18} color="#999" />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search for a fruit"
+          placeholder={t("farmer.searchPlaceholder")}
           placeholderTextColor="#999"
         />
       </View>
@@ -122,17 +142,17 @@ export default function FarmerDashboard() {
         />
         <View style={styles.featuredContent}>
           <Text style={styles.featuredTitle}>
-            Mango prices are predicted to rise!
+            {t("farmer.featuredTitle")}
           </Text>
           <Text style={styles.featuredDescription}>
-            The average price is expected to increase by 2.5% this week.
+            {t("farmer.featuredDescription")}
           </Text>
-          <Text style={styles.updatedTime}>Updated 5 mins ago</Text>
+          <Text style={styles.updatedTime}>{t("farmer.updatedTime")}</Text>
           <TouchableOpacity
             style={styles.detailsButton}
-            onPress={() => Alert.alert("Details", "Price prediction details")}
+            onPress={() => Alert.alert(t("common.details"), t("farmer.priceDetails"))}
           >
-            <Text style={styles.detailsButtonText}>Details</Text>
+            <Text style={styles.detailsButtonText}>{t("common.details")}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -146,8 +166,8 @@ export default function FarmerDashboard() {
           <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
             <Ionicons name="calendar" size={24} color={PRIMARY_GREEN} />
           </View>
-          <Text style={styles.gridTitle}>7-Day Forecast</Text>
-          <Text style={styles.gridSubtitle}>Future price trends</Text>
+          <Text style={styles.gridTitle}>{t("farmer.cards.forecastTitle")}</Text>
+          <Text style={styles.gridSubtitle}>{t("farmer.cards.forecastSubtitle")}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -157,8 +177,8 @@ export default function FarmerDashboard() {
           <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
             <Ionicons name="trending-up" size={24} color={PRIMARY_GREEN} />
           </View>
-          <Text style={styles.gridTitle}>Live Market Prices</Text>
-          <Text style={styles.gridSubtitle}>Current actual prices</Text>
+          <Text style={styles.gridTitle}>{t("farmer.cards.liveMarketTitle")}</Text>
+          <Text style={styles.gridSubtitle}>{t("farmer.cards.liveMarketSubtitle")}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -168,8 +188,8 @@ export default function FarmerDashboard() {
           <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
             <Ionicons name="checkmark-circle" size={24} color={PRIMARY_GREEN} />
           </View>
-          <Text style={styles.gridTitle}>Accuracy Insights</Text>
-          <Text style={styles.gridSubtitle}>Prediction progress</Text>
+          <Text style={styles.gridTitle}>{t("farmer.cards.accuracyTitle")}</Text>
+          <Text style={styles.gridSubtitle}>{t("farmer.cards.accuracySubtitle")}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -179,19 +199,19 @@ export default function FarmerDashboard() {
           <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
             <Ionicons name="chatbubble" size={24} color={PRIMARY_GREEN} />
           </View>
-          <Text style={styles.gridTitle}>Feedback</Text>
-          <Text style={styles.gridSubtitle}>Share your thoughts</Text>
+          <Text style={styles.gridTitle}>{t("farmer.cards.feedbackTitle")}</Text>
+          <Text style={styles.gridSubtitle}>{t("farmer.cards.feedbackSubtitle")}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.gridCard}
-          onPress={() => Alert.alert("Run a Prediction", "Coming soon")}
+          onPress={() => Alert.alert(t("farmer.cards.predictionTitle"), t("common.comingSoon"))}
         >
           <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
             <Ionicons name="analytics" size={24} color={PRIMARY_GREEN} />
           </View>
-          <Text style={styles.gridTitle}>Run a Prediction</Text>
-          <Text style={styles.gridSubtitle}>Manual price check</Text>
+          <Text style={styles.gridTitle}>{t("farmer.cards.predictionTitle")}</Text>
+          <Text style={styles.gridSubtitle}>{t("farmer.cards.predictionSubtitle")}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -201,8 +221,8 @@ export default function FarmerDashboard() {
           <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
             <Ionicons name="pricetag" size={24} color={PRIMARY_GREEN} />
           </View>
-          <Text style={styles.gridTitle}>FreshRoute Price</Text>
-          <Text style={styles.gridSubtitle}>Check today prices</Text>
+          <Text style={styles.gridTitle}>{t("farmer.cards.dailyPriceTitle")}</Text>
+          <Text style={styles.gridSubtitle}>{t("farmer.cards.dailyPriceSubtitle")}</Text>
         </TouchableOpacity>
       </View>
 
@@ -224,7 +244,9 @@ export default function FarmerDashboard() {
             size={24}
             color={activeTab === "home" ? PRIMARY_GREEN : "#999"}
           />
-          <Text style={[styles.navLabel, activeTab === "home" && styles.navLabelActive]}>Home</Text>
+          <Text style={[styles.navLabel, activeTab === "home" && styles.navLabelActive]}>
+            {t("farmer.nav.home")}
+          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -239,7 +261,9 @@ export default function FarmerDashboard() {
             size={24}
             color={activeTab === "forecast" ? PRIMARY_GREEN : "#999"}
           />
-          <Text style={[styles.navLabel, activeTab === "forecast" && styles.navLabelActive]}>Forecast</Text>
+          <Text style={[styles.navLabel, activeTab === "forecast" && styles.navLabelActive]}>
+            {t("farmer.nav.forecast")}
+          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -254,7 +278,9 @@ export default function FarmerDashboard() {
             size={24}
             color={activeTab === "market" ? PRIMARY_GREEN : "#999"}
           />
-          <Text style={[styles.navLabel, activeTab === "market" && styles.navLabelActive]}>Market</Text>
+          <Text style={[styles.navLabel, activeTab === "market" && styles.navLabelActive]}>
+            {t("farmer.nav.market")}
+          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -269,7 +295,9 @@ export default function FarmerDashboard() {
             size={24}
             color={activeTab === "profile" ? PRIMARY_GREEN : "#999"}
           />
-          <Text style={[styles.navLabel, activeTab === "profile" && styles.navLabelActive]}>Profile</Text>
+          <Text style={[styles.navLabel, activeTab === "profile" && styles.navLabelActive]}>
+            {t("farmer.nav.profile")}
+          </Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -430,5 +458,18 @@ const styles = StyleSheet.create({
   navLabelActive: {
     color: PRIMARY_GREEN,
     fontWeight: "600",
+  },
+  langToggle: {
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: "#fff",
+  },
+  langToggleText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: PRIMARY_GREEN,
   },
 });

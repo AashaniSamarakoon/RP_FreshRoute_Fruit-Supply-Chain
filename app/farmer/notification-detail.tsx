@@ -9,6 +9,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import { useTranslation } from "../../hooks/useTranslation";
 
 const PRIMARY_GREEN = "#2f855a";
 const LIGHT_GREEN = "#e8f4f0";
@@ -82,6 +83,7 @@ export default function NotificationDetailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const notificationId = params.id as string || "1";
+  const { t } = useTranslation();
   
   const notification = notificationDetails[notificationId] || notificationDetails["1"];
 
@@ -93,7 +95,7 @@ export default function NotificationDetailScreen() {
           <TouchableOpacity onPress={() => router.back()}>
             <Ionicons name="chevron-back" size={24} color="#000" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Notifications</Text>
+          <Text style={styles.headerTitle}>{t("notificationDetail.headerTitle")}</Text>
           <TouchableOpacity>
             <Ionicons name="share-social" size={24} color="#000" />
           </TouchableOpacity>
@@ -133,7 +135,7 @@ export default function NotificationDetailScreen() {
           <View style={styles.infoContainer}>
             <View style={styles.infoRow}>
               <Ionicons name="time-outline" size={16} color="#999" />
-              <Text style={styles.infoText}>Received {notification.time}</Text>
+              <Text style={styles.infoText}>{t("notificationDetail.received", { time: notification.time })}</Text>
             </View>
           </View>
 
