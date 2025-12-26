@@ -10,10 +10,10 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BuyerColors } from "../../../constants/theme";
 import { DealData } from "../../../types";
-import BuyerHeader from "../../components/buyer/BuyerHeader";
 import DealCard from "../../components/buyer/DealCard";
 import Hero from "../../components/buyer/Hero";
 import Search from "../../components/buyer/Search";
+import DashboardHeader from "@/app/components/DashboardHeader";
 
 // --- Main Component ---
 
@@ -38,6 +38,7 @@ export default function BuyerDashboardScreen(): React.JSX.Element {
     },
   ];
 
+  
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar
@@ -45,7 +46,7 @@ export default function BuyerDashboardScreen(): React.JSX.Element {
         backgroundColor={BuyerColors.cardWhite}
       />
 
-      <BuyerHeader />
+      <DashboardHeader />
 
       <ScrollView
         style={styles.contentContainer}

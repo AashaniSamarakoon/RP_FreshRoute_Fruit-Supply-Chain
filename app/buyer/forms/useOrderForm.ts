@@ -63,10 +63,8 @@ export const useOrderForm = () => {
           return;
         }
 
-        console.log("[useOrderForm] Making fetch request to:", `${BACKEND_URL}/api/fruit-properties`);
         const controller = new AbortController();
         const timeoutId = setTimeout(() => {
-          console.log("[useOrderForm] Fetch timed out after 10 seconds");
           controller.abort();
         }, 10000); // 10-second timeout
 
@@ -76,11 +74,8 @@ export const useOrderForm = () => {
         });
 
         clearTimeout(timeoutId);
-        console.log("[useOrderForm] Fetch completed, response status:", res.status);
-        console.log("[useOrderForm] Fetch response ok:", res.ok);
 
         const text = await res.text();
-        console.log("[useOrderForm] Response text:", text);
         let raw: any = text;
         try {
           raw = text ? JSON.parse(text) : text;
@@ -225,10 +220,11 @@ export const useOrderForm = () => {
         variant: state.formData.category,
         quantity: parseInt(state.formData.quantity, 10),
         grade: state.formData.grade,
-        estimated_harvest_date: state.formData.estimatedDate,
+        required_date: state.formData.estimatedDate,
+        delivery_location: state.formData.deliveryLocation,
       };
 
-      const res = await fetch(`${BACKEND_URL}/api/farmer/add-predict-stock`, {
+      const res = await fetch(`${BACKEND_URL}/api/buyer/place-order`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

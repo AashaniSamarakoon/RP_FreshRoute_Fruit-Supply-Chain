@@ -14,17 +14,12 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BACKEND_URL } from "../../../config";
+import DashboardHeader from "../../components/DashboardHeader";
 
 interface FarmerDashboardData {
   message?: string;
   upcomingPickups?: unknown[];
   stats?: { totalShipments: number; spoilageReduced: number };
-}
-
-interface UserData {
-  name?: string;
-  email?: string;
-  role?: string;
 }
 
 const PRIMARY_GREEN = "#2f855a";
@@ -34,7 +29,6 @@ const LIGHT_GRAY = "#f5f5f5";
 export default function FarmerDashboard() {
   const router = useRouter();
   const [data, setData] = useState<FarmerDashboardData | null>(null);
-  const [user, setUser] = useState<UserData | null>(null);
   const [activeTab, setActiveTab] = React.useState<
     "home" | "forecast" | "market" | "profile"
   >("home");
@@ -49,11 +43,6 @@ export default function FarmerDashboard() {
   useEffect(() => {
     const load = async () => {
       try {
-        const userJson = await AsyncStorage.getItem("user");
-        if (userJson) {
-          setUser(JSON.parse(userJson));
-        }
-
         const token = await AsyncStorage.getItem("token");
         if (!token) return;
 
@@ -82,25 +71,9 @@ export default function FarmerDashboard() {
     router.replace("/login");
   };
 
-  const userName = user?.name?.split(" ")[0] || "User";
-
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* Fixed Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.logo}>🍃 FreshRoute</Text>
-          <Text style={styles.greeting}>Good morning, {userName}</Text>
-        </View>
-        <View style={styles.headerIcons}>
-          <TouchableOpacity
-            onPress={() => router.push("/farmer/screens/notifications" as any)}
-          >
-            <Ionicons name="notifications-outline" size={24} color="#000" />
-          </TouchableOpacity>
-        </View>
-      </View>
-
+      <DashboardHeader />
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         {/* Search Bar */}
         <View style={styles.searchContainer}>
