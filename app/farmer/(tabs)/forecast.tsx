@@ -168,8 +168,8 @@ export default function ForecastScreen() {
               style={styles.fruitCard}
               onPress={() =>
                 router.push({
-                  pathname: '/farmer/screens/fruit-forecast' as any,
-                  params: { fruit: `TJC ${fruit.name}` }
+                  pathname: "/farmer/screens/fruit-forecast" as any,
+                  params: { fruit: `TJC ${fruit.name}` },
                 })
               }
             >
