@@ -9,6 +9,7 @@ import {
 } from "../../i18n/config";
 
 const STORAGE_KEY = "app_locale";
+const localeListeners = new Set<(locale: AppLocale) => void>();
 
 export const useTranslation = () => {
   const [locale, setLocaleState] = useState<AppLocale>(getCurrentLocale());
@@ -26,6 +27,13 @@ export const useTranslation = () => {
       }
     };
     load();
+
+    const listener = (next: AppLocale) => setLocaleState(next);
+    localeListeners.add(listener);
+
+    return () => {
+      localeListeners.delete(listener);
+    };
   }, []);
 
   const setLocale = useCallback(async (nextLocale: AppLocale) => {
@@ -36,6 +44,7 @@ export const useTranslation = () => {
     } catch (err) {
       console.warn("Failed to persist locale", err);
     }
+    localeListeners.forEach((fn) => fn(nextLocale));
   }, []);
 
   return {

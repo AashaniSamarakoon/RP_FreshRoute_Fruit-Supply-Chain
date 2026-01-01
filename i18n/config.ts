@@ -23,6 +23,9 @@ const translations = {
     farmer: {
       greeting: "Good morning, {{name}}",
       searchPlaceholder: "Search for a fruit",
+      demandLabel: "Demand",
+      priceLabel: "Price",
+      perKg: "/kg",
       featuredTitle: "Mango prices are predicted to rise!",
       featuredDescription: "The average price is expected to increase by 2.5% this week.",
       updatedTime: "Updated 5 mins ago",
@@ -207,6 +210,9 @@ const translations = {
     farmer: {
       greeting: "සුභ උදෑසනක්, {{name}}",
       searchPlaceholder: "පළතුරු සොයන්න",
+      demandLabel: "ඉල්ලුම",
+      priceLabel: "මිල",
+      perKg: "/කි.ග්.",
       featuredTitle: "අඹ මිල වැඩි වීමට පුරෝකථනය වේ!",
       featuredDescription: "මෙම සතියේ සාමාන්‍ය මිල 2.5% කින් ඉහළ යැයි අපේක්ෂා කරයි.",
       updatedTime: "අලුත් කළේ මිනිත්තු 5 කට පෙර",

@@ -1,20 +1,16 @@
-import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   Alert,
-  Image,
   SafeAreaView,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
 } from "react-native";
 import { BACKEND_URL } from "../../../config";
-import { useTranslation } from "../../../hooks/farmer/useTranslation";
+import { useTranslationContext } from "../../../context/TranslationContext";
+import { FeatureGrid, FruitDemandCards, Header } from "../components";
+
 interface FarmerDashboardData {
   message?: string;
   upcomingPickups?: unknown[];
@@ -27,15 +23,13 @@ interface UserData {
   role?: string;
 }
 
-const PRIMARY_GREEN = "#2f855a";
-const LIGHT_GREEN = "#e8f4f0";
-const LIGHT_GRAY = "#f5f5f5";
-
 export default function FarmerDashboard() {
   const router = useRouter();
-  const { t, locale, setLocale } = useTranslation();
+  const { t, locale, setLocale } = useTranslationContext();
   const [data, setData] = useState<FarmerDashboardData | null>(null);
   const [user, setUser] = useState<UserData | null>(null);
+
+  console.log('[FarmerDashboard] Rendering with locale:', locale);
 
   useEffect(() => {
     const load = async () => {
@@ -87,136 +81,29 @@ export default function FarmerDashboard() {
 
   const userName = user?.name?.split(" ")[0] || "User";
 
+  const handleSearch = (text: string) => {
+    // Handle search functionality
+    console.log("Search:", text);
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* Fixed Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.logo}>🍃 FreshRoute</Text>
-          <Text style={styles.greeting}>{t("farmer.greeting", { name: userName })}</Text>
-        </View>
-        <View style={styles.headerIcons}>
-          <TouchableOpacity onPress={() => router.push("/farmer/screens/notifications")}>
-            <Ionicons name="notifications-outline" size={24} color="#000" />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => router.push("/farmer/profile")} style={{ marginLeft: 12 }}>
-            <Ionicons name="person-outline" size={24} color="#000" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.langToggle, { marginLeft: 12 }]}
-            onPress={() => setLocale(locale === "en" ? "si" : "en")}
-          >
-            <Text style={styles.langToggleText}>{locale === "en" ? "සි" : "EN"}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+      {/* Header Component with Search Bar */}
+      <Header
+        userName={userName}
+        onSearch={handleSearch}
+      />
 
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.container} 
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
+        {/* Fruit Demand Cards Component */}
+        <FruitDemandCards />
 
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <Ionicons name="search" size={18} color="#999" />
-        <TextInput
-          style={styles.searchInput}
-          placeholder={t("farmer.searchPlaceholder")}
-          placeholderTextColor="#999"
-        />
-      </View>
-
-      {/* Featured Card */}
-      <View style={styles.featuredCard}>
-        <Image
-          source={{
-            uri: "https://images.unsplash.com/photo-1599599810694-b5ac4dd19e1d?w=300&h=150&fit=crop",
-          }}
-          style={styles.featuredImage}
-        />
-        <View style={styles.featuredContent}>
-          <Text style={styles.featuredTitle}>
-            {t("farmer.featuredTitle")}
-          </Text>
-          <Text style={styles.featuredDescription}>
-            {t("farmer.featuredDescription")}
-          </Text>
-          <Text style={styles.updatedTime}>{t("farmer.updatedTime")}</Text>
-          <TouchableOpacity
-            style={styles.detailsButton}
-            onPress={() => Alert.alert(t("common.details"), t("farmer.priceDetails"))}
-          >
-            <Text style={styles.detailsButtonText}>{t("common.details")}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Feature Grid */}
-      <View style={styles.gridContainer}>
-        <TouchableOpacity
-          style={styles.gridCard}
-          onPress={() => router.push("/farmer/forecast")}
-        >
-          <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
-            <Ionicons name="calendar" size={24} color={PRIMARY_GREEN} />
-          </View>
-          <Text style={styles.gridTitle}>{t("farmer.cards.forecastTitle")}</Text>
-          <Text style={styles.gridSubtitle}>{t("farmer.cards.forecastSubtitle")}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.gridCard}
-          onPress={() => router.push("/farmer/live-market")}
-        >
-          <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
-            <Ionicons name="trending-up" size={24} color={PRIMARY_GREEN} />
-          </View>
-          <Text style={styles.gridTitle}>{t("farmer.cards.liveMarketTitle")}</Text>
-          <Text style={styles.gridSubtitle}>{t("farmer.cards.liveMarketSubtitle")}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.gridCard}
-          onPress={() => router.push("/farmer/screens/accuracy-insights")}
-        >
-          <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
-            <Ionicons name="checkmark-circle" size={24} color={PRIMARY_GREEN} />
-          </View>
-          <Text style={styles.gridTitle}>{t("farmer.cards.accuracyTitle")}</Text>
-          <Text style={styles.gridSubtitle}>{t("farmer.cards.accuracySubtitle")}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.gridCard}
-          onPress={() => router.push("/farmer/screens/feedback")}
-        >
-          <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
-            <Ionicons name="chatbubble" size={24} color={PRIMARY_GREEN} />
-          </View>
-          <Text style={styles.gridTitle}>{t("farmer.cards.feedbackTitle")}</Text>
-          <Text style={styles.gridSubtitle}>{t("farmer.cards.feedbackSubtitle")}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.gridCard}
-          onPress={() => Alert.alert(t("farmer.cards.predictionTitle"), t("common.comingSoon"))}
-        >
-          <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
-            <Ionicons name="analytics" size={24} color={PRIMARY_GREEN} />
-          </View>
-          <Text style={styles.gridTitle}>{t("farmer.cards.predictionTitle")}</Text>
-          <Text style={styles.gridSubtitle}>{t("farmer.cards.predictionSubtitle")}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.gridCard}
-          onPress={() => router.push("/farmer/screens/daily-prices")}
-        >
-          <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
-            <Ionicons name="pricetag" size={24} color={PRIMARY_GREEN} />
-          </View>
-          <Text style={styles.gridTitle}>{t("farmer.cards.dailyPriceTitle")}</Text>
-          <Text style={styles.gridSubtitle}>{t("farmer.cards.dailyPriceSubtitle")}</Text>
-        </TouchableOpacity>
-      </View>
-
+        {/* Feature Grid Component */}
+        <FeatureGrid />
       </ScrollView>
     </SafeAreaView>
   );
@@ -231,138 +118,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#fff",
   },
-  header: {
-    paddingHorizontal: 16,
-    paddingTop: 50,
-    paddingBottom: 12,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
-    position: "relative",
-    zIndex: 10,
-  },
-  logo: {
-    fontSize: 18,
-    fontWeight: "bold",
-  },
-  greeting: {
-    fontSize: 20,
-    fontWeight: "700",
-    marginTop: 4,
-    color: "#000",
-  },
-  headerIcons: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  searchContainer: {
-    marginHorizontal: 16,
-    marginBottom: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: LIGHT_GRAY,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  searchInput: {
-    flex: 1,
-    marginLeft: 8,
-    fontSize: 14,
-    color: "#000",
-  },
-  featuredCard: {
-    marginHorizontal: 16,
-    marginBottom: 16,
-    backgroundColor: LIGHT_GREEN,
-    borderRadius: 12,
-    overflow: "hidden",
-  },
-  featuredImage: {
-    width: "100%",
-    height: 150,
-  },
-  featuredContent: {
-    padding: 12,
-  },
-  featuredTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#000",
-    marginBottom: 4,
-  },
-  featuredDescription: {
-    fontSize: 12,
-    color: "#666",
-    marginBottom: 4,
-    lineHeight: 18,
-  },
-  updatedTime: {
-    fontSize: 11,
-    color: "#999",
-    marginBottom: 8,
-  },
-  detailsButton: {
-    backgroundColor: PRIMARY_GREEN,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-    alignSelf: "flex-start",
-  },
-  detailsButtonText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  gridContainer: {
-    paddingHorizontal: 16,
-    marginBottom: 16,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-  },
-  gridCard: {
-    width: "48%",
-    backgroundColor: LIGHT_GRAY,
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-    alignItems: "center",
-  },
-  iconCircle: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  gridTitle: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#000",
-    textAlign: "center",
-    marginBottom: 4,
-  },
-  gridSubtitle: {
-    fontSize: 11,
-    color: "#999",
-    textAlign: "center",
-  },
-  langToggle: {
-    borderWidth: 1,
-    borderColor: "#d1d5db",
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: "#fff",
-  },
-  langToggleText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: PRIMARY_GREEN,
+  scrollContent: {
+    paddingBottom: 40, // Trim excess bottom space while keeping content clear of nav
   },
 });

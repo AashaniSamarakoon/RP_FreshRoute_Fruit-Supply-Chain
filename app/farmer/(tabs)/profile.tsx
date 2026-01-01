@@ -89,7 +89,6 @@ export default function ProfileScreen() {
         <ScrollView
           style={styles.scrollView}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 80 }}
         >
           {/* Profile Card */}
           <View style={styles.profileCard}>
