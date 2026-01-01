@@ -1,69 +1,127 @@
-import { Tabs } from "expo-router";
-import { BarChart, Home, TrendingUp, User } from "lucide-react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { Stack, useRouter } from "expo-router";
+import React, { useState } from "react";
+import {
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+
+const PRIMARY_GREEN = "#2f855a";
+
+function CustomBottomNavigation() {
+  const router = useRouter();
+  const [activeTab, setActiveTab] = useState<"home" | "forecast" | "market" | "profile">("home");
+
+  return (
+    <View style={styles.bottomNav}>
+      <TouchableOpacity
+        style={styles.navItem}
+        onPress={() => {
+          setActiveTab("home");
+          router.push("/farmer");
+        }}
+      >
+        <Ionicons
+          name={activeTab === "home" ? "home" : "home-outline"}
+          size={24}
+          color={activeTab === "home" ? PRIMARY_GREEN : "#999"}
+        />
+        <Text style={[styles.navLabel, activeTab === "home" && styles.navLabelActive]}>
+          Home
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.navItem}
+        onPress={() => {
+          setActiveTab("forecast");
+          router.push("/farmer/forecast");
+        }}
+      >
+        <Ionicons
+          name={activeTab === "forecast" ? "calendar" : "calendar-outline"}
+          size={24}
+          color={activeTab === "forecast" ? PRIMARY_GREEN : "#999"}
+        />
+        <Text style={[styles.navLabel, activeTab === "forecast" && styles.navLabelActive]}>
+          Forecast
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.navItem}
+        onPress={() => {
+          setActiveTab("market");
+          router.push("/farmer/live-market");
+        }}
+      >
+        <Ionicons
+          name={activeTab === "market" ? "trending-up" : "trending-up-outline"}
+          size={24}
+          color={activeTab === "market" ? PRIMARY_GREEN : "#999"}
+        />
+        <Text style={[styles.navLabel, activeTab === "market" && styles.navLabelActive]}>
+          Market
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.navItem}
+        onPress={() => {
+          setActiveTab("profile");
+          router.push("/farmer/profile");
+        }}
+      >
+        <Ionicons
+          name={activeTab === "profile" ? "person" : "person-outline"}
+          size={24}
+          color={activeTab === "profile" ? PRIMARY_GREEN : "#999"}
+        />
+        <Text style={[styles.navLabel, activeTab === "profile" && styles.navLabelActive]}>
+          Profile
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
 
 export default function FarmerLayout() {
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: "#2f855a",
-        tabBarInactiveTintColor: "#666",
-        tabBarShowLabel: true,
-        tabBarStyle: {
-          flexDirection: "row",
-          justifyContent: "space-around",
-          paddingVertical: 19,
-          backgroundColor: "#fff",
-          borderTopWidth: 1,
-          borderTopColor: "#F3F4F6",
-          position: "absolute",
-          bottom: 0,
-          left: 0,
-          right: 0,
-          height: 60,
-        },
-        tabBarLabelStyle: {
-          fontSize: 10,
-          marginTop: 4,
-        },
-        tabBarIconStyle: {
-          alignItems: "center",
-          justifyContent: "center",
-        },
-      }}
-    >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: "Home",
-          tabBarIcon: ({ color, size }) => <Home size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="forecast"
-        options={{
-          title: "Forecast",
-          tabBarIcon: ({ color, size }) => (
-            <TrendingUp size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="live-market"
-        options={{
-          title: "Market",
-          tabBarIcon: ({ color, size }) => (
-            <BarChart size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: "Profile",
-          tabBarIcon: ({ color, size }) => <User size={size} color={color} />,
-        }}
-      />
-    </Tabs>
+    <View style={{ flex: 1 }}>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(tabs)" />
+      </Stack>
+      <CustomBottomNavigation />
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  bottomNav: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderTopWidth: 1,
+    borderTopColor: "#f0f0f0",
+    paddingVertical: 8,
+    paddingBottom: 16,
+  },
+  navItem: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8,
+  },
+  navLabel: {
+    fontSize: 10,
+    color: "#999",
+    marginTop: 4,
+    fontWeight: "500",
+  },
+  navLabelActive: {
+    color: PRIMARY_GREEN,
+    fontWeight: "600",
+  },
+});

@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   Alert,
@@ -36,14 +36,6 @@ export default function FarmerDashboard() {
   const { t, locale, setLocale } = useTranslation();
   const [data, setData] = useState<FarmerDashboardData | null>(null);
   const [user, setUser] = useState<UserData | null>(null);
-  const [activeTab, setActiveTab] = React.useState<"home" | "forecast" | "market" | "profile">("home");
-
-  // Reset to home tab when screen is focused
-  useFocusEffect(
-    React.useCallback(() => {
-      setActiveTab("home");
-    }, [])
-  );
 
   useEffect(() => {
     const load = async () => {
@@ -104,7 +96,7 @@ export default function FarmerDashboard() {
           <Text style={styles.greeting}>{t("farmer.greeting", { name: userName })}</Text>
         </View>
         <View style={styles.headerIcons}>
-          <TouchableOpacity onPress={() => router.push("../screens/notifications")}>
+          <TouchableOpacity onPress={() => router.push("/farmer/screens/notifications")}>
             <Ionicons name="notifications-outline" size={24} color="#000" />
           </TouchableOpacity>
           <TouchableOpacity onPress={() => router.push("/farmer/profile")} style={{ marginLeft: 12 }}>
@@ -182,7 +174,7 @@ export default function FarmerDashboard() {
 
         <TouchableOpacity
           style={styles.gridCard}
-          onPress={() => router.push("../screens/accuracy-insights")}
+          onPress={() => router.push("/farmer/screens/accuracy-insights")}
         >
           <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
             <Ionicons name="checkmark-circle" size={24} color={PRIMARY_GREEN} />
@@ -193,7 +185,7 @@ export default function FarmerDashboard() {
 
         <TouchableOpacity
           style={styles.gridCard}
-          onPress={() => router.push("../screens/feedback")}
+          onPress={() => router.push("/farmer/screens/feedback")}
         >
           <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
             <Ionicons name="chatbubble" size={24} color={PRIMARY_GREEN} />
@@ -215,7 +207,7 @@ export default function FarmerDashboard() {
 
         <TouchableOpacity
           style={styles.gridCard}
-          onPress={() => router.push("../screens/daily-prices")}
+          onPress={() => router.push("/farmer/screens/daily-prices")}
         >
           <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
             <Ionicons name="pricetag" size={24} color={PRIMARY_GREEN} />
@@ -225,80 +217,7 @@ export default function FarmerDashboard() {
         </TouchableOpacity>
       </View>
 
-        {/* Bottom spacing */}
-        <View style={{ height: 80 }} />
       </ScrollView>
-
-      {/* Bottom Navigation Bar */}
-      <View style={styles.bottomNav}>
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() => {
-            setActiveTab("home");
-            router.push("/farmer");
-          }}
-        >
-          <Ionicons
-            name={activeTab === "home" ? "home" : "home-outline"}
-            size={24}
-            color={activeTab === "home" ? PRIMARY_GREEN : "#999"}
-          />
-          <Text style={[styles.navLabel, activeTab === "home" && styles.navLabelActive]}>
-            {t("farmer.nav.home")}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() => {
-            setActiveTab("forecast");
-            router.push("/farmer/forecast");
-          }}
-        >
-          <Ionicons
-            name={activeTab === "forecast" ? "calendar" : "calendar-outline"}
-            size={24}
-            color={activeTab === "forecast" ? PRIMARY_GREEN : "#999"}
-          />
-          <Text style={[styles.navLabel, activeTab === "forecast" && styles.navLabelActive]}>
-            {t("farmer.nav.forecast")}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() => {
-            setActiveTab("market");
-            router.push("/farmer/live-market");
-          }}
-        >
-          <Ionicons
-            name={activeTab === "market" ? "trending-up" : "trending-up-outline"}
-            size={24}
-            color={activeTab === "market" ? PRIMARY_GREEN : "#999"}
-          />
-          <Text style={[styles.navLabel, activeTab === "market" && styles.navLabelActive]}>
-            {t("farmer.nav.market")}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() => {
-            setActiveTab("profile");
-            router.push("/farmer/profile");
-          }}
-        >
-          <Ionicons
-            name={activeTab === "profile" ? "person" : "person-outline"}
-            size={24}
-            color={activeTab === "profile" ? PRIMARY_GREEN : "#999"}
-          />
-          <Text style={[styles.navLabel, activeTab === "profile" && styles.navLabelActive]}>
-            {t("farmer.nav.profile")}
-          </Text>
-        </TouchableOpacity>
-      </View>
     </SafeAreaView>
   );
 }
@@ -432,31 +351,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "#999",
     textAlign: "center",
-  },
-  bottomNav: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    alignItems: "center",
-    backgroundColor: "#fff",
-    borderTopWidth: 1,
-    borderTopColor: "#f0f0f0",
-    paddingVertical: 8,
-    paddingBottom: 16,
-  },
-  navItem: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 8,
-  },
-  navLabel: {
-    fontSize: 10,
-    color: "#999",
-    marginTop: 4,
-    fontWeight: "500",
-  },
-  navLabelActive: {
-    color: PRIMARY_GREEN,
-    fontWeight: "600",
   },
   langToggle: {
     borderWidth: 1,
