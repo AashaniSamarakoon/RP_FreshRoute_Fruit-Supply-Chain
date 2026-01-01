@@ -1,15 +1,18 @@
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
+  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import Header from "../../../components/Header";
+import { BACKEND_URL } from "../../../config";
+import { useTranslation } from "../../../hooks/farmer/useTranslation";
 
 const PRIMARY_GREEN = "#2f855a";
 const LIGHT_GREEN = "#e8f4f0";
@@ -17,91 +20,95 @@ const LIGHT_GRAY = "#f5f5f5";
 const YELLOW = "#fbbf24";
 const ORANGE = "#f59e0b";
 const BLUE = "#3b82f6";
+const RED = "#ef4444";
 
-interface Notification {
+interface NotificationItem {
   id: number;
-  icon: string;
-  iconColor: string;
-  iconBg: string;
   title: string;
   description: string;
   time: string;
-  category: "unread" | "earlier";
+  category?: string;
+  severity?: string;
+  read_at?: string | null;
+  icon?: string;
 }
-
-const mockNotifications: Notification[] = [
-  {
-    id: 1,
-    icon: "alert-circle",
-    iconColor: YELLOW,
-    iconBg: "#fef3c7",
-    title: "Price Alert: Apple prices may rise 8%",
-    description:
-      "The forecast shows rising apple prices. Consider holding apples for next 3 days to maximize profit. View details.",
-    time: "Just now",
-    category: "unread",
-  },
-  {
-    id: 2,
-    icon: "trending-up",
-    iconColor: BLUE,
-    iconBg: "#dbeafe",
-    title: "High demand for strawberries",
-    description:
-      "New forecast shows high demand for strawberries in economic centers in your region this weekend. View forecast...",
-    time: "1h ago",
-    category: "unread",
-  },
-  {
-    id: 3,
-    icon: "leaf",
-    iconColor: PRIMARY_GREEN,
-    iconBg: LIGHT_GREEN,
-    title: "Tip: Delay orange harvest",
-    description:
-      "Consider delaying orange harvest by 3 days for a potential 5% price increase. View forecast.",
-    time: "3h ago",
-    category: "earlier",
-  },
-  {
-    id: 4,
-    icon: "refresh",
-    iconColor: "#9333ea",
-    iconBg: "#f3e8ff",
-    title: "FreshRoute AI model updated",
-    description:
-      "Our prediction model has been updated for improved accuracy in all regions.",
-    time: "1d ago",
-    category: "earlier",
-  },
-];
 
 export default function NotificationsScreen() {
   const router = useRouter();
-  const [selectedFilter, setSelectedFilter] = useState<
-    "All" | "Price Alerts" | "Demand Updates" | "App Notifs"
-  >("All");
+  const { t } = useTranslation();
+  const [selectedFilter, setSelectedFilter] = useState<"All" | "Price Alerts" | "Demand Updates" | "App Notifs">("All");
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const unreadNotifications = mockNotifications.filter(
-    (n) => n.category === "unread"
-  );
-  const earlierNotifications = mockNotifications.filter(
-    (n) => n.category === "earlier"
-  );
+  useEffect(() => {
+    loadNotifications();
+  }, [selectedFilter]);
+
+  const loadNotifications = async () => {
+    console.log("[NOTIFICATIONS] Loading notifications...");
+    setLoading(true);
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) {
+        console.log("[NOTIFICATIONS] No token found");
+        setNotifications([]);
+        return;
+      }
+
+      const categoryParam = selectedFilter === "All" ? "" : `?category=${encodeURIComponent(selectedFilter)}`;
+      const res = await fetch(`${BACKEND_URL}/api/farmer/notifications${categoryParam}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        console.log("[NOTIFICATIONS] Error:", data.message);
+        setNotifications([]);
+        return;
+      }
+
+      const mapped: NotificationItem[] = (data.notifications || []).map((n: any) => ({
+        id: n.id,
+        title: n.title,
+        description: n.body,
+        time: n.created_at,
+        category: n.category,
+        severity: n.severity,
+        read_at: n.read_at,
+      }));
+
+      setNotifications(mapped);
+    } catch (err) {
+      console.error("[NOTIFICATIONS] Unexpected error", err);
+      setNotifications([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const iconForNotification = (n: NotificationItem) => {
+    if (n.severity === "high") return { name: "alert-circle", color: RED, bg: "#fee2e2" };
+    if (n.category?.toLowerCase().includes("price")) return { name: "trending-up", color: BLUE, bg: "#dbeafe" };
+    if (n.category?.toLowerCase().includes("demand")) return { name: "pulse", color: PRIMARY_GREEN, bg: LIGHT_GREEN };
+    return { name: "notifications", color: ORANGE, bg: "#fef3c7" };
+  };
+
+  const unreadNotifications = notifications.filter((n) => !n.read_at);
+  const earlierNotifications = notifications.filter((n) => !!n.read_at);
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         {/* Header */}
-        <Header
-          title="Notifications"
-          onBack={() => router.back()}
-          rightComponent={
-            <TouchableOpacity>
-              <Ionicons name="checkmark-done" size={24} color={PRIMARY_GREEN} />
-            </TouchableOpacity>
-          }
-        />
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Ionicons name="chevron-back" size={24} color="#000" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>{t("notifications.headerTitle")}</Text>
+          <TouchableOpacity>
+            <Ionicons name="checkmark-done" size={24} color={PRIMARY_GREEN} />
+          </TouchableOpacity>
+        </View>
 
         {/* Filter Pills */}
         <ScrollView
@@ -111,10 +118,7 @@ export default function NotificationsScreen() {
           contentContainerStyle={styles.filterContainer}
         >
           <TouchableOpacity
-            style={[
-              styles.filterPill,
-              selectedFilter === "All" && styles.filterPillActive,
-            ]}
+            style={[styles.filterPill, selectedFilter === "All" && styles.filterPillActive]}
             onPress={() => setSelectedFilter("All")}
           >
             <Text
@@ -123,14 +127,11 @@ export default function NotificationsScreen() {
                 selectedFilter === "All" && styles.filterTextActive,
               ]}
             >
-              All
+              {t("notifications.filters.all")}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[
-              styles.filterPill,
-              selectedFilter === "Price Alerts" && styles.filterPillActive,
-            ]}
+            style={[styles.filterPill, selectedFilter === "Price Alerts" && styles.filterPillActive]}
             onPress={() => setSelectedFilter("Price Alerts")}
           >
             <Text
@@ -139,14 +140,11 @@ export default function NotificationsScreen() {
                 selectedFilter === "Price Alerts" && styles.filterTextActive,
               ]}
             >
-              Price Alerts
+              {t("notifications.filters.priceAlerts")}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[
-              styles.filterPill,
-              selectedFilter === "Demand Updates" && styles.filterPillActive,
-            ]}
+            style={[styles.filterPill, selectedFilter === "Demand Updates" && styles.filterPillActive]}
             onPress={() => setSelectedFilter("Demand Updates")}
           >
             <Text
@@ -155,14 +153,11 @@ export default function NotificationsScreen() {
                 selectedFilter === "Demand Updates" && styles.filterTextActive,
               ]}
             >
-              Demand Updates
+              {t("notifications.filters.demandUpdates")}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[
-              styles.filterPill,
-              selectedFilter === "App Notifs" && styles.filterPillActive,
-            ]}
+            style={[styles.filterPill, selectedFilter === "App Notifs" && styles.filterPillActive]}
             onPress={() => setSelectedFilter("App Notifs")}
           >
             <Text
@@ -171,117 +166,97 @@ export default function NotificationsScreen() {
                 selectedFilter === "App Notifs" && styles.filterTextActive,
               ]}
             >
-              App Notifs
+              {t("notifications.filters.appNotifs")}
             </Text>
           </TouchableOpacity>
         </ScrollView>
 
-        <ScrollView
-          style={styles.scrollView}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Unread Section */}
-          {unreadNotifications.length > 0 && (
-            <>
-              <Text style={styles.sectionTitle}>UNREAD</Text>
-              {unreadNotifications.map((notification) => (
-                <TouchableOpacity
-                  key={notification.id}
-                  style={styles.notificationCard}
-                  onPress={() =>
-                    router.push({
-                      pathname: "/farmer/notification-detail" as any,
-                      params: { id: notification.id },
-                    })
-                  }
-                >
-                  <View style={styles.notificationLeft}>
-                    <View
-                      style={[
-                        styles.iconCircle,
-                        { backgroundColor: notification.iconBg },
-                      ]}
-                    >
-                      <Ionicons
-                        name={notification.icon as any}
-                        size={20}
-                        color={notification.iconColor}
-                      />
-                    </View>
-                    <View style={styles.unreadDot} />
-                  </View>
-                  <View style={styles.notificationContent}>
-                    <Text style={styles.notificationTitle}>
-                      {notification.title}
-                    </Text>
-                    <Text style={styles.notificationDescription}>
-                      {notification.description}
-                    </Text>
-                    <Text style={styles.notificationTime}>
-                      {notification.time}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </>
-          )}
-
-          {/* Earlier Section */}
-          {earlierNotifications.length > 0 && (
-            <>
-              <Text style={styles.sectionTitle}>EARLIER</Text>
-              {earlierNotifications.map((notification) => (
-                <TouchableOpacity
-                  key={notification.id}
-                  style={styles.notificationCard}
-                  onPress={() =>
-                    router.push({
-                      pathname: "/farmer/notification-detail" as any,
-                      params: { id: notification.id },
-                    })
-                  }
-                >
-                  <View style={styles.notificationLeft}>
-                    <View
-                      style={[
-                        styles.iconCircle,
-                        { backgroundColor: notification.iconBg },
-                      ]}
-                    >
-                      <Ionicons
-                        name={notification.icon as any}
-                        size={20}
-                        color={notification.iconColor}
-                      />
-                    </View>
-                  </View>
-                  <View style={styles.notificationContent}>
-                    <Text style={styles.notificationTitle}>
-                      {notification.title}
-                    </Text>
-                    <Text style={styles.notificationDescription}>
-                      {notification.description}
-                    </Text>
-                    <Text style={styles.notificationTime}>
-                      {notification.time}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </>
-          )}
-
-          {/* All Caught Up */}
-          <View style={styles.allCaughtUpContainer}>
-            <Ionicons name="notifications-off-outline" size={48} color="#ccc" />
-            <Text style={styles.allCaughtUpTitle}>All caught up!</Text>
-            <Text style={styles.allCaughtUpText}>
-              You have no older notifications
-            </Text>
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={PRIMARY_GREEN} />
+            <Text style={styles.loadingText}>Loading notifications...</Text>
           </View>
+        ) : notifications.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="notifications-off-outline" size={48} color="#ccc" />
+            <Text style={styles.emptyText}>{t("notifications.emptyText")}</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={loadNotifications}>
+              <Text style={styles.retryText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <ScrollView
+            style={styles.scrollView}
+            showsVerticalScrollIndicator={false}
+          >
+            {unreadNotifications.length > 0 && (
+              <>
+                <Text style={styles.sectionTitle}>{t("notifications.sections.unread")}</Text>
+                {unreadNotifications.map((notification) => {
+                  const icon = iconForNotification(notification);
+                  return (
+                    <TouchableOpacity
+                      key={notification.id}
+                      style={styles.notificationCard}
+                      onPress={() => router.push(`../notification-detail?id=${notification.id}`)}
+                    >
+                      <View style={styles.notificationLeft}>
+                        <View style={[styles.iconCircle, { backgroundColor: icon.bg }]}>
+                          <Ionicons name={icon.name as any} size={20} color={icon.color} />
+                        </View>
+                        <View style={styles.unreadDot} />
+                      </View>
+                      <View style={styles.notificationContent}>
+                        <Text style={styles.notificationTitle}>{notification.title}</Text>
+                        <Text style={styles.notificationDescription}>
+                          {notification.description}
+                        </Text>
+                        <Text style={styles.notificationTime}>{notification.time ? new Date(notification.time).toLocaleString() : ""}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </>
+            )}
 
-          <View style={{ height: 30 }} />
-        </ScrollView>
+            {earlierNotifications.length > 0 && (
+              <>
+                <Text style={styles.sectionTitle}>{t("notifications.sections.earlier")}</Text>
+                {earlierNotifications.map((notification) => {
+                  const icon = iconForNotification(notification);
+                  return (
+                    <TouchableOpacity
+                      key={notification.id}
+                      style={styles.notificationCard}
+                      onPress={() => router.push(`../notification-detail?id=${notification.id}`)}
+                    >
+                      <View style={styles.notificationLeft}>
+                        <View style={[styles.iconCircle, { backgroundColor: icon.bg }]}>
+                          <Ionicons name={icon.name as any} size={20} color={icon.color} />
+                        </View>
+                      </View>
+                      <View style={styles.notificationContent}>
+                        <Text style={styles.notificationTitle}>{notification.title}</Text>
+                        <Text style={styles.notificationDescription}>
+                          {notification.description}
+                        </Text>
+                        <Text style={styles.notificationTime}>{notification.time ? new Date(notification.time).toLocaleString() : ""}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </>
+            )}
+
+            <View style={styles.allCaughtUpContainer}>
+              <Ionicons name="notifications-off-outline" size={48} color="#ccc" />
+              <Text style={styles.allCaughtUpTitle}>{t("notifications.emptyTitle")}</Text>
+              <Text style={styles.allCaughtUpText}>{t("notifications.emptyText")}</Text>
+            </View>
+
+            <View style={{ height: 30 }} />
+          </ScrollView>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -295,6 +270,21 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#fff",
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingTop: 40,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
+  },
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#000",
   },
   filterScrollView: {
     maxHeight: 60,
@@ -329,6 +319,41 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 60,
+  },
+  loadingText: {
+    marginTop: 8,
+    fontSize: 13,
+    color: "#666",
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 60,
+  },
+  emptyText: {
+    marginTop: 8,
+    fontSize: 13,
+    color: "#666",
+    textAlign: "center",
+  },
+  retryButton: {
+    marginTop: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    backgroundColor: PRIMARY_GREEN,
+    borderRadius: 8,
+  },
+  retryText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 13,
   },
   sectionTitle: {
     fontSize: 11,

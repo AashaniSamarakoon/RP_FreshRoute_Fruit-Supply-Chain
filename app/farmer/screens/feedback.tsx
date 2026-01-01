@@ -1,7 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -10,7 +12,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import Header from "../../../components/Header";
+import { BACKEND_URL } from "../../../config";
+import { useTranslation } from "../../../hooks/farmer/useTranslation";
 
 const PRIMARY_GREEN = "#2f855a";
 const LIGHT_GREEN = "#e8f4f0";
@@ -18,74 +21,106 @@ const LIGHT_GRAY = "#f5f5f5";
 
 interface FeedbackItem {
   id: number;
-  author: string;
-  avatar: string;
-  timeAgo: string;
-  category: "Recent" | "Top" | "My Feedback";
-  feedback: string;
-  likes: number;
-  dislikes: number;
+  body: string;
+  rating?: number | null;
+  created_at?: string;
+  user_id?: string;
+  status?: string;
 }
-
-const mockFeedbacks: FeedbackItem[] = [
-  {
-    id: 1,
-    author: "John D.",
-    avatar:
-      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=40&h=40&fit=crop",
-    timeAgo: "2 days ago",
-    category: "Recent",
-    feedback:
-      "It would be great to have a wonder-level forecast for organic avocados prices. The current model seems to focus only on conventional produce.",
-    likes: 4,
-    dislikes: 0,
-  },
-  {
-    id: 2,
-    author: "Sarah L.",
-    avatar:
-      "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=40&h=40&fit=crop",
-    timeAgo: "5 days ago",
-    category: "Recent",
-    feedback:
-      "Love the app! Can you add a feature to integrate with different local grocery stores? That would be a game changer for my weekly shopping!",
-    likes: 12,
-    dislikes: 1,
-  },
-  {
-    id: 3,
-    author: "Mike P.",
-    avatar:
-      "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=40&h=40&fit=crop",
-    timeAgo: "1 week ago",
-    category: "Top",
-    feedback:
-      "The UI is very clean, but I'm getting inconsistent data on the weekends at bit off from last month. Was there something changed?",
-    likes: 8,
-    dislikes: 0,
-  },
-];
-
-export const options = {
-  headerShown: false,
-};
 
 export default function FeedbackScreen() {
   const router = useRouter();
-  const [selectedTab, setSelectedTab] = React.useState<
-    "Recent" | "Top" | "My Feedback"
-  >("Recent");
-  const [feedbackText, setFeedbackText] = React.useState("");
+  const { t } = useTranslation();
+  const [selectedTab, setSelectedTab] = useState<"Recent" | "Top" | "My Feedback">("Recent");
+  const [feedbackText, setFeedbackText] = useState("");
+  const [feedbacks, setFeedbacks] = useState<FeedbackItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
-  const filteredFeedbacks = mockFeedbacks.filter(
-    (f) => f.category === selectedTab || selectedTab === "Recent"
-  );
+  useEffect(() => {
+    loadFeedbacks();
+  }, [selectedTab]);
+
+  const loadFeedbacks = async () => {
+    console.log("[FEEDBACK] Loading feedback...");
+    setLoading(true);
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) {
+        console.log("[FEEDBACK] No token found");
+        setFeedbacks([]);
+        return;
+      }
+
+      const sort = selectedTab === "Top" ? "top" : "recent";
+      const res = await fetch(`${BACKEND_URL}/api/farmer/feedback?sort=${sort}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        console.log("[FEEDBACK] Error:", data.message);
+        setFeedbacks([]);
+        return;
+      }
+
+      setFeedbacks(data.feedback || []);
+    } catch (err) {
+      console.error("[FEEDBACK] Unexpected error", err);
+      setFeedbacks([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submitFeedback = async () => {
+    if (!feedbackText.trim()) {
+      return;
+    }
+    console.log("[FEEDBACK] Submitting feedback...");
+    setSubmitting(true);
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) {
+        console.log("[FEEDBACK] No token found");
+        return;
+      }
+
+      const res = await fetch(`${BACKEND_URL}/api/farmer/feedback`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ body: feedbackText.trim() }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        console.log("[FEEDBACK] Submit error:", data.message);
+        return;
+      }
+
+      setFeedbackText("");
+      setFeedbacks((prev) => [data.feedback, ...prev]);
+    } catch (err) {
+      console.error("[FEEDBACK] Submit unexpected error", err);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         {/* Header */}
-        <Header title="Feedback" onBack={() => router.back()} />
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Ionicons name="chevron-back" size={24} color="#000" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>{t("feedback.headerTitle")}</Text>
+          <View style={{ width: 24 }} />
+        </View>
 
         <ScrollView
           style={styles.scrollView}
@@ -93,7 +128,7 @@ export default function FeedbackScreen() {
         >
           {/* Feedback Title */}
           <View style={styles.titleSection}>
-            <Text style={styles.mainTitle}>Help us improve FreshRoute!</Text>
+            <Text style={styles.mainTitle}>{t("feedback.mainTitle")}</Text>
           </View>
 
           {/* Feedback Input */}
@@ -103,15 +138,15 @@ export default function FeedbackScreen() {
             </View>
             <TextInput
               style={styles.feedbackInput}
-              placeholder="Share your thoughts or ideas..."
+              placeholder={t("feedback.placeholder")}
               placeholderTextColor="#999"
               multiline
               maxLength={200}
               value={feedbackText}
               onChangeText={setFeedbackText}
             />
-            <TouchableOpacity style={styles.submitButton}>
-              <Text style={styles.submitButtonText}>Submit</Text>
+            <TouchableOpacity style={styles.submitButton} onPress={submitFeedback} disabled={submitting}>
+              <Text style={styles.submitButtonText}>{submitting ? "..." : t("feedback.submit")}</Text>
             </TouchableOpacity>
           </View>
 
@@ -127,7 +162,7 @@ export default function FeedbackScreen() {
                   selectedTab === "Recent" && styles.tabTextActive,
                 ]}
               >
-                Recent
+                {t("feedback.tabs.recent")}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -140,14 +175,11 @@ export default function FeedbackScreen() {
                   selectedTab === "Top" && styles.tabTextActive,
                 ]}
               >
-                Top
+                {t("feedback.tabs.top")}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[
-                styles.tab,
-                selectedTab === "My Feedback" && styles.tabActive,
-              ]}
+              style={[styles.tab, selectedTab === "My Feedback" && styles.tabActive]}
               onPress={() => setSelectedTab("My Feedback")}
             >
               <Text
@@ -156,62 +188,61 @@ export default function FeedbackScreen() {
                   selectedTab === "My Feedback" && styles.tabTextActive,
                 ]}
               >
-                My Feedback
+                {t("feedback.tabs.mine")}
               </Text>
             </TouchableOpacity>
           </View>
 
           {/* Feedback List */}
-          <View style={styles.feedbackList}>
-            {filteredFeedbacks.map((feedback) => (
-              <View key={feedback.id} style={styles.feedbackCard}>
-                <View style={styles.feedbackHeader}>
-                  <View style={styles.authorInfo}>
-                    <View style={styles.authorAvatar}>
-                      <Text style={styles.avatarText}>
-                        {feedback.author[0]}
-                      </Text>
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={PRIMARY_GREEN} />
+              <Text style={styles.loadingText}>Loading feedback...</Text>
+            </View>
+          ) : feedbacks.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="chatbubbles-outline" size={48} color="#ccc" />
+              <Text style={styles.emptyText}>No feedback yet</Text>
+              <TouchableOpacity style={styles.retryButton} onPress={loadFeedbacks}>
+                <Text style={styles.retryText}>Retry</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.feedbackList}>
+              {feedbacks.map((feedback) => (
+                <View key={feedback.id} style={styles.feedbackCard}>
+                  <View style={styles.feedbackHeader}>
+                    <View style={styles.authorInfo}>
+                      <View style={styles.authorAvatar}>
+                        <Text style={styles.avatarText}>👤</Text>
+                      </View>
+                      <View>
+                        <Text style={styles.authorName}>{feedback.user_id || "Farmer"}</Text>
+                        <Text style={styles.timeAgo}>
+                          {feedback.created_at ? new Date(feedback.created_at).toLocaleString() : t("feedback.time.justNow")}
+                        </Text>
+                      </View>
                     </View>
-                    <View>
-                      <Text style={styles.authorName}>{feedback.author}</Text>
-                      <Text style={styles.timeAgo}>{feedback.timeAgo}</Text>
-                    </View>
+                    <TouchableOpacity>
+                      <Ionicons name="ellipsis-vertical" size={16} color="#ccc" />
+                    </TouchableOpacity>
                   </View>
-                  <TouchableOpacity>
-                    <Ionicons name="ellipsis-vertical" size={16} color="#ccc" />
-                  </TouchableOpacity>
-                </View>
 
-                <Text style={styles.feedbackText}>{feedback.feedback}</Text>
+                  <Text style={styles.feedbackText}>{feedback.body}</Text>
 
-                <View style={styles.feedbackActions}>
-                  <TouchableOpacity style={styles.actionButton}>
-                    <Ionicons
-                      name="thumbs-up-outline"
-                      size={16}
-                      color={PRIMARY_GREEN}
-                    />
-                    <Text style={styles.actionCount}>{feedback.likes}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.actionButton}>
-                    <Ionicons
-                      name="thumbs-down-outline"
-                      size={16}
-                      color="#ccc"
-                    />
-                    <Text style={styles.actionCount}>{feedback.dislikes}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.actionButton}>
-                    <Ionicons
-                      name="chatbubble-outline"
-                      size={16}
-                      color="#ccc"
-                    />
-                  </TouchableOpacity>
+                  <View style={styles.feedbackActions}>
+                    <TouchableOpacity style={styles.actionButton}>
+                      <Ionicons name="thumbs-up-outline" size={16} color={PRIMARY_GREEN} />
+                      <Text style={styles.actionCount}>{feedback.rating ?? 0}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.actionButton}>
+                      <Ionicons name="chatbubble-outline" size={16} color="#ccc" />
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              </View>
-            ))}
-          </View>
+              ))}
+            </View>
+          )}
 
           <View style={{ height: 30 }} />
         </ScrollView>
@@ -228,6 +259,21 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#fff",
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingTop: 40,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
+  },
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#000",
   },
   scrollView: {
     flex: 1,
@@ -362,5 +408,40 @@ const styles = StyleSheet.create({
   actionCount: {
     fontSize: 11,
     color: "#666",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 60,
+  },
+  loadingText: {
+    marginTop: 8,
+    fontSize: 13,
+    color: "#666",
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 60,
+  },
+  emptyText: {
+    marginTop: 8,
+    fontSize: 13,
+    color: "#666",
+    textAlign: "center",
+  },
+  retryButton: {
+    marginTop: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    backgroundColor: PRIMARY_GREEN,
+    borderRadius: 8,
+  },
+  retryText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 13,
   },
 });

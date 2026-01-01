@@ -2,14 +2,14 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
 import {
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import Header from "../../../components/Header";
+import { useTranslation } from "../../../hooks/farmer/useTranslation";
 
 const PRIMARY_GREEN = "#2f855a";
 const LIGHT_GREEN = "#e8f4f0";
@@ -36,10 +36,8 @@ const notificationDetails: { [key: string]: NotificationDetail } = {
     iconBg: LIGHT_GREEN,
     title: "Price Alert: Avocados are Trending Up",
     subtitle: "16 minutes ago",
-    description:
-      "FreshRoute AI predicts a 15% increase in avocado prices over the next 48 hours due to a surge in regional demand.",
-    detailedDescription:
-      "FreshRoute AI predicts a 15% increase in avocado prices over the next 48 hours due to a surge in regional demand. Consider adjusting your inventory levels.",
+    description: "FreshRoute AI predicts a 15% increase in avocado prices over the next 48 hours due to a surge in regional demand.",
+    detailedDescription: "FreshRoute AI predicts a 15% increase in avocado prices over the next 48 hours due to a surge in regional demand. Consider adjusting your inventory levels.",
     time: "16 minutes ago",
     actionButtonText: "View Avocado Demand Report",
   },
@@ -50,10 +48,8 @@ const notificationDetails: { [key: string]: NotificationDetail } = {
     iconBg: "#fef3c7",
     title: "Price Alert: Apple prices may rise 8%",
     subtitle: "Just now",
-    description:
-      "The forecast predicts a significant price increase. Consider holding apples for next 3 days to maximize profit.",
-    detailedDescription:
-      "The forecast predicts a significant price increase in apples. Consider holding apples for the next 3 days to maximize profit potential.",
+    description: "The forecast predicts a significant price increase. Consider holding apples for next 3 days to maximize profit.",
+    detailedDescription: "The forecast predicts a significant price increase in apples. Consider holding apples for the next 3 days to maximize profit potential.",
     time: "Just now",
     actionButtonText: "View Apple Price Forecast",
   },
@@ -64,10 +60,8 @@ const notificationDetails: { [key: string]: NotificationDetail } = {
     iconBg: "#dbeafe",
     title: "High demand for strawberries",
     subtitle: "1h ago",
-    description:
-      "New forecast shows high demand for strawberries in economic centers in your region this weekend.",
-    detailedDescription:
-      "New forecast shows high demand for strawberries in economic centers in your region this weekend. Prepare your inventory accordingly.",
+    description: "New forecast shows high demand for strawberries in economic centers in your region this weekend.",
+    detailedDescription: "New forecast shows high demand for strawberries in economic centers in your region this weekend. Prepare your inventory accordingly.",
     time: "1h ago",
     actionButtonText: "View Forecast Details",
   },
@@ -78,40 +72,34 @@ const notificationDetails: { [key: string]: NotificationDetail } = {
     iconBg: LIGHT_GREEN,
     title: "Tip: Delay orange harvest",
     subtitle: "3h ago",
-    description:
-      "Consider delaying orange harvest by 3 days for a potential 5% price increase.",
-    detailedDescription:
-      "Consider delaying orange harvest by 3 days for a potential 5% price increase based on upcoming market trends.",
+    description: "Consider delaying orange harvest by 3 days for a potential 5% price increase.",
+    detailedDescription: "Consider delaying orange harvest by 3 days for a potential 5% price increase based on upcoming market trends.",
     time: "3h ago",
     actionButtonText: "View Orange Market Trends",
   },
 };
 
-export const options = {
-  headerShown: false,
-};
-
 export default function NotificationDetailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const notificationId = (params.id as string) || "1";
-
-  const notification =
-    notificationDetails[notificationId] || notificationDetails["1"];
+  const notificationId = params.id as string || "1";
+  const { t } = useTranslation();
+  
+  const notification = notificationDetails[notificationId] || notificationDetails["1"];
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         {/* Header */}
-        <Header
-          title="Notifications"
-          onBack={() => router.back()}
-          rightComponent={
-            <TouchableOpacity>
-              <Ionicons name="share-social" size={24} color="#000" />
-            </TouchableOpacity>
-          }
-        />
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Ionicons name="chevron-back" size={24} color="#000" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>{t("notificationDetail.headerTitle")}</Text>
+          <TouchableOpacity>
+            <Ionicons name="share-social" size={24} color="#000" />
+          </TouchableOpacity>
+        </View>
 
         <ScrollView
           style={styles.scrollView}
@@ -119,47 +107,35 @@ export default function NotificationDetailScreen() {
         >
           {/* Notification Icon */}
           <View style={styles.iconContainer}>
-            <View
-              style={[
-                styles.largeIconCircle,
-                { backgroundColor: notification.iconBg },
-              ]}
-            >
-              <Ionicons
-                name={notification.icon as any}
-                size={40}
-                color={notification.iconColor}
-              />
+            <View style={[styles.largeIconCircle, { backgroundColor: notification.iconBg }]}>
+              <Ionicons name={notification.icon as any} size={40} color={notification.iconColor} />
             </View>
           </View>
 
           {/* Notification Title */}
           <View style={styles.titleContainer}>
             <Text style={styles.notificationTitle}>{notification.title}</Text>
-            <Text style={styles.notificationSubtitle}>
-              {notification.subtitle}
-            </Text>
+            <Text style={styles.notificationSubtitle}>{notification.subtitle}</Text>
           </View>
 
           {/* Notification Description */}
           <View style={styles.descriptionContainer}>
-            <Text style={styles.descriptionText}>
-              {notification.detailedDescription}
-            </Text>
+            <Text style={styles.descriptionText}>{notification.detailedDescription}</Text>
           </View>
 
           {/* Action Button */}
-          <TouchableOpacity style={styles.actionButton} onPress={() => {}}>
-            <Text style={styles.actionButtonText}>
-              {notification.actionButtonText}
-            </Text>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => {}}
+          >
+            <Text style={styles.actionButtonText}>{notification.actionButtonText}</Text>
           </TouchableOpacity>
 
           {/* Additional Info */}
           <View style={styles.infoContainer}>
             <View style={styles.infoRow}>
               <Ionicons name="time-outline" size={16} color="#999" />
-              <Text style={styles.infoText}>Received {notification.time}</Text>
+              <Text style={styles.infoText}>{t("notificationDetail.received", { time: notification.time })}</Text>
             </View>
           </View>
 
@@ -178,6 +154,21 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#fff",
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingTop: 40,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
+  },
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#000",
   },
   scrollView: {
     flex: 1,

@@ -276,4 +276,6 @@ export const useAddStock = () => {
                  state.formData.quantity &&
                  state.formData.estimatedDate,
   };
-};
+}
+
+export default useAddStock;

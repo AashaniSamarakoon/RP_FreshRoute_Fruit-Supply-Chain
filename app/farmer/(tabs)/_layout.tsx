@@ -1,5 +1,5 @@
 import { Tabs } from "expo-router";
-import { Bell, Calendar, Home, TrendingUp, User } from "lucide-react-native";
+import { BarChart, Home, TrendingUp, User } from "lucide-react-native";
 
 export default function FarmerLayout() {
   return (
@@ -12,8 +12,7 @@ export default function FarmerLayout() {
         tabBarStyle: {
           flexDirection: "row",
           justifyContent: "space-around",
-          paddingVertical: 20,
-          paddingBottom: 32, // Increased for more bottom spacing
+          paddingVertical: 19,
           backgroundColor: "#fff",
           borderTopWidth: 1,
           borderTopColor: "#F3F4F6",
@@ -45,7 +44,7 @@ export default function FarmerLayout() {
         options={{
           title: "Forecast",
           tabBarIcon: ({ color, size }) => (
-            <Calendar size={size} color={color} />
+            <TrendingUp size={size} color={color} />
           ),
         }}
       />
@@ -54,7 +53,7 @@ export default function FarmerLayout() {
         options={{
           title: "Market",
           tabBarIcon: ({ color, size }) => (
-            <TrendingUp size={size} color={color} />
+            <BarChart size={size} color={color} />
           ),
         }}
       />
@@ -63,13 +62,6 @@ export default function FarmerLayout() {
         options={{
           title: "Profile",
           tabBarIcon: ({ color, size }) => <User size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="notifications"
-        options={{
-          title: "Notifications",
-          tabBarIcon: ({ color, size }) => <Bell size={size} color={color} />,
         }}
       />
     </Tabs>

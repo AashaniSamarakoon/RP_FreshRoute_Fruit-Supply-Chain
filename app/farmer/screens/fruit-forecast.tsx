@@ -2,15 +2,15 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
-  Dimensions,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    Dimensions,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import Header from "../../../components/Header";
+import { useTranslation } from "../../../hooks/farmer/useTranslation";
 
 const PRIMARY_GREEN = "#2f855a";
 const LIGHT_GREEN = "#e8f4f0";
@@ -19,16 +19,11 @@ const ORANGE = "#f59e0b";
 
 const screenWidth = Dimensions.get("window").width;
 
-export const options = {
-  headerShown: false,
-};
-
 export default function FruitForecastScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const [selectedFruit, setSelectedFruit] = useState(
-    params.fruit || "TJC Mango"
-  );
+  const [selectedFruit, setSelectedFruit] = useState(params.fruit || "TJC Mango");
+  const { t } = useTranslation();
 
   const fruits = ["TJC Mango", "Pineapple", "Banana"];
 
@@ -36,15 +31,15 @@ export default function FruitForecastScreen() {
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         {/* Header */}
-        <Header
-          title="7-Day Forecast"
-          onBack={() => router.back()}
-          rightComponent={
-            <TouchableOpacity>
-              <Ionicons name="ellipsis-vertical" size={24} color="#000" />
-            </TouchableOpacity>
-          }
-        />
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Ionicons name="chevron-back" size={24} color="#000" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>{t("fruitForecast.headerTitle")}</Text>
+          <TouchableOpacity>
+            <Ionicons name="ellipsis-vertical" size={24} color="#000" />
+          </TouchableOpacity>
+        </View>
 
         <ScrollView
           style={styles.scrollView}
@@ -75,22 +70,20 @@ export default function FruitForecastScreen() {
 
           {/* Forecast Title */}
           <View style={styles.forecastHeader}>
-            <Text style={styles.forecastTitle}>{selectedFruit} Forecast</Text>
-            <Text style={styles.forecastSubtitle}>Next 7 Days</Text>
+            <Text style={styles.forecastTitle}>{t("fruitForecast.forecastTitle", { fruit: selectedFruit })}</Text>
+            <Text style={styles.forecastSubtitle}>{t("fruitForecast.forecastSubtitle")}</Text>
           </View>
 
           {/* Graph Placeholder */}
           <View style={styles.graphContainer}>
             <View style={styles.graphLegend}>
               <View style={styles.legendItem}>
-                <View
-                  style={[styles.legendDot, { backgroundColor: "#3b82f6" }]}
-                />
-                <Text style={styles.legendText}>Demand</Text>
+                <View style={[styles.legendDot, { backgroundColor: "#3b82f6" }]} />
+                <Text style={styles.legendText}>{t("fruitForecast.legendDemand")}</Text>
               </View>
               <View style={styles.legendItem}>
                 <View style={[styles.legendDot, { backgroundColor: ORANGE }]} />
-                <Text style={styles.legendText}>Price</Text>
+                <Text style={styles.legendText}>{t("fruitForecast.legendPrice")}</Text>
               </View>
             </View>
 
@@ -98,115 +91,45 @@ export default function FruitForecastScreen() {
             <View style={styles.graph}>
               {/* Y-axis labels */}
               <View style={styles.yAxisLabels}>
-                <Text style={styles.axisLabel}>High</Text>
-                <Text style={styles.axisLabel}>Med</Text>
-                <Text style={styles.axisLabel}>Low</Text>
+                <Text style={styles.axisLabel}>{t("fruitForecast.axisHigh")}</Text>
+                <Text style={styles.axisLabel}>{t("fruitForecast.axisMed")}</Text>
+                <Text style={styles.axisLabel}>{t("fruitForecast.axisLow")}</Text>
               </View>
 
               {/* Graph area with curves */}
               <View style={styles.graphArea}>
                 {/* Blue wave (Demand) */}
                 <View style={styles.demandWave}>
-                  <View
-                    style={[
-                      styles.waveSegment,
-                      { height: 40, backgroundColor: "#3b82f6" },
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.waveSegment,
-                      { height: 60, backgroundColor: "#3b82f6" },
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.waveSegment,
-                      { height: 45, backgroundColor: "#3b82f6" },
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.waveSegment,
-                      { height: 70, backgroundColor: "#3b82f6" },
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.waveSegment,
-                      { height: 55, backgroundColor: "#3b82f6" },
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.waveSegment,
-                      { height: 50, backgroundColor: "#3b82f6" },
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.waveSegment,
-                      { height: 65, backgroundColor: "#3b82f6" },
-                    ]}
-                  />
+                  <View style={[styles.waveSegment, { height: 40, backgroundColor: "#3b82f6" }]} />
+                  <View style={[styles.waveSegment, { height: 60, backgroundColor: "#3b82f6" }]} />
+                  <View style={[styles.waveSegment, { height: 45, backgroundColor: "#3b82f6" }]} />
+                  <View style={[styles.waveSegment, { height: 70, backgroundColor: "#3b82f6" }]} />
+                  <View style={[styles.waveSegment, { height: 55, backgroundColor: "#3b82f6" }]} />
+                  <View style={[styles.waveSegment, { height: 50, backgroundColor: "#3b82f6" }]} />
+                  <View style={[styles.waveSegment, { height: 65, backgroundColor: "#3b82f6" }]} />
                 </View>
 
                 {/* Orange wave (Price) */}
                 <View style={styles.priceWave}>
-                  <View
-                    style={[
-                      styles.waveSegment,
-                      { height: 50, backgroundColor: ORANGE },
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.waveSegment,
-                      { height: 55, backgroundColor: ORANGE },
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.waveSegment,
-                      { height: 60, backgroundColor: ORANGE },
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.waveSegment,
-                      { height: 45, backgroundColor: ORANGE },
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.waveSegment,
-                      { height: 65, backgroundColor: ORANGE },
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.waveSegment,
-                      { height: 50, backgroundColor: ORANGE },
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.waveSegment,
-                      { height: 70, backgroundColor: ORANGE },
-                    ]}
-                  />
+                  <View style={[styles.waveSegment, { height: 50, backgroundColor: ORANGE }]} />
+                  <View style={[styles.waveSegment, { height: 55, backgroundColor: ORANGE }]} />
+                  <View style={[styles.waveSegment, { height: 60, backgroundColor: ORANGE }]} />
+                  <View style={[styles.waveSegment, { height: 45, backgroundColor: ORANGE }]} />
+                  <View style={[styles.waveSegment, { height: 65, backgroundColor: ORANGE }]} />
+                  <View style={[styles.waveSegment, { height: 50, backgroundColor: ORANGE }]} />
+                  <View style={[styles.waveSegment, { height: 70, backgroundColor: ORANGE }]} />
                 </View>
               </View>
 
               {/* X-axis labels */}
               <View style={styles.xAxisLabels}>
-                <Text style={styles.axisLabel}>Mon</Text>
-                <Text style={styles.axisLabel}>Tue</Text>
-                <Text style={styles.axisLabel}>Wed</Text>
-                <Text style={styles.axisLabel}>Thu</Text>
-                <Text style={styles.axisLabel}>Fri</Text>
-                <Text style={styles.axisLabel}>Sat</Text>
-                <Text style={styles.axisLabel}>Sun</Text>
+                <Text style={styles.axisLabel}>{t("forecast.days.mon")}</Text>
+                <Text style={styles.axisLabel}>{t("forecast.days.tue")}</Text>
+                <Text style={styles.axisLabel}>{t("forecast.days.wed")}</Text>
+                <Text style={styles.axisLabel}>{t("forecast.days.thu")}</Text>
+                <Text style={styles.axisLabel}>{t("forecast.days.fri")}</Text>
+                <Text style={styles.axisLabel}>{t("forecast.days.sat")}</Text>
+                <Text style={styles.axisLabel}>{t("forecast.days.sun")}</Text>
               </View>
             </View>
           </View>
@@ -214,21 +137,20 @@ export default function FruitForecastScreen() {
           {/* Peak Demand Card */}
           <View style={styles.insightCard}>
             <View style={styles.insightHeader}>
-              <Text style={styles.insightTitle}>Peak Demand: Friday</Text>
+              <Text style={styles.insightTitle}>{t("fruitForecast.insightTitle")}</Text>
               <TouchableOpacity style={styles.detailsButton}>
-                <Text style={styles.detailsButtonText}>Details</Text>
+                <Text style={styles.detailsButtonText}>{t("fruitForecast.details")}</Text>
               </TouchableOpacity>
             </View>
             <Text style={styles.insightDescription}>
-              The highest demand for {selectedFruit} is expected this Friday,
-              with prices remaining stable.
+              {t("fruitForecast.insightDescription", { fruit: selectedFruit })}
             </Text>
           </View>
 
           {/* Bottom Navigation Hint */}
           <View style={styles.bottomHint}>
             <Text style={styles.hintText}>
-              Swipe to view other fruits or use the tabs above
+              {t("fruitForecast.bottomHint")}
             </Text>
           </View>
 
@@ -247,6 +169,21 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#fff",
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingTop: 40,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
+  },
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#000",
   },
   scrollView: {
     flex: 1,

@@ -5,6 +5,7 @@ import React, { useEffect, useState } from "react";
 import {
   Alert,
   Image,
+  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,9 +13,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { BACKEND_URL } from "../../../config";
-
+import { useTranslation } from "../../../hooks/farmer/useTranslation";
 interface FarmerDashboardData {
   message?: string;
   upcomingPickups?: unknown[];
@@ -33,11 +33,10 @@ const LIGHT_GRAY = "#f5f5f5";
 
 export default function FarmerDashboard() {
   const router = useRouter();
+  const { t, locale, setLocale } = useTranslation();
   const [data, setData] = useState<FarmerDashboardData | null>(null);
   const [user, setUser] = useState<UserData | null>(null);
-  const [activeTab, setActiveTab] = React.useState<
-    "home" | "forecast" | "market" | "profile"
-  >("home");
+  const [activeTab, setActiveTab] = React.useState<"home" | "forecast" | "market" | "profile">("home");
 
   // Reset to home tab when screen is focused
   useFocusEffect(
@@ -48,30 +47,42 @@ export default function FarmerDashboard() {
 
   useEffect(() => {
     const load = async () => {
+      console.log("[DASHBOARD] Loading dashboard...");
       try {
         const userJson = await AsyncStorage.getItem("user");
+        console.log("[DASHBOARD] User from storage:", userJson);
         if (userJson) {
           setUser(JSON.parse(userJson));
         }
 
         const token = await AsyncStorage.getItem("token");
-        if (!token) return;
+        console.log("[DASHBOARD] Token from storage:", token?.substring(0, 20) + "...");
+        if (!token) {
+          console.log("[DASHBOARD] No token found, skipping API call");
+          return;
+        }
 
+        console.log("[DASHBOARD] Fetching:", `${BACKEND_URL}/api/farmer/dashboard`);
         const res = await fetch(`${BACKEND_URL}/api/farmer/dashboard`, {
           headers: { Authorization: `Bearer ${token}` },
         });
+        console.log("[DASHBOARD] Response status:", res.status);
 
         const body = await res.json();
+        console.log("[DASHBOARD] Response body:", body);
         if (!res.ok) {
+          console.log("[DASHBOARD] Error response:", body.message);
           return Alert.alert(
-            "Error",
-            body.message || "Failed to load dashboard"
+            t("common.error"),
+            body.message || t("farmer.errors.failed")
           );
         }
+        console.log("[DASHBOARD] Data loaded successfully");
         setData(body);
       } catch (err) {
-        console.error(err);
-        Alert.alert("Error", "Could not load dashboard");
+        console.error("[DASHBOARD] Error:", err);
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        Alert.alert(t("common.error"), t("farmer.errors.generic") + ": " + errorMsg);
       }
     };
     load();
@@ -90,158 +101,204 @@ export default function FarmerDashboard() {
       <View style={styles.header}>
         <View>
           <Text style={styles.logo}>🍃 FreshRoute</Text>
-          <Text style={styles.greeting}>Good morning, {userName}</Text>
+          <Text style={styles.greeting}>{t("farmer.greeting", { name: userName })}</Text>
         </View>
         <View style={styles.headerIcons}>
-          <TouchableOpacity
-            onPress={() => router.push("/farmer/screens/notifications" as any)}
-          >
+          <TouchableOpacity onPress={() => router.push("../screens/notifications")}>
             <Ionicons name="notifications-outline" size={24} color="#000" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push("/farmer/profile")} style={{ marginLeft: 12 }}>
+            <Ionicons name="person-outline" size={24} color="#000" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.langToggle, { marginLeft: 12 }]}
+            onPress={() => setLocale(locale === "en" ? "si" : "en")}
+          >
+            <Text style={styles.langToggleText}>{locale === "en" ? "සි" : "EN"}</Text>
           </TouchableOpacity>
         </View>
       </View>
 
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-        {/* Search Bar */}
-        <View style={styles.searchContainer}>
-          <Ionicons name="search" size={18} color="#999" />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search for a fruit"
-            placeholderTextColor="#999"
-          />
-        </View>
 
-        {/* New Stock Card */}
-        <View style={styles.newStockCard}>
-          {/* optional icon */}
-          {/* <View style={styles.iconCircleSmall}>
-          <Ionicons name="leaf" size={22} color="#fff" />
-        </View> */}
-          <View style={styles.newStockContent}>
-            <View style={styles.newStockHeader}>
-              <Text style={styles.newStockTitle}>Have new stock?</Text>
-              <TouchableOpacity
-                style={styles.addStockButton}
-                onPress={() => router.push("/farmer/screens/add-stock" as any)}
-              >
-                <Ionicons
-                  name="add"
-                  size={16}
-                  color="#fff"
-                  style={{ marginRight: 8 }}
-                />
-                <Text style={styles.addStockButtonText}>
-                  Add Harvest Details
-                </Text>
-              </TouchableOpacity>
-            </View>
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <Ionicons name="search" size={18} color="#999" />
+        <TextInput
+          style={styles.searchInput}
+          placeholder={t("farmer.searchPlaceholder")}
+          placeholderTextColor="#999"
+        />
+      </View>
+
+      {/* Featured Card */}
+      <View style={styles.featuredCard}>
+        <Image
+          source={{
+            uri: "https://images.unsplash.com/photo-1599599810694-b5ac4dd19e1d?w=300&h=150&fit=crop",
+          }}
+          style={styles.featuredImage}
+        />
+        <View style={styles.featuredContent}>
+          <Text style={styles.featuredTitle}>
+            {t("farmer.featuredTitle")}
+          </Text>
+          <Text style={styles.featuredDescription}>
+            {t("farmer.featuredDescription")}
+          </Text>
+          <Text style={styles.updatedTime}>{t("farmer.updatedTime")}</Text>
+          <TouchableOpacity
+            style={styles.detailsButton}
+            onPress={() => Alert.alert(t("common.details"), t("farmer.priceDetails"))}
+          >
+            <Text style={styles.detailsButtonText}>{t("common.details")}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Feature Grid */}
+      <View style={styles.gridContainer}>
+        <TouchableOpacity
+          style={styles.gridCard}
+          onPress={() => router.push("/farmer/forecast")}
+        >
+          <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
+            <Ionicons name="calendar" size={24} color={PRIMARY_GREEN} />
           </View>
-        </View>
+          <Text style={styles.gridTitle}>{t("farmer.cards.forecastTitle")}</Text>
+          <Text style={styles.gridSubtitle}>{t("farmer.cards.forecastSubtitle")}</Text>
+        </TouchableOpacity>
 
-        {/* Featured Card */}
-        <View style={styles.featuredCard}>
-          <Image
-            source={{
-              uri: "https://images.unsplash.com/photo-1599599810694-b5ac4dd19e1d?w=300&h=150&fit=crop",
-            }}
-            style={styles.featuredImage}
-          />
-          <View style={styles.featuredContent}>
-            <Text style={styles.featuredTitle}>
-              Mango prices are predicted to rise!
-            </Text>
-            <Text style={styles.featuredDescription}>
-              The average price is expected to increase by 2.5% this week.
-            </Text>
-            <Text style={styles.updatedTime}>Updated 5 mins ago</Text>
-            <TouchableOpacity
-              style={styles.detailsButton}
-              onPress={() => Alert.alert("Details", "Price prediction details")}
-            >
-              <Text style={styles.detailsButtonText}>Details</Text>
-            </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.gridCard}
+          onPress={() => router.push("/farmer/live-market")}
+        >
+          <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
+            <Ionicons name="trending-up" size={24} color={PRIMARY_GREEN} />
           </View>
-        </View>
+          <Text style={styles.gridTitle}>{t("farmer.cards.liveMarketTitle")}</Text>
+          <Text style={styles.gridSubtitle}>{t("farmer.cards.liveMarketSubtitle")}</Text>
+        </TouchableOpacity>
 
-        {/* Feature Grid */}
-        <View style={styles.gridContainer}>
-          <TouchableOpacity
-            style={styles.gridCard}
-            onPress={() => router.push("/farmer/forecast" as any)}
-          >
-            <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
-              <Ionicons name="calendar" size={24} color={PRIMARY_GREEN} />
-            </View>
-            <Text style={styles.gridTitle}>7-Day Forecast</Text>
-            <Text style={styles.gridSubtitle}>Future price trends</Text>
-          </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.gridCard}
+          onPress={() => router.push("../screens/accuracy-insights")}
+        >
+          <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
+            <Ionicons name="checkmark-circle" size={24} color={PRIMARY_GREEN} />
+          </View>
+          <Text style={styles.gridTitle}>{t("farmer.cards.accuracyTitle")}</Text>
+          <Text style={styles.gridSubtitle}>{t("farmer.cards.accuracySubtitle")}</Text>
+        </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.gridCard}
-            onPress={() => router.push("/farmer/live-market" as any)}
-          >
-            <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
-              <Ionicons name="trending-up" size={24} color={PRIMARY_GREEN} />
-            </View>
-            <Text style={styles.gridTitle}>Live Market Prices</Text>
-            <Text style={styles.gridSubtitle}>Current actual prices</Text>
-          </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.gridCard}
+          onPress={() => router.push("../screens/feedback")}
+        >
+          <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
+            <Ionicons name="chatbubble" size={24} color={PRIMARY_GREEN} />
+          </View>
+          <Text style={styles.gridTitle}>{t("farmer.cards.feedbackTitle")}</Text>
+          <Text style={styles.gridSubtitle}>{t("farmer.cards.feedbackSubtitle")}</Text>
+        </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.gridCard}
-            onPress={() =>
-              router.push("/farmer/screens/accuracy-insights" as any)
-            }
-          >
-            <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
-              <Ionicons
-                name="checkmark-circle"
-                size={24}
-                color={PRIMARY_GREEN}
-              />
-            </View>
-            <Text style={styles.gridTitle}>Accuracy Insights</Text>
-            <Text style={styles.gridSubtitle}>Prediction progress</Text>
-          </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.gridCard}
+          onPress={() => Alert.alert(t("farmer.cards.predictionTitle"), t("common.comingSoon"))}
+        >
+          <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
+            <Ionicons name="analytics" size={24} color={PRIMARY_GREEN} />
+          </View>
+          <Text style={styles.gridTitle}>{t("farmer.cards.predictionTitle")}</Text>
+          <Text style={styles.gridSubtitle}>{t("farmer.cards.predictionSubtitle")}</Text>
+        </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.gridCard}
-            onPress={() => router.push("/farmer/screens/feedback" as any)}
-          >
-            <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
-              <Ionicons name="chatbubble" size={24} color={PRIMARY_GREEN} />
-            </View>
-            <Text style={styles.gridTitle}>Feedback</Text>
-            <Text style={styles.gridSubtitle}>Share your thoughts</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.gridCard}
-            onPress={() => Alert.alert("Run a Prediction", "Coming soon")}
-          >
-            <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
-              <Ionicons name="analytics" size={24} color={PRIMARY_GREEN} />
-            </View>
-            <Text style={styles.gridTitle}>Run a Prediction</Text>
-            <Text style={styles.gridSubtitle}>Manual price check</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.gridCard}
-            onPress={() => router.push("/farmer/screens/daily-prices" as any)}
-          >
-            <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
-              <Ionicons name="pricetag" size={24} color={PRIMARY_GREEN} />
-            </View>
-            <Text style={styles.gridTitle}>FreshRoute Price</Text>
-            <Text style={styles.gridSubtitle}>Check today prices</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          style={styles.gridCard}
+          onPress={() => router.push("../screens/daily-prices")}
+        >
+          <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
+            <Ionicons name="pricetag" size={24} color={PRIMARY_GREEN} />
+          </View>
+          <Text style={styles.gridTitle}>{t("farmer.cards.dailyPriceTitle")}</Text>
+          <Text style={styles.gridSubtitle}>{t("farmer.cards.dailyPriceSubtitle")}</Text>
+        </TouchableOpacity>
+      </View>
 
         {/* Bottom spacing */}
         <View style={{ height: 80 }} />
       </ScrollView>
+
+      {/* Bottom Navigation Bar */}
+      <View style={styles.bottomNav}>
+        <TouchableOpacity
+          style={styles.navItem}
+          onPress={() => {
+            setActiveTab("home");
+            router.push("/farmer");
+          }}
+        >
+          <Ionicons
+            name={activeTab === "home" ? "home" : "home-outline"}
+            size={24}
+            color={activeTab === "home" ? PRIMARY_GREEN : "#999"}
+          />
+          <Text style={[styles.navLabel, activeTab === "home" && styles.navLabelActive]}>
+            {t("farmer.nav.home")}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.navItem}
+          onPress={() => {
+            setActiveTab("forecast");
+            router.push("/farmer/forecast");
+          }}
+        >
+          <Ionicons
+            name={activeTab === "forecast" ? "calendar" : "calendar-outline"}
+            size={24}
+            color={activeTab === "forecast" ? PRIMARY_GREEN : "#999"}
+          />
+          <Text style={[styles.navLabel, activeTab === "forecast" && styles.navLabelActive]}>
+            {t("farmer.nav.forecast")}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.navItem}
+          onPress={() => {
+            setActiveTab("market");
+            router.push("/farmer/live-market");
+          }}
+        >
+          <Ionicons
+            name={activeTab === "market" ? "trending-up" : "trending-up-outline"}
+            size={24}
+            color={activeTab === "market" ? PRIMARY_GREEN : "#999"}
+          />
+          <Text style={[styles.navLabel, activeTab === "market" && styles.navLabelActive]}>
+            {t("farmer.nav.market")}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.navItem}
+          onPress={() => {
+            setActiveTab("profile");
+            router.push("/farmer/profile");
+          }}
+        >
+          <Ionicons
+            name={activeTab === "profile" ? "person" : "person-outline"}
+            size={24}
+            color={activeTab === "profile" ? PRIMARY_GREEN : "#999"}
+          />
+          <Text style={[styles.navLabel, activeTab === "profile" && styles.navLabelActive]}>
+            {t("farmer.nav.profile")}
+          </Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 }
@@ -257,7 +314,7 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 16,
-    paddingTop: 0, // Reduced from 50 to fix extra top padding issue
+    paddingTop: 50,
     paddingBottom: 12,
     flexDirection: "row",
     justifyContent: "space-between",
@@ -341,53 +398,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
   },
-
-  // New Stock Card
-  newStockCard: {
-    marginHorizontal: 16,
-    marginBottom: 12,
-    backgroundColor: LIGHT_GREEN,
-    borderRadius: 12,
-    padding: 12,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  iconCircleSmall: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: PRIMARY_GREEN,
-    marginRight: 12,
-  },
-  newStockContent: {
-    flex: 1,
-  },
-  newStockHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  newStockTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#000",
-  },
-  addStockButton: {
-    backgroundColor: PRIMARY_GREEN,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 8,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  addStockButtonText: {
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: "600",
-  },
-
   gridContainer: {
     paddingHorizontal: 16,
     marginBottom: 16,
@@ -447,5 +457,18 @@ const styles = StyleSheet.create({
   navLabelActive: {
     color: PRIMARY_GREEN,
     fontWeight: "600",
+  },
+  langToggle: {
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: "#fff",
+  },
+  langToggleText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: PRIMARY_GREEN,
   },
 });
