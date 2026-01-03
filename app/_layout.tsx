@@ -8,6 +8,7 @@ import { StatusBar } from "expo-status-bar";
 import "react-native-reanimated";
 
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import { useRealtimeAlerts } from "../hooks/useRealtimeAlerts";
 
 export const unstable_settings = {
   anchor: "(tabs)",
@@ -15,6 +16,7 @@ export const unstable_settings = {
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+  useRealtimeAlerts();
 
   return (
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>

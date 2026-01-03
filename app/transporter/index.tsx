@@ -1,544 +1,429 @@
+// // app/transporter/index.tsx
+// import { Ionicons } from "@expo/vector-icons";
 // import AsyncStorage from "@react-native-async-storage/async-storage";
 // import { useRouter } from "expo-router";
 // import React, { useEffect, useState } from "react";
-// import { Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-// import { BACKEND_URL } from "../../config";
-
-// interface TransporterDashboardData {
-//   message?: string;
-//   todayJobs?: unknown[];
-//   vehicleStatus?: {
-//     latitude: number;
-//     longitude: number;
-//     timestamp: string;
-//   };
-// }
-
-// export default function TransporterDashboard() {
-//   const router = useRouter();
-//   const [data, setData] = useState<TransporterDashboardData | null>(null);
-
-//   useEffect(() => {
-//     const load = async () => {
-//       try {
-//         const token = await AsyncStorage.getItem("token");
-//         if (!token) return;
-
-//         // Fetch transporter dashboard data (jobs, vehicle status, etc.)
-//         const res = await fetch(`${BACKEND_URL}/api/transporter/dashboard`, {
-//           headers: { Authorization: `Bearer ${token}` },
-//         });
-
-//         const body = await res.json();
-//         if (!res.ok) {
-//           return Alert.alert(
-//             "Error",
-//             body.message || "Failed to load dashboard"
-//           );
-//         }
-//         setData(body);
-//       } catch (err) {
-//         console.error(err);
-//         Alert.alert("Error", "Could not load dashboard");
-//       }
-//     };
-//     load();
-//   }, []);
-
-//   const logout = async () => {
-//     await AsyncStorage.multiRemove(["token", "user"]);
-//     router.replace("/login");
-//   };
-
-//   return (
-//     <View style={styles.container}>
-//       <Text style={styles.title}>Transporter Dashboard</Text>
-//       <Text style={styles.subtitle}>{data?.message}</Text>
-
-//       <Text style={{ marginTop: 16 }}>
-//         Today's jobs: {data?.todayJobs?.length ?? 0}
-//       </Text>
-
-//       {data?.todayJobs && data.todayJobs.length > 0 ? (
-//         data.todayJobs.map((job: any, index: number) => (
-//           <View key={index} style={styles.jobItem}>
-//             <Text>Job ID: {job.id}</Text>
-//             <Text>Pickup Location: {job.pickup_location}</Text>
-//             <Text>Status: {job.status}</Text>
-//           </View>
-//         ))
-//       ) : (
-//         <Text>No jobs for today</Text>
-//       )}
-
-//       {data?.vehicleStatus && (
-//         <View style={styles.vehicleStatus}>
-//           <Text style={styles.statusText}>Vehicle Status:</Text>
-//           <Text>Latitude: {data.vehicleStatus.latitude}</Text>
-//           <Text>Longitude: {data.vehicleStatus.longitude}</Text>
-//           <Text>Last Updated: {data.vehicleStatus.timestamp}</Text>
-//         </View>
-//       )}
-
-//       <TouchableOpacity style={styles.logoutButton} onPress={logout}>
-//         <Text style={styles.logoutText}>Logout</Text>
-//       </TouchableOpacity>
-//     </View>
-//   );
-// }
-
-// const styles = StyleSheet.create({
-//   container: { flex: 1, padding: 24, backgroundColor: "#fff" },
-//   title: { fontSize: 24, fontWeight: "bold" },
-//   subtitle: { marginTop: 8, fontSize: 16 },
-//   vehicleStatus: { marginTop: 20 },
-//   statusText: { fontWeight: "bold" },
-//   logoutButton: {
-//     marginTop: 24,
-//     borderWidth: 1,
-//     borderColor: "#e53e3e",
-//     padding: 10,
-//     borderRadius: 8,
-//     alignItems: "center",
-//   },
-//   logoutText: { color: "#e53e3e", fontWeight: "bold" },
-//   jobItem: { marginTop: 16, padding: 12, borderWidth: 1, borderRadius: 8 },
-// });
-
-// app/transporter/index.tsx
-// import { router } from "expo-router";
-// import React, { useState } from "react";
 // import {
-//   Button,
+//   ActivityIndicator,
 //   FlatList,
+//   RefreshControl,
 //   StyleSheet,
 //   Text,
 //   TouchableOpacity,
 //   View,
 // } from "react-native";
+// import { BACKEND_URL } from "../../config";
 
-// type LatLng = { latitude: number; longitude: number };
-
-// type Stop = {
+// // Types
+// interface Job {
 //   id: string;
-//   type: "pickup" | "drop";
-//   address: string;
-//   coords: LatLng;
-//   assigned?: boolean;
-//   collected?: boolean;
-// };
-
-// type TransportJob = {
-//   id: string;
-//   title: string;
-//   stops: Stop[]; // pickups first, then drop
-//   status: "idle" | "en_route" | "completed";
-// };
-
-// const mockJobs: TransportJob[] = [
-//   {
-//     id: "job-1",
-//     title: "Order #1001 - Fruits",
-//     status: "idle",
-//     stops: [
-//       {
-//         id: "p1",
-//         type: "pickup",
-//         address: "Farm A",
-//         coords: { latitude: 6.9271, longitude: 79.8612 },
-//       },
-//       {
-//         id: "p2",
-//         type: "pickup",
-//         address: "Collection B",
-//         coords: { latitude: 6.934, longitude: 79.8625 },
-//       },
-//       {
-//         id: "drop",
-//         type: "drop",
-//         address: "Marketplace",
-//         coords: { latitude: 6.9415, longitude: 79.873 },
-//       },
-//     ],
-//   },
-//   {
-//     id: "job-2",
-//     title: "Order #1002 - Vegetables",
-//     status: "idle",
-//     stops: [
-//       {
-//         id: "p1",
-//         type: "pickup",
-//         address: "Farm C",
-//         coords: { latitude: 6.93, longitude: 79.855 },
-//       },
-//       {
-//         id: "drop",
-//         type: "drop",
-//         address: "Store X",
-//         coords: { latitude: 6.94, longitude: 79.87 },
-//       },
-//     ],
-//   },
-// ];
+//   route_name: string;
+//   job_date: string;
+//   total_weight_kg: number;
+//   status: string;
+//   vehicle_type_assigned: string;
+// }
 
 // export default function TransporterDashboard() {
-//   const [jobs, setJobs] = useState<TransportJob[]>(mockJobs);
+//   const router = useRouter();
+//   const [jobs, setJobs] = useState<Job[]>([]);
+//   const [loading, setLoading] = useState(true);
+//   const [refreshing, setRefreshing] = useState(false);
+//   const [vehicleInfo, setVehicleInfo] = useState<any>(null);
 
-//   const assignJob = (jobId: string) => {
-//     setJobs((prev) =>
-//       prev.map((j) =>
-//         j.id === jobId
-//           ? {
-//               ...j,
-//               status: "en_route",
-//               stops: j.stops.map((s) => ({ ...s, assigned: true })),
-//             }
-//           : j
-//       )
-//     );
+//   const fetchJobs = async () => {
+//     try {
+//       const token = await AsyncStorage.getItem("token");
+//       if (!token) return;
+
+//       const res = await fetch(`${BACKEND_URL}/api/transporter/jobs`, {
+//         headers: { Authorization: `Bearer ${token}` },
+//       });
+//       const data = await res.json();
+
+//       if (res.ok) {
+//         setJobs(data.jobs || []);
+//         setVehicleInfo(data.vehicle);
+//       }
+//     } catch (error) {
+//       console.error("Failed to load jobs", error);
+//     } finally {
+//       setLoading(false);
+//       setRefreshing(false);
+//     }
 //   };
 
-//   const markCollected = (jobId: string, stopId: string) => {
-//     setJobs((prev) =>
-//       prev.map((j) =>
-//         j.id === jobId
-//           ? {
-//               ...j,
-//               stops: j.stops.map((s) =>
-//                 s.id === stopId ? { ...s, collected: true } : s
-//               ),
-//             }
-//           : j
-//       )
-//     );
+//   useEffect(() => {
+//     fetchJobs();
+//   }, []);
+
+//   const onRefresh = () => {
+//     setRefreshing(true);
+//     fetchJobs();
 //   };
 
-//   const markDelivered = (jobId: string) => {
-//     setJobs((prev) =>
-//       prev.map((j) => (j.id === jobId ? { ...j, status: "completed" } : j))
-//     );
-//   };
-
-//   const openRoute = (jobId: string) => {
-//     router.push(`/transporter/route?jobId=${jobId}`);
-//   };
-
-//   const renderJob = ({ item }: { item: TransportJob }) => (
-//     <View style={styles.card}>
-//       <Text style={styles.title}>{item.title}</Text>
-//       <Text>Status: {item.status}</Text>
-
-//       <FlatList
-//         data={item.stops}
-//         keyExtractor={(s) => s.id}
-//         renderItem={({ item: stop }) => (
-//           <View style={styles.stopRow}>
-//             <Text>
-//               {stop.type.toUpperCase()}: {stop.address}{" "}
-//               {stop.collected ? "✅" : ""}
-//             </Text>
-
-//             {item.status === "idle" && stop.type === "pickup" && (
-//               <TouchableOpacity
-//                 style={styles.smallBtn}
-//                 onPress={() => markCollected(item.id, stop.id)}
-//               >
-//                 <Text style={styles.smallBtnText}>Collect</Text>
-//               </TouchableOpacity>
-//             )}
-//             {/* If en_route show collect/deliver */}
-//             {item.status === "en_route" &&
-//               stop.type === "pickup" &&
-//               !stop.collected && (
-//                 <TouchableOpacity
-//                   style={styles.smallBtn}
-//                   onPress={() => markCollected(item.id, stop.id)}
-//                 >
-//                   <Text style={styles.smallBtnText}>Mark Collected</Text>
-//                 </TouchableOpacity>
-//               )}
-//           </View>
-//         )}
-//       />
-
-//       <View style={styles.actions}>
-//         {item.status === "idle" && (
-//           <Button title="Assign & Start" onPress={() => assignJob(item.id)} />
-//         )}
-//         {item.status === "en_route" && (
-//           <Button
-//             title="Open Map / Navigate"
-//             onPress={() => openRoute(item.id)}
-//           />
-//         )}
-//         {item.status !== "completed" && (
-//           <Button
-//             title="Mark Delivered"
-//             onPress={() => markDelivered(item.id)}
-//           />
-//         )}
+//   const renderJobCard = ({ item }: { item: Job }) => (
+//     <TouchableOpacity
+//       style={styles.card}
+//       onPress={() => router.push(`/transporter/job/${item.id}`)}
+//     >
+//       <View style={styles.cardHeader}>
+//         <Text style={styles.routeTitle}>{item.route_name}</Text>
+//         <View
+//           style={[
+//             styles.badge,
+//             item.status === "SCHEDULED" ? styles.badgeBlue : styles.badgeGreen,
+//           ]}
+//         >
+//           <Text style={styles.badgeText}>{item.status}</Text>
+//         </View>
 //       </View>
-//     </View>
+
+//       <View style={styles.row}>
+//         <Ionicons name="calendar-outline" size={16} color="#666" />
+//         <Text style={styles.infoText}>
+//           {new Date(item.job_date).toDateString()}
+//         </Text>
+//       </View>
+
+//       <View style={styles.row}>
+//         <Ionicons name="cube-outline" size={16} color="#666" />
+//         <Text style={styles.infoText}>Load: {item.total_weight_kg} kg</Text>
+//       </View>
+
+//       <View style={styles.footer}>
+//         <Text style={styles.clickHint}>Tap to view details & route</Text>
+//         <Ionicons name="chevron-forward" size={16} color="#999" />
+//       </View>
+//     </TouchableOpacity>
 //   );
 
 //   return (
-//     <View style={{ flex: 1, padding: 16 }}>
-//       <Text style={{ fontSize: 22, marginBottom: 8 }}>
-//         Transporter Dashboard
-//       </Text>
+//     <View style={styles.container}>
+//       <View style={styles.header}>
+//         <Text style={styles.welcomeText}>My Jobs</Text>
+//         {vehicleInfo && (
+//           <Text style={styles.subHeader}>
+//             Vehicle: {vehicleInfo.vehicle_license_plate}
+//           </Text>
+//         )}
+//       </View>
 
-//       <FlatList data={jobs} keyExtractor={(j) => j.id} renderItem={renderJob} />
+//       {loading ? (
+//         <ActivityIndicator
+//           size="large"
+//           color="#2f855a"
+//           style={{ marginTop: 50 }}
+//         />
+//       ) : (
+//         <FlatList
+//           data={jobs}
+//           keyExtractor={(item) => item.id}
+//           renderItem={renderJobCard}
+//           refreshControl={
+//             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+//           }
+//           ListEmptyComponent={
+//             <Text style={styles.emptyText}>No active jobs assigned.</Text>
+//           }
+//           contentContainerStyle={{ paddingBottom: 20 }}
+//         />
+//       )}
 //     </View>
 //   );
 // }
 
 // const styles = StyleSheet.create({
+//   container: { flex: 1, backgroundColor: "#f5f7fa", padding: 16 },
+//   header: { marginBottom: 20, marginTop: 40 },
+//   welcomeText: { fontSize: 28, fontWeight: "bold", color: "#2d3748" },
+//   subHeader: { fontSize: 14, color: "#718096", marginTop: 4 },
+
 //   card: {
 //     backgroundColor: "#fff",
-//     borderRadius: 8,
-//     padding: 12,
+//     borderRadius: 12,
+//     padding: 16,
+//     marginBottom: 16,
+//     shadowColor: "#000",
+//     shadowOpacity: 0.05,
+//     shadowRadius: 5,
+//     elevation: 3,
+//   },
+//   cardHeader: {
+//     flexDirection: "row",
+//     justifyContent: "space-between",
 //     marginBottom: 12,
-//     elevation: 2,
 //   },
-//   title: { fontSize: 16, fontWeight: "600", marginBottom: 6 },
-//   stopRow: {
+//   routeTitle: { fontSize: 18, fontWeight: "bold", color: "#2d3748" },
+
+//   badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+//   badgeBlue: { backgroundColor: "#bee3f8" },
+//   badgeGreen: { backgroundColor: "#c6f6d5" },
+//   badgeText: { fontSize: 12, fontWeight: "bold", color: "#2c5282" },
+
+//   row: { flexDirection: "row", alignItems: "center", marginBottom: 8 },
+//   infoText: { marginLeft: 8, color: "#4a5568", fontSize: 14 },
+
+//   footer: {
 //     flexDirection: "row",
 //     justifyContent: "space-between",
-//     alignItems: "center",
-//     marginVertical: 6,
+//     marginTop: 12,
+//     paddingTop: 12,
+//     borderTopWidth: 1,
+//     borderTopColor: "#edf2f7",
 //   },
-//   smallBtn: {
-//     backgroundColor: "#0a84ff",
-//     paddingHorizontal: 8,
-//     paddingVertical: 6,
-//     borderRadius: 6,
-//   },
-//   smallBtnText: { color: "#fff" },
-//   actions: {
-//     marginTop: 8,
-//     flexDirection: "row",
-//     justifyContent: "space-between",
-//   },
+//   clickHint: { fontSize: 12, color: "#a0aec0" },
+//   emptyText: { textAlign: "center", marginTop: 50, color: "#a0aec0" },
 // });
 
-// app/transporter/TransporterDashboard.tsx (adjust path as needed)
-
+// app/transporter/index.tsx
+import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
-  ScrollView,
+  ActivityIndicator,
+  FlatList,
+  RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-import { MOCK_JOBS } from "../../data/mockJobs";
+import { BACKEND_URL } from "../../config";
 
-const ACCENT = "#16a34a"; // green accent
+// Types
+interface Job {
+  id: string;
+  route_name: string;
+  job_date: string;
+  total_weight_kg: number;
+  status: string;
+  vehicle_type_assigned: string;
+}
+
+// New Alert Type
+interface AlertItem {
+  id: string;
+  alert_type: string;
+  message: string;
+  created_at: string;
+  value_at_time: number;
+}
 
 export default function TransporterDashboard() {
   const router = useRouter();
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [alerts, setAlerts] = useState<AlertItem[]>([]); // State for alerts
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [vehicleInfo, setVehicleInfo] = useState<any>(null);
 
-  const logout = async () => {
-    await AsyncStorage.multiRemove(["token", "user"]);
-    router.replace("/login");
+  const fetchData = async () => {
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) return;
+
+      const res = await fetch(`${BACKEND_URL}/api/transporter/jobs`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        setJobs(data.jobs || []);
+        setAlerts(data.alerts || []); // Set alerts from backend
+        setVehicleInfo(data.vehicle);
+      }
+    } catch (error) {
+      console.error("Failed to load dashboard data", error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   };
 
-  const handleJobPress = (jobId: string) => {
-    router.push({
-      pathname: "/transporter/job/[jobId]",
-      params: { jobId },
-    });
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchData();
   };
+
+  const renderAlertItem = ({ item }: { item: AlertItem }) => (
+    <View style={styles.alertCard}>
+      <View style={styles.alertHeader}>
+        <Ionicons name="warning" size={20} color="#c53030" />
+        <Text style={styles.alertTitle}>
+          {item.alert_type.replace("_", " ")}
+        </Text>
+      </View>
+      <Text style={styles.alertMessage}>{item.message}</Text>
+      <Text style={styles.alertTime}>
+        {new Date(item.created_at).toLocaleTimeString()}
+      </Text>
+    </View>
+  );
+
+  const renderJobCard = ({ item }: { item: Job }) => (
+    <TouchableOpacity
+      style={styles.card}
+      onPress={() => router.push(`/transporter/job/${item.id}`)}
+    >
+      <View style={styles.cardHeader}>
+        <Text style={styles.routeTitle}>{item.route_name}</Text>
+        <View
+          style={[
+            styles.badge,
+            item.status === "SCHEDULED" ? styles.badgeBlue : styles.badgeGreen,
+          ]}
+        >
+          <Text style={styles.badgeText}>{item.status}</Text>
+        </View>
+      </View>
+
+      <View style={styles.row}>
+        <Ionicons name="calendar-outline" size={16} color="#666" />
+        <Text style={styles.infoText}>
+          {new Date(item.job_date).toDateString()}
+        </Text>
+      </View>
+
+      <View style={styles.row}>
+        <Ionicons name="cube-outline" size={16} color="#666" />
+        <Text style={styles.infoText}>Load: {item.total_weight_kg} kg</Text>
+      </View>
+
+      <View style={styles.footer}>
+        <Text style={styles.clickHint}>Tap to view details & route</Text>
+        <Ionicons name="chevron-forward" size={16} color="#999" />
+      </View>
+    </TouchableOpacity>
+  );
+
+  // Combine content for the main FlatList to allow scrolling everything together
+  const ListHeader = () => (
+    <View>
+      <View style={styles.header}>
+        <Text style={styles.welcomeText}>My Jobs</Text>
+        {vehicleInfo && (
+          <Text style={styles.subHeader}>
+            Vehicle: {vehicleInfo.vehicle_license_plate}
+          </Text>
+        )}
+      </View>
+
+      {/* ALERT SECTION */}
+      {alerts.length > 0 && (
+        <View style={styles.alertSection}>
+          <Text style={styles.sectionTitle}>⚠️ Active Alerts</Text>
+          {alerts.map((alert) => (
+            <View key={alert.id} style={{ marginBottom: 10 }}>
+              {renderAlertItem({ item: alert })}
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Transporter Dashboard</Text>
-      <Text style={styles.subtitle}>Collection jobs for today</Text>
-
-      <ScrollView
-        style={{ marginTop: 20 }}
-        contentContainerStyle={{ paddingBottom: 24 }}
-        showsVerticalScrollIndicator={false}
-      >
-        {MOCK_JOBS.map((job) => {
-          const totalPickups = job.orders.length;
-          const pickedUp = job.orders.filter(
-            (o) => o.status === "picked_up" || o.status === "delivered"
-          ).length;
-          const orderIds = job.orders.map((o) => o.id).join(", ");
-
-          return (
-            <TouchableOpacity
-              key={job.id}
-              style={styles.jobCard}
-              onPress={() => handleJobPress(job.id)}
-              activeOpacity={0.85}
-            >
-              <View style={styles.jobHeaderRow}>
-                <View>
-                  <Text style={styles.jobId}>{job.id}</Text>
-                  <Text style={styles.jobDate}>
-                    {new Date(job.date).toDateString()}
-                  </Text>
-                </View>
-                <View
-                  style={[
-                    styles.statusBadge,
-                    styles[`status_${job.status}` as const],
-                  ]}
-                >
-                  <Text style={styles.statusText}>
-                    {job.status.replace("_", " ")}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.row}>
-                <Text style={styles.label}>Buyer</Text>
-                <Text style={styles.value}>{job.buyer.name}</Text>
-              </View>
-
-              <View style={styles.row}>
-                <Text style={styles.label}>Orders</Text>
-                <Text style={styles.value}>{orderIds}</Text>
-              </View>
-
-              <View style={styles.row}>
-                <Text style={styles.label}>Pickups</Text>
-                <Text style={styles.value}>
-                  {pickedUp}/{totalPickups} completed
-                </Text>
-              </View>
-
-              <View style={styles.jobFooterRow}>
-                <Text style={styles.smallText}>
-                  Driver: {job.driverName} • {job.vehiclePlate}
-                </Text>
-                <Text style={styles.linkText}>View details ⟶</Text>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-
-      <TouchableOpacity style={styles.logoutButton} onPress={logout}>
-        <Text style={styles.logoutText}>Logout</Text>
-      </TouchableOpacity>
+      {loading ? (
+        <ActivityIndicator
+          size="large"
+          color="#2f855a"
+          style={{ marginTop: 50 }}
+        />
+      ) : (
+        <FlatList
+          data={jobs}
+          keyExtractor={(item) => item.id}
+          renderItem={renderJobCard}
+          ListHeaderComponent={ListHeader} // Added header component
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+          ListEmptyComponent={
+            <Text style={styles.emptyText}>No active jobs assigned.</Text>
+          }
+          contentContainerStyle={{ paddingBottom: 20 }}
+        />
+      )}
     </View>
   );
 }
 
-const CARD_BG = "#f9fafb";
-
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 24,
-    backgroundColor: "#ffffff",
+  container: { flex: 1, backgroundColor: "#f5f7fa", padding: 16 },
+  header: { marginBottom: 20, marginTop: 40 },
+  welcomeText: { fontSize: 28, fontWeight: "bold", color: "#2d3748" },
+  subHeader: { fontSize: 14, color: "#718096", marginTop: 4 },
+
+  // Alert Styles
+  alertSection: { marginBottom: 20 },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    marginBottom: 10,
+    color: "#c53030",
   },
-  title: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  subtitle: {
-    marginTop: 4,
-    fontSize: 14,
-    color: "#6b7280",
-  },
-  jobCard: {
-    backgroundColor: CARD_BG,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
+  alertCard: {
+    backgroundColor: "#fff5f5",
+    borderLeftWidth: 4,
+    borderLeftColor: "#c53030",
+    padding: 12,
+    borderRadius: 8,
     shadowColor: "#000",
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
     elevation: 2,
   },
-  jobHeaderRow: {
+  alertHeader: { flexDirection: "row", alignItems: "center", marginBottom: 4 },
+  alertTitle: {
+    fontWeight: "bold",
+    color: "#c53030",
+    marginLeft: 6,
+    textTransform: "uppercase",
+    fontSize: 12,
+  },
+  alertMessage: { color: "#2d3748", fontSize: 14, marginBottom: 4 },
+  alertTime: { color: "#718096", fontSize: 11, textAlign: "right" },
+
+  // Job Card Styles
+  card: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 3,
+  },
+  cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
     marginBottom: 12,
   },
-  jobId: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  jobDate: {
-    marginTop: 2,
-    fontSize: 13,
-    color: "#6b7280",
-  },
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  status_pending: {
-    backgroundColor: "#fef3c7",
-  },
-  status_in_progress: {
-    backgroundColor: "#dcfce7",
-  },
-  status_completed: {
-    backgroundColor: "#bbf7d0",
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#166534",
-    textTransform: "capitalize",
-  },
-  row: {
+  routeTitle: { fontSize: 18, fontWeight: "bold", color: "#2d3748" },
+
+  badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  badgeBlue: { backgroundColor: "#bee3f8" },
+  badgeGreen: { backgroundColor: "#c6f6d5" },
+  badgeText: { fontSize: 12, fontWeight: "bold", color: "#2c5282" },
+
+  row: { flexDirection: "row", alignItems: "center", marginBottom: 8 },
+  infoText: { marginLeft: 8, color: "#4a5568", fontSize: 14 },
+
+  footer: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 6,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#edf2f7",
   },
-  label: {
-    fontSize: 13,
-    color: "#6b7280",
-  },
-  value: {
-    fontSize: 13,
-    fontWeight: "500",
-    color: "#111827",
-    maxWidth: "60%",
-    textAlign: "right",
-  },
-  jobFooterRow: {
-    marginTop: 10,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  smallText: {
-    fontSize: 12,
-    color: "#9ca3af",
-  },
-  linkText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: ACCENT,
-  },
-  logoutButton: {
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: "#ef4444",
-    padding: 10,
-    borderRadius: 999,
-    alignItems: "center",
-  },
-  logoutText: {
-    color: "#ef4444",
-    fontWeight: "600",
-  },
+  clickHint: { fontSize: 12, color: "#a0aec0" },
+  emptyText: { textAlign: "center", marginTop: 50, color: "#a0aec0" },
 });
