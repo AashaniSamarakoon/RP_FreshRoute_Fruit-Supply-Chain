@@ -14,9 +14,11 @@ interface OrderFormData {
   fruit: string | null;
   category: string | null;
   quantity: string;
+  unit: string;
   grade: string;
   estimatedDate: string;
   deliveryLocation: string;
+  targetPrice: string;
 }
 
 interface OrderFormState {
@@ -38,9 +40,11 @@ export const useOrderForm = () => {
       fruit: null,
       category: null,
       quantity: "",
+      unit: "kg",
       grade: "A",
       estimatedDate: "",
       deliveryLocation: "Colombo",
+      targetPrice: "",
     },
     loading: true,
     datePickerVisible: false,
@@ -219,9 +223,11 @@ export const useOrderForm = () => {
         fruit_type: state.formData.fruit,
         variant: state.formData.category,
         quantity: parseInt(state.formData.quantity, 10),
+        unit: state.formData.unit,
         grade: state.formData.grade,
         required_date: state.formData.estimatedDate,
         delivery_location: state.formData.deliveryLocation,
+        target_price: state.formData.targetPrice ? parseFloat(state.formData.targetPrice) : null,
       };
 
       const res = await fetch(`${BACKEND_URL}/api/buyer/place-order`, {

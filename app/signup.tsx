@@ -161,7 +161,7 @@ const styles = StyleSheet.create({
   roleText: { color: "#4a5568" },
   roleTextActive: { color: "#fff", fontWeight: "bold" },
   button: {
-    backgroundColor: "#2f855a",
+    backgroundColor: "#2E7D32",
     padding: 14,
     borderRadius: 10,
     alignItems: "center",

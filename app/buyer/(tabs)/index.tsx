@@ -1,3 +1,4 @@
+import DashboardHeader from "@/app/components/DashboardHeader";
 import React from "react";
 import {
   ScrollView,
@@ -12,8 +13,8 @@ import { BuyerColors } from "../../../constants/theme";
 import { DealData } from "../../../types";
 import DealCard from "../../components/buyer/DealCard";
 import Hero from "../../components/buyer/Hero";
+import PriceComparisonChart from "../../components/buyer/PriceComparisonChart";
 import Search from "../../components/buyer/Search";
-import DashboardHeader from "@/app/components/DashboardHeader";
 
 // --- Main Component ---
 
@@ -22,23 +23,24 @@ export default function BuyerDashboardScreen(): React.JSX.Element {
   const deals: DealData[] = [
     {
       id: "1",
-      title: "Wholesale Deals",
-      price: "$1.25",
+      title: "Premium Cavendish",
+      price: "Rs. 300",
       unit: "/kg",
-      description:
-        "Bulk pricing for retailers.\nMinimum order 50kg.\nFreshness guaranteed.",
+      location: "Awissawella",
+      grade: "Grade A",
+      quality: "Organic",
     },
     {
       id: "2",
       title: "Premium Cavendish",
-      price: "$7.22",
+      price: "Rs. 350",
       unit: "/kg",
-      description:
-        "Premium quality check.\nDirect from Ratnapura.\nExport Grade A.",
+      location: "Ratnapura",
+      grade: "Grade A",
+      quality: "Inorganic",
     },
   ];
 
-  
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar
@@ -76,9 +78,14 @@ export default function BuyerDashboardScreen(): React.JSX.Element {
             <DealCard key={deal.id} deal={deal} />
           ))}
         </ScrollView>
-      </ScrollView>
+        {/* Wholesale Deals Section */}
+        <View style={styles.sectionHeader2}>
+          <Text style={styles.sectionTitle}>Price Comparison</Text>
+        </View>
 
-      {/* <BottomNav /> */}
+        {/* Price Comparison Chart */}
+        <PriceComparisonChart />
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -119,5 +126,14 @@ const styles = StyleSheet.create({
 
   dealsScroll: {
     paddingBottom: 20,
+  },
+
+  sectionHeader2: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginHorizontal: 20,
+    // marginTop: 32,
+    marginBottom: 16,
   },
 });

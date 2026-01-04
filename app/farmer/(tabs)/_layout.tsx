@@ -6,7 +6,7 @@ export default function FarmerLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: "#2f855a",
+        tabBarActiveTintColor: "#2E7D32",
         tabBarInactiveTintColor: "#666",
         tabBarShowLabel: true,
         tabBarStyle: {

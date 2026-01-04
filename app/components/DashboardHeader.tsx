@@ -31,7 +31,9 @@ const DashboardHeader = () => {
     <View style={styles.header}>
       <View>
         <Text style={styles.logo}>🍃 FreshRoute</Text>
-        <Text style={styles.greeting}>Good morning, {userName}</Text>
+        {/* <Text style={styles.greeting}>Good morning, {userName}</Text> */}
+        <Text style={styles.greeting}>Good morning, Akalanka</Text>
+
       </View>
       <View style={styles.headerIcons}>
         <TouchableOpacity style={styles.iconBtn}>

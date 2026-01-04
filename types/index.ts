@@ -33,7 +33,9 @@ export interface DealData {
   title: string;
   price: string;
   unit: string;
-  description: string;
+  location: string;
+  grade: string;
+  quality: string;
 }
 
 export interface NavItemProps {

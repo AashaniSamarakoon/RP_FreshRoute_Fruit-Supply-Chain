@@ -6,7 +6,7 @@ export default function BuyerLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: "#2f855a",
+        tabBarActiveTintColor: "#2E7D32",
         tabBarInactiveTintColor: "#666",
         tabBarShowLabel: true,
         tabBarStyle: {
@@ -42,7 +42,7 @@ export default function BuyerLayout() {
       <Tabs.Screen
         name="marketPrice"
         options={{
-          title: "Products",
+          title: "Market Price",
           tabBarIcon: ({ color, size }) => (
             <Package size={size} color={color} />
           ),
@@ -51,7 +51,7 @@ export default function BuyerLayout() {
       <Tabs.Screen
         name="orders"
         options={{
-          title: "Cart",
+          title: "Orders",
           tabBarIcon: ({ color, size }) => (
             <ShoppingCart size={size} color={color} />
           ),
@@ -60,7 +60,7 @@ export default function BuyerLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: "Account",
+          title: "Profile",
           tabBarIcon: ({ color, size }) => <User size={size} color={color} />,
         }}
       />

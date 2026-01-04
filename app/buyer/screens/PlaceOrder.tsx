@@ -18,7 +18,7 @@ import RNPickerSelect from "react-native-picker-select";
 import Header from "../../../components/Header";
 import { useOrderForm } from "../forms/useOrderForm";
 
-const PRIMARY_GREEN = "#2f855a";
+const PRIMARY_GREEN = "#2E7D32";
 const LIGHT_GRAY = "#f5f5f5";
 
 const SkeletonLoader = () => {
@@ -78,14 +78,14 @@ const SkeletonLoader = () => {
           <Animated.View
             style={[styles.skeletonLabel, { opacity: fadeAnim }]}
           />
-          <View style={styles.tabsContainer}>
+          <View style={styles.skeletontabsContainer}>
             {[1, 2, 3].map((_, idx) => (
               <Animated.View
                 key={idx}
                 style={[
                   styles.skeletonTab,
                   { opacity: fadeAnim },
-                  idx > 0 && styles.tabDivider,
+                  idx > 0 && styles.skeletontabDivider,
                 ]}
               />
             ))}
@@ -114,7 +114,7 @@ export const options = {
 };
 
 export default function AddStock() {
-  const router = useRouter(); // Add this line to declare the router
+  const router = useRouter();
   const {
     formData,
     loading,
@@ -124,9 +124,14 @@ export default function AddStock() {
     categoryItems,
     updateField,
     setDatePickerVisible,
-    handleSubmit,
+    handleSubmit: originalHandleSubmit,
     handleDateChange,
   } = useOrderForm();
+
+  const handleSubmit = async () => {
+    // For now, bypass form submission and navigate directly to matched stocks
+    router.push("/buyer/screens/MatchedStocks");
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -180,14 +185,37 @@ export default function AddStock() {
                   useNativeAndroidPickerStyle={false}
                 />
 
-                <Text style={styles.label}> Quantity Needed</Text>
-                <TextInput
-                  style={styles.textInput}
-                  placeholder="Enter quantity"
-                  keyboardType="numeric"
-                  value={formData.quantity}
-                  onChangeText={(val) => updateField("quantity", val)}
-                />
+                <Text style={styles.label}>Quantity Needed</Text>
+                <View style={styles.quantityContainer}>
+                  <TextInput
+                    style={[styles.textInput, styles.quantityInput]}
+                    placeholder="Enter quantity"
+                    keyboardType="numeric"
+                    value={formData.quantity}
+                    onChangeText={(val) => updateField("quantity", val)}
+                  />
+                  <View style={styles.unitTabs}>
+                    {["kg", "ton"].map((u) => (
+                      <TouchableOpacity
+                        key={u}
+                        style={[
+                          styles.unitTab,
+                          formData.unit === u && styles.unitTabActive,
+                        ]}
+                        onPress={() => updateField("unit", u)}
+                      >
+                        <Text
+                          style={[
+                            styles.unitTabText,
+                            formData.unit === u && styles.unitTabTextActive,
+                          ]}
+                        >
+                          {u}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
 
                 <Text style={styles.label}>Grade</Text>
                 <View style={styles.tabsContainer}>
@@ -240,6 +268,12 @@ export default function AddStock() {
                       d.setHours(0, 0, 0, 0);
                       return d;
                     })()}
+                    maximumDate={(() => {
+                      const d = new Date();
+                      d.setDate(d.getDate() + 7);
+                      d.setHours(0, 0, 0, 0);
+                      return d;
+                    })()}
                     textColor={PRIMARY_GREEN} // iOS
                     accentColor={PRIMARY_GREEN} // Android (supported in newer versions)
                     onChange={handleDateChange}
@@ -268,7 +302,7 @@ export default function AddStock() {
                 style={styles.submitButtonFixed}
                 onPress={handleSubmit}
               >
-                <Text style={styles.submitText}>Submit Stock</Text>
+                <Text style={styles.submitText}>Place Order</Text>
               </TouchableOpacity>
             </View>
           </>
@@ -306,6 +340,42 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 18,
+  },
+
+  quantityContainer: {
+    flexDirection: "row",
+    gap: 10,
+    alignItems: "center",
+  },
+  quantityInput: {
+    flex: 1,
+  },
+  unitTabs: {
+    flexDirection: "row",
+    borderWidth: 1,
+    borderColor: PRIMARY_GREEN,
+    borderRadius: 8,
+    height: 42,
+    overflow: "hidden",
+    backgroundColor: "#fff",
+  },
+  unitTab: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: "#fff",
+    borderRightWidth: 1,
+    borderRightColor: PRIMARY_GREEN,
+  },
+  unitTabActive: {
+    backgroundColor: PRIMARY_GREEN,
+  },
+  unitTabText: {
+    color: "#333",
+    fontWeight: "600",
+    fontSize: 14,
+  },
+  unitTabTextActive: {
+    color: "#fff",
   },
 
   locationContainer: {
@@ -374,12 +444,24 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginBottom: 12,
   },
+
+  skeletontabsContainer: {
+    flexDirection: "row",
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: LIGHT_GRAY,
+    borderRadius: 16,
+    overflow: "hidden",
+    backgroundColor: "#fff",
+  },
   skeletonTab: {
     flex: 1,
     height: 48,
     backgroundColor: LIGHT_GRAY,
     borderRadius: 16,
   },
+  skeletontabDivider: { borderLeftWidth: 1, borderLeftColor: LIGHT_GRAY },
+
   skeletonButton: {
     height: 56,
     backgroundColor: LIGHT_GRAY,
