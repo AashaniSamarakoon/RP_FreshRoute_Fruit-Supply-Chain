@@ -21,6 +21,19 @@ const PRIMARY_GREEN = "#2f855a";
 const LIGHT_GREEN = "#e8f4f0";
 const LIGHT_GRAY = "#f5f5f5";
 
+// Emoji fallbacks for known fruits
+const FRUIT_IMAGES: Record<string, string> = {
+  mango: "🥭",
+  banana: "🍌",
+  pineapple: "🍍",
+  apple: "🍎",
+  orange: "🍊",
+  strawberry: "🍓",
+  blueberry: "🫐",
+  watermelon: "🍉",
+  grape: "🍇",
+};
+
 interface DailyFruit {
   name: string;
   variety: string;
@@ -43,6 +56,24 @@ export default function DailyPricesScreen() {
   useEffect(() => {
     loadDailyPrices();
   }, []);
+
+  const formatFruitData = (rawFruit: any): DailyFruit => {
+    const fruitName = rawFruit.name || rawFruit.fruitCategory || rawFruit.fruit || "Unknown";
+    const fruitKey = fruitName.toLowerCase();
+    
+    return {
+      ...rawFruit,
+      name: fruitName,
+      variety: rawFruit.variety || "",
+      price: rawFruit.price || "N/A",
+      unit: rawFruit.unit || "/ kg",
+      image: FRUIT_IMAGES[fruitKey] || rawFruit.image || "🍎",
+      delta: rawFruit.delta || rawFruit.change || "",
+      deltaColor: rawFruit.deltaColor || "#22c55e",
+      status: rawFruit.status || "Stable",
+      statusColor: rawFruit.statusColor || "#fef3c7",
+    };
+  };
 
   const loadDailyPrices = async () => {
     console.log("[DAILY-PRICES] Loading prices...");
@@ -68,12 +99,16 @@ export default function DailyPricesScreen() {
       if (!res.ok) {
         console.log("[DAILY-PRICES] Error:", data.message);
         Alert.alert("Error", data.message || "Failed to load prices");
+        setFruits([]);
+        setLoading(false);
         return;
       }
 
-      setFruits(data.fruits || []);
+      // Format the fruit data
+      const formattedFruits = (data.fruits || []).map(formatFruitData);
+      setFruits(formattedFruits);
       setDate(data.date || new Date().toISOString().split('T')[0]);
-      console.log("[DAILY-PRICES] Loaded", data.fruits?.length || 0, "fruits");
+      console.log("[DAILY-PRICES] Loaded", formattedFruits.length, "fruits");
     } catch (err) {
       console.error("[DAILY-PRICES] Error:", err);
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -103,9 +138,9 @@ export default function DailyPricesScreen() {
             <Ionicons name="chevron-back" size={18} color="#000" />
           </TouchableOpacity>
           <View style={styles.dateBox}>
-            <Text style={styles.dateLabel}>{t("dailyPrices.today")}</Text>
+            <Text style={styles.dateLabel}>Today</Text>
             <Text style={styles.dateValue}>
-              {date ? new Date(date).toLocaleDateString() : new Date().toLocaleDateString()}
+              {date ? new Date(date).toLocaleDateString('en-US', { month: 'long', day: 'numeric' }) : new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}
             </Text>
           </View>
           <TouchableOpacity style={styles.dateArrow}>
@@ -151,33 +186,42 @@ export default function DailyPricesScreen() {
 
             <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
               {fruits.map((fruit, idx) => (
-            <View key={idx} style={styles.card}>
-              <View style={styles.cardLeft}>
-                <Image source={{ uri: fruit.image }} style={styles.cardImage} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.cardName}>{fruit.name}</Text>
-                  <Text style={styles.cardVariety}>{fruit.variety}</Text>
-                  <View style={[styles.badge, { backgroundColor: fruit.statusColor }]}>
-                    <Text style={styles.badgeText}>
-                      {fruit.status === "High Demand"
-                        ? t("dailyPrices.status.highDemand")
-                        : t("dailyPrices.status.stable")}
-                    </Text>
+              <View key={idx} style={styles.card}>
+                <View style={styles.cardLeft}>
+                  <View style={styles.cardImageContainer}>
+                    {typeof fruit.image === 'string' && fruit.image.length <= 4 && /\p{Emoji}/u.test(fruit.image) ? (
+                      <Text style={styles.cardImageEmoji}>{fruit.image}</Text>
+                    ) : (
+                      <Image
+                        source={{ uri: fruit.image }}
+                        style={styles.cardImage}
+                      />
+                    )}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.cardName}>{fruit.name}</Text>
+                    <Text style={styles.cardVariety}>{fruit.variety}</Text>
+                    <View style={[styles.badge, { backgroundColor: fruit.statusColor }]}>
+                      <Text style={styles.badgeText}>
+                        {fruit.status === "High Demand"
+                          ? t("dailyPrices.status.highDemand")
+                          : t("dailyPrices.status.stable")}
+                      </Text>
+                    </View>
                   </View>
                 </View>
+                <View style={styles.cardRight}>
+                  <Text style={styles.cardPrice}>{fruit.price}</Text>
+                  <Text style={styles.cardUnit}>{fruit.unit}</Text>
+                  <Text style={[styles.cardDelta, { color: fruit.deltaColor }]}>
+                    {fruit.delta}
+                  </Text>
+                </View>
               </View>
-              <View style={styles.cardRight}>
-                <Text style={styles.cardPrice}>{fruit.price}</Text>
-                <Text style={styles.cardUnit}>{fruit.unit}</Text>
-                <Text style={[styles.cardDelta, { color: fruit.deltaColor }]}>
-                  {fruit.delta}
-                </Text>
-              </View>
-            </View>
-          ))}
+            ))}
 
-          <View style={{ height: 16 }} />
-        </ScrollView>
+              <View style={{ height: 16 }} />
+            </ScrollView>
           </>
         )}
 
@@ -198,13 +242,13 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 32,
+    paddingTop: 40,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    paddingHorizontal: 16,
     marginBottom: 12,
   },
   headerTitle: {
@@ -244,6 +288,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    marginHorizontal: 16,
     marginBottom: 12,
     gap: 8,
   },
@@ -257,6 +302,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: 8,
+    marginHorizontal: 16,
     marginBottom: 12,
   },
   sortChip: {
@@ -281,6 +327,7 @@ const styles = StyleSheet.create({
   },
   scroll: {
     flex: 1,
+    paddingHorizontal: 16,
   },
   card: {
     flexDirection: "row",
@@ -300,11 +347,24 @@ const styles = StyleSheet.create({
     gap: 12,
     flex: 1,
   },
-  cardImage: {
+  cardImageContainer: {
     width: 52,
     height: 52,
     borderRadius: 12,
     backgroundColor: LIGHT_GRAY,
+    overflow: "hidden",
+  },
+  cardImage: {
+    width: "100%",
+    height: "100%",
+  },
+  cardImageEmoji: {
+    fontSize: 32,
+    textAlign: "center",
+    textAlignVertical: "center",
+    width: "100%",
+    height: "100%",
+    lineHeight: 52,
   },
   cardName: {
     fontSize: 14,
@@ -353,8 +413,9 @@ const styles = StyleSheet.create({
     backgroundColor: PRIMARY_GREEN,
     paddingVertical: 14,
     borderRadius: 10,
-    marginTop: 6,
-    marginBottom: 16,
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 50,
   },
   ctaText: {
     color: "#fff",

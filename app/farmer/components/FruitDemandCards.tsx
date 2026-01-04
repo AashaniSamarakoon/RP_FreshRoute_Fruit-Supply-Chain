@@ -1,11 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useRef } from 'react';
 import {
-    Dimensions,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  Dimensions,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 import { useTranslationContext } from '../../../context/TranslationContext';
 
@@ -72,11 +72,11 @@ export default function FruitDemandCards() {
   const getTrendIcon = (trend: string) => {
     switch (trend) {
       case 'up':
-        return <Ionicons name="trending-up" size={16} color="#22c55e" />;
+        return <Ionicons name="trending-up" size={32} color="#22c55e" />;
       case 'down':
-        return <Ionicons name="trending-down" size={16} color="#ef4444" />;
+        return <Ionicons name="trending-down" size={32} color="#ef4444" />;
       default:
-        return <Ionicons name="remove" size={16} color="#6b7280" />;
+        return <Ionicons name="remove" size={32} color="#6b7280" />;
     }
   };
 
@@ -94,17 +94,22 @@ export default function FruitDemandCards() {
       >
         {SAMPLE_FRUIT_DATA.map((fruit) => (
           <View key={fruit.id} style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.fruitEmoji}>{fruit.image}</Text>
-              <View style={styles.trendContainer}>
-                {getTrendIcon(fruit.trend)}
+            <View style={styles.cardBody}>
+              <View style={styles.emojiContainer}>
+                <Text style={styles.fruitEmoji}>{fruit.image}</Text>
               </View>
-            </View>
-            
-            <View style={styles.cardContent}>
-              <Text style={styles.fruitName}>{fruit.name}</Text>
-              <Text style={styles.demandText}>{t("farmer.demandLabel")}: {fruit.demand}%</Text>
-              <Text style={styles.priceText}>Rs. {fruit.price}{t("farmer.perKg")}</Text>
+              
+              <View style={styles.cardRight}>
+                <Text style={styles.fruitName}>{fruit.name}</Text>
+                
+                <View style={styles.cardContent}>
+                  <View style={styles.demandRow}>
+                    <Text style={styles.demandText}>{t("farmer.demandLabel")}: {fruit.demand}%</Text>
+                    {getTrendIcon(fruit.trend)}
+                  </View>
+                  <Text style={styles.priceText}>Rs. {fruit.price}{t("farmer.perKg")}</Text>
+                </View>
+              </View>
             </View>
             
             <View style={styles.progressBar}>
@@ -124,10 +129,13 @@ export default function FruitDemandCards() {
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: 16,
+    // marginBottom: 16,
+    marginBottom: 32,
+    marginTop: 8,
   },
   scrollContainer: {
     paddingHorizontal: 16,
+    paddingBottom: 8,
   },
   card: {
     width: width * 0.85,
@@ -141,28 +149,39 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
-  cardHeader: {
+  cardBody: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
+    gap: 16,
+  },
+  emojiContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   fruitEmoji: {
-    fontSize: 32,
+    fontSize: 48,
   },
-  trendContainer: {
-    padding: 8,
-    borderRadius: 20,
-    backgroundColor: LIGHT_GREEN,
+  cardRight: {
+    flex: 1,
   },
   cardContent: {
-    marginBottom: 16,
+    gap: 4,
+    marginTop: 8,
+  },
+  demandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 32,
   },
   fruitName: {
     fontSize: 20,
     fontWeight: '700',
     color: '#000',
-    marginBottom: 8,
+    flex: 1,
   },
   demandText: {
     fontSize: 14,

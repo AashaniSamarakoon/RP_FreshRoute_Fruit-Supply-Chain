@@ -1,20 +1,22 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { BACKEND_URL } from "../../../config";
-import { useTranslation } from "../../../hooks/farmer/useTranslation";
+import { useTranslationContext } from "../../../context/TranslationContext";
 
 const PRIMARY_GREEN = "#2f855a";
 const LIGHT_GREEN = "#e8f4f0";
@@ -22,62 +24,74 @@ const LIGHT_GRAY = "#f5f5f5";
 const YELLOW = "#fbbf24";
 const RED = "#ef4444";
 
-interface FruitPrice {
-  name: string;
-  emoji: string;
-  image: string;
-  price: string;
-  unit: string;
-  status: "High" | "Medium" | "Low";
-  statusColor: string;
-}
+// Fruit images mapping
+const FRUIT_IMAGES: { [key: string]: string } = {
+  mango: "🥭",
+  banana: "🍌",
+  pineapple: "🍍",
+  apple: "🍎",
+  orange: "🍊",
+  strawberry: "🍓",
+  blueberry: "🫐",
+  watermelon: "🍉",
+  grape: "🍇",
+};
 
-const mockFruits: FruitPrice[] = [
-  {
-    name: "Banana",
-    emoji: "🍌",
-    image: "https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?w=100&h=100&fit=crop",
-    price: "Rs. 150.00",
-    unit: "/ kg",
-    status: "Medium",
-    statusColor: "#fef3c7",
-  },
-  {
-    name: "Mango",
-    emoji: "🥭",
-    image: "https://images.unsplash.com/photo-1599599810694-b5ac4dd19e1d?w=100&h=100&fit=crop",
-    price: "Rs. 400.00",
-    unit: "/ kg",
-    status: "High",
-    statusColor: LIGHT_GREEN,
-  },
-  {
-    name: "Pineapple",
-    emoji: "🍍",
-    image: "https://images.unsplash.com/photo-1587883012610-e3e2b3a0c2e1?w=100&h=100&fit=crop",
-    price: "Rs. 250.00",
-    unit: "/ unit",
-    status: "Low",
-    statusColor: "#fee2e2",
-  },
-];
+interface FruitPrice {
+  _id?: string;
+  fruitCategory?: string;
+  market?: string;
+  price?: number;
+  demand?: string;
+  date?: string;
+  name?: string;
+  emoji?: string;
+  image?: string;
+  unit?: string;
+  status?: "High" | "Medium" | "Low";
+  statusColor?: string;
+}
 
 export default function LiveMarketScreen() {
   const router = useRouter();
-  const { t } = useTranslation();
-  const [selectedTab, setSelectedTab] = useState<"Dambulla" | "Manning Market" | "Meegoda" | "Pettah">("Dambulla");
+  const { t } = useTranslationContext();
+  const [selectedTab, setSelectedTab] = useState<"All" | "Dambulla" | "Manning Market" | "Meegoda" | "Pettah">("All");
   const [sortBy, setSortBy] = useState<"Price" | "Demand">("Price");
   const [order, setOrder] = useState<"High" | "Low">("High");
   const [fruits, setFruits] = useState<FruitPrice[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<string>("");
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   useEffect(() => {
     loadLiveMarketPrices();
-  }, [selectedTab]);
+  }, [selectedTab, selectedDate]);
+
+  const formatFruitData = (rawFruit: any): FruitPrice => {
+    const fruitName = rawFruit.fruitCategory || rawFruit.fruit || rawFruit.name || "Unknown";
+    const fruitKey = fruitName.toLowerCase();
+    const demandStatus = (rawFruit.demand || rawFruit.status || "Medium").toLowerCase();
+    
+    return {
+      ...rawFruit,
+      name: fruitName,
+      emoji: FRUIT_IMAGES[fruitKey] || "🍎",
+      image: FRUIT_IMAGES[fruitKey] || "🍎",
+      price: `Rs. ${rawFruit.price || rawFruit.amount || 0}`,
+      unit: rawFruit.unit || "/ kg",
+      status: (demandStatus.charAt(0).toUpperCase() + demandStatus.slice(1)) as "High" | "Medium" | "Low",
+      statusColor: 
+        demandStatus === "high" 
+          ? LIGHT_GREEN
+          : demandStatus === "medium"
+          ? "#fef3c7"
+          : "#fee2e2",
+    };
+  };
 
   const loadLiveMarketPrices = async () => {
-    console.log("[LIVE-MARKET] Loading prices for:", selectedTab);
+    console.log("[LIVE-MARKET] Loading prices for date:", selectedDate.toISOString().split('T')[0]);
     setLoading(true);
     try {
       const token = await AsyncStorage.getItem("token");
@@ -88,32 +102,57 @@ export default function LiveMarketScreen() {
         return;
       }
 
-      const location = selectedTab === "Dambulla" ? "Dambulla Dedicated Economic Centre" : selectedTab;
-      console.log("[LIVE-MARKET] Fetching:", `${BACKEND_URL}/api/farmer/live-market?location=${location}`);
+      // Format date as YYYY-MM-DD for filtering
+      const dateStr = selectedDate.toISOString().split('T')[0];
+      console.log("[LIVE-MARKET] Selected date for filtering:", dateStr);
+
+      // Build URL based on selected tab (not including date in API call)
+      let url = `${BACKEND_URL}/api/farmer/live-market`;
+      if (selectedTab !== "All") {
+        url += `?location=${encodeURIComponent(selectedTab)}`;
+      }
       
-      const res = await fetch(`${BACKEND_URL}/api/farmer/live-market?location=${encodeURIComponent(location)}`, {
+      console.log("[LIVE-MARKET] Fetching:", url);
+      
+      const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
       console.log("[LIVE-MARKET] Response status:", res.status);
-      const data = await res.json();
-      console.log("[LIVE-MARKET] Response data:", data);
-
+      
       if (!res.ok) {
-        console.log("[LIVE-MARKET] Error:", data.message);
-        Alert.alert("Error", data.message || "Failed to load prices");
+        console.log("[LIVE-MARKET] Error response, status:", res.status);
+        Alert.alert("Error", `Failed to load prices (${res.status})`);
+        setFruits([]);
+        setLoading(false);
         return;
       }
 
-      setFruits(data.fruits || []);
+      const data = await res.json();
+      console.log("[LIVE-MARKET] Response data:", data);
+
+      // Format the fruit data - show all records regardless of date
+      const formattedFruits = (data.fruits || data.data || data || []).map(formatFruitData);
+      
+      setFruits(formattedFruits);
       setLastUpdated(data.lastUpdated || new Date().toISOString());
-      console.log("[LIVE-MARKET] Loaded", data.fruits?.length || 0, "fruits");
+      console.log("[LIVE-MARKET] Loaded", formattedFruits.length, "fruits");
     } catch (err) {
       console.error("[LIVE-MARKET] Error:", err);
       const errorMsg = err instanceof Error ? err.message : String(err);
       Alert.alert("Error", "Failed to load market prices: " + errorMsg);
+      setFruits([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDateChange = (event: any, date?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+    }
+    if (date) {
+      setSelectedDate(date);
     }
   };
 
@@ -149,6 +188,21 @@ export default function LiveMarketScreen() {
           <Ionicons name="arrow-forward-circle" size={30} color={PRIMARY_GREEN} />
         </TouchableOpacity>
 
+        {/* Date Picker Button */}
+        <TouchableOpacity
+          style={styles.datePickerButton}
+          onPress={() => setShowDatePicker(true)}
+        >
+          <Ionicons name="calendar" size={20} color={PRIMARY_GREEN} />
+          <Text style={styles.datePickerText}>
+            {selectedDate.toLocaleDateString('en-US', {
+              year: 'numeric',
+              month: 'short',
+              day: 'numeric'
+            })}
+          </Text>
+        </TouchableOpacity>
+
         {/* Location Tabs */}
         <ScrollView
           horizontal
@@ -156,6 +210,19 @@ export default function LiveMarketScreen() {
           style={styles.tabScrollView}
           contentContainerStyle={styles.tabContainer}
         >
+          <TouchableOpacity
+            style={[styles.tab, selectedTab === "All" && styles.tabActive]}
+            onPress={() => setSelectedTab("All")}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                selectedTab === "All" && styles.tabTextActive,
+              ]}
+            >
+              All Markets
+            </Text>
+          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.tab, selectedTab === "Dambulla" && styles.tabActive]}
             onPress={() => setSelectedTab("Dambulla")}
@@ -238,7 +305,7 @@ export default function LiveMarketScreen() {
 
         {/* Last Updated */}
         <Text style={styles.lastUpdated}>
-          {lastUpdated ? new Date(lastUpdated).toLocaleString() : t("liveMarket.lastUpdated")}
+          {lastUpdated ? new Date(lastUpdated).toLocaleString() : "Loading..."}
         </Text>
 
         {/* Fruit List */}
@@ -268,10 +335,14 @@ export default function LiveMarketScreen() {
             >
               <View style={styles.fruitLeft}>
                 <View style={styles.fruitImageContainer}>
-                  <Image
-                    source={{ uri: fruit.image }}
-                    style={styles.fruitImage}
-                  />
+                  {typeof fruit.image === 'string' && fruit.image.length <= 4 && /\p{Emoji}/u.test(fruit.image) ? (
+                    <Text style={styles.fruitImageEmoji}>{fruit.image}</Text>
+                  ) : (
+                    <Image
+                      source={{ uri: fruit.image }}
+                      style={styles.fruitImage}
+                    />
+                  )}
                 </View>
                 <View style={styles.fruitInfo}>
                   <Text style={styles.fruitName}>{fruit.name}</Text>
@@ -300,7 +371,7 @@ export default function LiveMarketScreen() {
                       },
                     ]}
                   >
-                    {t(`liveMarket.status.${fruit.status.toLowerCase()}`)}
+                    {fruit.status}
                   </Text>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color="#ccc" />
@@ -312,6 +383,16 @@ export default function LiveMarketScreen() {
         </ScrollView>
         )}
       </View>
+
+      {/* Date Time Picker */}
+      {showDatePicker && (
+        <DateTimePicker
+          value={selectedDate}
+          mode="date"
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={handleDateChange}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -393,6 +474,25 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
     color: PRIMARY_GREEN,
+  },
+  datePickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 8,
+    borderRadius: 12,
+    backgroundColor: '#f8f8f8',
+    borderWidth: 1,
+    borderColor: '#e8e8e8',
+  },
+  datePickerText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
   },
   tabScrollView: {
     maxHeight: 60,
@@ -492,6 +592,14 @@ const styles = StyleSheet.create({
   fruitImage: {
     width: "100%",
     height: "100%",
+  },
+  fruitImageEmoji: {
+    fontSize: 36,
+    textAlign: "center",
+    textAlignVertical: "center",
+    width: "100%",
+    height: "100%",
+    lineHeight: 60,
   },
   fruitInfo: {
     flex: 1,
