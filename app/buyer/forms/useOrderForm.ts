@@ -6,17 +6,21 @@ import { BACKEND_URL } from "../../../config";
 
 interface FruitPropertyRow {
   id: number;
-  fruit_name: string;
-  variant: string;
+  name: string;
+  variety: string;
 }
 
 interface OrderFormData {
   fruit: string | null;
   category: string | null;
   quantity: string;
+  unit: string;
   grade: string;
   estimatedDate: string;
   deliveryLocation: string;
+  targetPrice: string;
+  latitude: number;
+  longitude: number;
 }
 
 interface OrderFormState {
@@ -38,9 +42,13 @@ export const useOrderForm = () => {
       fruit: null,
       category: null,
       quantity: "",
+      unit: "kg",
       grade: "A",
       estimatedDate: "",
       deliveryLocation: "Colombo",
+      targetPrice: "",
+      latitude: 34.0522,
+      longitude: -118.2437,
     },
     loading: true,
     datePickerVisible: false,
@@ -63,10 +71,8 @@ export const useOrderForm = () => {
           return;
         }
 
-        console.log("[useOrderForm] Making fetch request to:", `${BACKEND_URL}/api/fruit-properties`);
         const controller = new AbortController();
         const timeoutId = setTimeout(() => {
-          console.log("[useOrderForm] Fetch timed out after 10 seconds");
           controller.abort();
         }, 10000); // 10-second timeout
 
@@ -76,11 +82,8 @@ export const useOrderForm = () => {
         });
 
         clearTimeout(timeoutId);
-        console.log("[useOrderForm] Fetch completed, response status:", res.status);
-        console.log("[useOrderForm] Fetch response ok:", res.ok);
 
         const text = await res.text();
-        console.log("[useOrderForm] Response text:", text);
         let raw: any = text;
         try {
           raw = text ? JSON.parse(text) : text;
@@ -116,7 +119,7 @@ export const useOrderForm = () => {
         console.log("[useOrderForm] Set rows with data length:", data.length);
 
         // unique fruit names
-        const unique = Array.from(new Set(data.map((r) => r.fruit_name)));
+        const unique = Array.from(new Set(data.map((r) => r.name)));
         console.log("[useOrderForm] Unique fruit names:", unique);
         const fruitItems = unique.map((name) => ({ label: name, value: name }));
 
@@ -148,8 +151,8 @@ export const useOrderForm = () => {
       return;
     }
 
-    const filtered = rows.filter((r) => r.fruit_name === state.formData.fruit);
-    const categoryItems = filtered.map((r) => ({ label: r.variant, value: r.variant }));
+    const filtered = rows.filter((r) => r.name === state.formData.fruit);
+    const categoryItems = filtered.map((r) => ({ label: r.variety, value: r.variety }));
 
     setState(prev => ({
       ...prev,
@@ -222,13 +225,18 @@ export const useOrderForm = () => {
 
       const payload = {
         fruit_type: state.formData.fruit,
-        variant: state.formData.category,
+        variety: state.formData.category,
         quantity: parseInt(state.formData.quantity, 10),
+        unit: state.formData.unit,
         grade: state.formData.grade,
-        estimated_harvest_date: state.formData.estimatedDate,
+        latitude: state.formData.latitude,
+        longitude: state.formData.longitude,
+        required_date: state.formData.estimatedDate,
+        delivery_location: state.formData.deliveryLocation,
+        target_price: state.formData.targetPrice ? parseFloat(state.formData.targetPrice) : null,
       };
 
-      const res = await fetch(`${BACKEND_URL}/api/farmer/add-predict-stock`, {
+      const res = await fetch(`${BACKEND_URL}/api/buyer/place-order`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -240,15 +248,24 @@ export const useOrderForm = () => {
       const body = await res.json();
       if (!res.ok) {
         console.error("Submit error:", body);
-        Alert.alert("Error", body.message || "Failed to submit stock");
+        Alert.alert("Error", body.message || "Failed to submit order");
         return;
       }
 
-      Alert.alert("Success", "Stock submitted successfully");
-      router.back();
+      // Return the response with farmersFound status
+      return {
+        success: true,
+        farmersFound: body.farmersFound || false,
+        message: body.message || "Order placed successfully",
+      };
     } catch (err) {
       console.error(err);
-      Alert.alert("Error", "Could not submit stock");
+      Alert.alert("Error", "Could not submit order");
+      return {
+        success: false,
+        farmersFound: false,
+        message: "Could not submit order",
+      };
     }
   };
 

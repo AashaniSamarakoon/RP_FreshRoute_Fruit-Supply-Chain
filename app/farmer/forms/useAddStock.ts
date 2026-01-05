@@ -6,8 +6,8 @@ import { BACKEND_URL } from "../../../config";
 
 interface FruitPropertyRow {
   id: number;
-  fruit_name: string;
-  variant: string;
+  name: string;
+  variety: string;
 }
 
 interface AddStockFormData {
@@ -114,7 +114,7 @@ export const useAddStock = () => {
         console.log("[useAddStock] Set rows with data length:", data.length);
 
         // unique fruit names
-        const unique = Array.from(new Set(data.map((r) => r.fruit_name)));
+        const unique = Array.from(new Set(data.map((r) => r.name)));
         console.log("[useAddStock] Unique fruit names:", unique);
         const fruitItems = unique.map((name) => ({ label: name, value: name }));
 
@@ -146,8 +146,8 @@ export const useAddStock = () => {
       return;
     }
 
-    const filtered = rows.filter((r) => r.fruit_name === state.formData.fruit);
-    const categoryItems = filtered.map((r) => ({ label: r.variant, value: r.variant }));
+    const filtered = rows.filter((r) => r.name === state.formData.fruit);
+    const categoryItems = filtered.map((r) => ({ label: r.variety, value: r.variety }));
 
     setState(prev => ({
       ...prev,
@@ -220,7 +220,7 @@ export const useAddStock = () => {
 
       const payload = {
         fruit_type: state.formData.fruit,
-        variant: state.formData.category,
+        variety: state.formData.category,
         quantity: parseInt(state.formData.quantity, 10),
         grade: state.formData.grade,
         estimated_harvest_date: state.formData.estimatedDate,

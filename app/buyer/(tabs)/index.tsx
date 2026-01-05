@@ -10,10 +10,12 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BuyerColors } from "../../../constants/theme";
 import { DealData } from "../../../types";
-import BuyerHeader from "../../components/buyer/BuyerHeader";
-import DealCard from "../../components/buyer/DealCard";
-import Hero from "../../components/buyer/Hero";
-import Search from "../../components/buyer/Search";
+import Search from "../components/Search";
+import Hero from "../components/Hero";
+import DealCard from "../components/DealCard";
+import PriceComparisonChart from "../components/PriceComparisonChart";
+import DashboardHeader from "@/components/DashboardHeader";
+
 
 // --- Main Component ---
 
@@ -22,19 +24,21 @@ export default function BuyerDashboardScreen(): React.JSX.Element {
   const deals: DealData[] = [
     {
       id: "1",
-      title: "Wholesale Deals",
-      price: "$1.25",
+      title: "Premium Cavendish",
+      price: "Rs. 300",
       unit: "/kg",
-      description:
-        "Bulk pricing for retailers.\nMinimum order 50kg.\nFreshness guaranteed.",
+      location: "Awissawella",
+      grade: "Grade A",
+      quality: "Organic",
     },
     {
       id: "2",
       title: "Premium Cavendish",
-      price: "$7.22",
+      price: "Rs. 350",
       unit: "/kg",
-      description:
-        "Premium quality check.\nDirect from Ratnapura.\nExport Grade A.",
+      location: "Ratnapura",
+      grade: "Grade A",
+      quality: "Inorganic",
     },
   ];
 
@@ -45,7 +49,7 @@ export default function BuyerDashboardScreen(): React.JSX.Element {
         backgroundColor={BuyerColors.cardWhite}
       />
 
-      <BuyerHeader />
+      <DashboardHeader />
 
       <ScrollView
         style={styles.contentContainer}
@@ -75,9 +79,14 @@ export default function BuyerDashboardScreen(): React.JSX.Element {
             <DealCard key={deal.id} deal={deal} />
           ))}
         </ScrollView>
-      </ScrollView>
+        {/* Wholesale Deals Section */}
+        <View style={styles.sectionHeader2}>
+          <Text style={styles.sectionTitle}>Price Comparison</Text>
+        </View>
 
-      {/* <BottomNav /> */}
+        {/* Price Comparison Chart */}
+        <PriceComparisonChart />
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -118,5 +127,14 @@ const styles = StyleSheet.create({
 
   dealsScroll: {
     paddingBottom: 20,
+  },
+
+  sectionHeader2: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginHorizontal: 20,
+    // marginTop: 32,
+    marginBottom: 16,
   },
 });

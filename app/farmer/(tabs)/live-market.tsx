@@ -1,3 +1,4 @@
+import Header from "@/components/Header";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -18,7 +19,7 @@ import {
 import { BACKEND_URL } from "../../../config";
 import { useTranslationContext } from "../../../context/TranslationContext";
 
-const PRIMARY_GREEN = "#2f855a";
+const PRIMARY_GREEN = "#2E7D32";
 const LIGHT_GREEN = "#e8f4f0";
 const LIGHT_GRAY = "#f5f5f5";
 const YELLOW = "#fbbf24";
@@ -158,6 +159,13 @@ export default function LiveMarketScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <Header
+        title="Market Price"
+        showNotification={true}
+        onNotificationPress={() => {
+          console.log("Notifications pressed");
+        }}
+      />
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>

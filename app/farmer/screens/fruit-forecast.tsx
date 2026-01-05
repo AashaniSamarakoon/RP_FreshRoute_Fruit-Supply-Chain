@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { useTranslation } from "../../../hooks/farmer/useTranslation";
 
-const PRIMARY_GREEN = "#2f855a";
+const PRIMARY_GREEN = "#2E7D32";
 const LIGHT_GREEN = "#e8f4f0";
 const LIGHT_GRAY = "#f5f5f5";
 const ORANGE = "#f59e0b";

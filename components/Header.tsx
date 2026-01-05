@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { Bell } from "lucide-react-native";
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
@@ -22,7 +23,7 @@ const Header: React.FC<HeaderProps> = ({
     if (showNotification) {
       return (
         <TouchableOpacity onPress={onNotificationPress} style={styles.iconBtn}>
-          <Ionicons name="notifications" size={24} color="#000" />
+          <Bell size={24} color="#000" />
           <View style={styles.notificationDot} />
         </TouchableOpacity>
       );
@@ -51,7 +52,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingTop: 40,
+    paddingTop: 16,
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#f0f0f0",

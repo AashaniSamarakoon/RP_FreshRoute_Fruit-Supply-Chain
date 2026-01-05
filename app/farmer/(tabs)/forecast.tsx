@@ -14,7 +14,7 @@ import {
 import { BACKEND_URL } from "../../../config";
 import { useTranslation } from "../../../hooks/farmer/useTranslation";
 
-const PRIMARY_GREEN = "#2f855a";
+const PRIMARY_GREEN = "#2E7D32";
 const LIGHT_GREEN = "#e8f4f0";
 const LIGHT_GRAY = "#f5f5f5";
 const LIGHT_RED = "#fee2e2";
@@ -109,7 +109,14 @@ export default function ForecastScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.container}>
+      <Header
+        title="7-Day Prediction"
+        showNotification={true}
+        onNotificationPress={() => {
+          console.log("Notifications pressed");
+        }}
+      />
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
@@ -270,21 +277,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#fff",
   },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingTop: 40,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
-  },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#000",
-  },
+
   tabContainer: {
     flexDirection: "row",
     marginHorizontal: 16,

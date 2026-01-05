@@ -1,15 +1,15 @@
 // app/login.tsx
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Link, useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
-  View,
+  Alert,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
-  Alert,
+  View,
 } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useRouter, Link } from "expo-router";
 import { BACKEND_URL } from "../config";
 
 type Role = "farmer" | "transporter" | "buyer";
@@ -126,7 +126,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   button: {
-    backgroundColor: "#2f855a",
+    backgroundColor: "#2E7D32",
     padding: 14,
     borderRadius: 10,
     alignItems: "center",

@@ -16,7 +16,7 @@ import {
 import { BACKEND_URL } from "../../../config";
 import { useTranslation } from "../../../hooks/farmer/useTranslation";
 
-const PRIMARY_GREEN = "#2f855a";
+const PRIMARY_GREEN = "#2E7D32";
 const LIGHT_GREEN = "#e8f4f0";
 const BLUE = "#3b82f6";
 const ORANGE = "#f59e0b";
