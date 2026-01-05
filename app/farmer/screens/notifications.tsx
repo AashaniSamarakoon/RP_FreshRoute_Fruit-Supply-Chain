@@ -23,7 +23,7 @@ const BLUE = "#3b82f6";
 const RED = "#ef4444";
 
 interface NotificationItem {
-  id: number;
+  id: string | number;
   title: string;
   description: string;
   time: string;
@@ -39,10 +39,24 @@ export default function NotificationsScreen() {
   const [selectedFilter, setSelectedFilter] = useState<"All" | "Price Alerts" | "Demand Updates" | "App Notifs">("All");
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     loadNotifications();
   }, [selectedFilter]);
+
+  const filterToCategorySlug = (filter: typeof selectedFilter) => {
+    switch (filter) {
+      case "Price Alerts":
+        return "price";
+      case "Demand Updates":
+        return "demand";
+      case "App Notifs":
+        return "app";
+      default:
+        return "";
+    }
+  };
 
   const loadNotifications = async () => {
     console.log("[NOTIFICATIONS] Loading notifications...");
@@ -52,11 +66,16 @@ export default function NotificationsScreen() {
       if (!token) {
         console.log("[NOTIFICATIONS] No token found");
         setNotifications([]);
+        setUnreadCount(0);
         return;
       }
 
-      const categoryParam = selectedFilter === "All" ? "" : `?category=${encodeURIComponent(selectedFilter)}`;
-      const res = await fetch(`${BACKEND_URL}/api/farmer/notifications${categoryParam}`, {
+      const categorySlug = filterToCategorySlug(selectedFilter);
+      const url = categorySlug
+        ? `${BACKEND_URL}/api/farmer/notifications/category/${categorySlug}`
+        : `${BACKEND_URL}/api/farmer/notifications`;
+
+      const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
@@ -64,11 +83,12 @@ export default function NotificationsScreen() {
       if (!res.ok) {
         console.log("[NOTIFICATIONS] Error:", data.message);
         setNotifications([]);
+        setUnreadCount(0);
         return;
       }
 
-      const mapped: NotificationItem[] = (data.notifications || []).map((n: any) => ({
-        id: n.id,
+      const mapped: NotificationItem[] = (data.notifications || data || []).map((n: any) => ({
+        id: n.id || n._id,
         title: n.title,
         description: n.body,
         time: n.created_at,
@@ -78,11 +98,69 @@ export default function NotificationsScreen() {
       }));
 
       setNotifications(mapped);
+      setUnreadCount(data.unreadCount || 0);
     } catch (err) {
       console.error("[NOTIFICATIONS] Unexpected error", err);
       setNotifications([]);
+      setUnreadCount(0);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const markAllRead = async () => {
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) return;
+      await fetch(`${BACKEND_URL}/api/farmer/notifications/read-all`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setNotifications((prev) => prev.map((n) => ({ ...n, read_at: n.read_at || new Date().toISOString() })));
+      setUnreadCount(0);
+    } catch (err) {
+      console.error("[NOTIFICATIONS] markAllRead error", err);
+    }
+  };
+
+  const markAsReadAndNavigate = async (notification: NotificationItem) => {
+    const { id } = notification;
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (token) {
+        await fetch(`${BACKEND_URL}/api/farmer/notifications/${id}/read`, {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      }
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, read_at: n.read_at || new Date().toISOString() } : n))
+      );
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+      router.push({
+        pathname: "/farmer/screens/notification-detail",
+        params: {
+          id: String(id),
+          title: notification.title,
+          body: notification.description,
+          created_at: notification.time,
+          category: notification.category || "",
+          severity: notification.severity || "",
+        },
+      });
+    } catch (err) {
+      console.error("[NOTIFICATIONS] markAsRead error", err);
+      router.push({
+        pathname: "/farmer/screens/notification-detail",
+        params: {
+          id: String(id),
+          title: notification.title,
+          body: notification.description,
+          created_at: notification.time,
+          category: notification.category || "",
+          severity: notification.severity || "",
+        },
+      });
     }
   };
 
@@ -105,8 +183,12 @@ export default function NotificationsScreen() {
             <Ionicons name="chevron-back" size={24} color="#000" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{t("notifications.headerTitle")}</Text>
-          <TouchableOpacity>
-            <Ionicons name="checkmark-done" size={24} color={PRIMARY_GREEN} />
+          <TouchableOpacity onPress={markAllRead} disabled={unreadCount === 0}>
+            <Ionicons
+              name="checkmark-done"
+              size={24}
+              color={unreadCount === 0 ? "#ccc" : PRIMARY_GREEN}
+            />
           </TouchableOpacity>
         </View>
 
@@ -198,7 +280,7 @@ export default function NotificationsScreen() {
                     <TouchableOpacity
                       key={notification.id}
                       style={styles.notificationCard}
-                      onPress={() => router.push(`../notification-detail?id=${notification.id}`)}
+                      onPress={() => markAsReadAndNavigate(notification)}
                     >
                       <View style={styles.notificationLeft}>
                         <View style={[styles.iconCircle, { backgroundColor: icon.bg }]}>
@@ -228,7 +310,7 @@ export default function NotificationsScreen() {
                     <TouchableOpacity
                       key={notification.id}
                       style={styles.notificationCard}
-                      onPress={() => router.push(`../notification-detail?id=${notification.id}`)}
+                      onPress={() => markAsReadAndNavigate(notification)}
                     >
                       <View style={styles.notificationLeft}>
                         <View style={[styles.iconCircle, { backgroundColor: icon.bg }]}>
