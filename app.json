@@ -44,7 +44,8 @@
         {
           "cameraPermission": "Allow FreshRoute to access your camera to capture fruit images for quality verification."
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
