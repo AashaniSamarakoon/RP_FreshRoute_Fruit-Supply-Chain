@@ -106,7 +106,9 @@ export default function MatchedStocksScreen() {
 
             const quantity = parseInt(item.quantity_allocated ?? 0, 10);
             const distance = parseFloat(item.farmer_lat ?? 0);
-            const productName = `${data?.order?.variant || ""} ${data?.order?.fruit_type || ""}`.trim();
+            const productName = `${data?.order?.variant || ""} ${
+              data?.order?.fruit_type || ""
+            }`.trim();
             const grade = data?.order?.grade || item.grade || "";
 
             return {
