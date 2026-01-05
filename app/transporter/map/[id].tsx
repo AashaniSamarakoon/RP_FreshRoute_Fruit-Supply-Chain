@@ -1,10 +1,16 @@
 // app/transporter/map/[id].tsx
-import React, { useEffect, useState, useRef } from "react";
-import { View, StyleSheet, ActivityIndicator, Text, TouchableOpacity } from "react-native";
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE, Region } from "react-native-maps";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { useEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
 import { BACKEND_URL } from "../../../config";
 
 interface ManifestItem {
@@ -14,13 +20,14 @@ interface ManifestItem {
   lng: number;
   location?: string;
   order_id: string;
+  distance_from_last_km?: number;
 }
 
 export default function JobMap() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const mapRef = useRef<MapView>(null);
-  
+
   const [loading, setLoading] = useState(true);
   const [manifest, setManifest] = useState<ManifestItem[]>([]);
   const [routeName, setRouteName] = useState("");
@@ -36,14 +43,14 @@ export default function JobMap() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      
+
       if (res.ok) {
         setManifest(data.route_manifest || []);
         setRouteName(data.route_name);
-        
+
         // Auto-zoom to fit markers after data loads
         setTimeout(() => {
-            fitMapToMarkers(data.route_manifest);
+          fitMapToMarkers(data.route_manifest);
         }, 500);
       }
     } catch (error) {
@@ -56,7 +63,7 @@ export default function JobMap() {
   const fitMapToMarkers = (stops: ManifestItem[]) => {
     if (!stops || stops.length === 0 || !mapRef.current) return;
 
-    const coordinates = stops.map(stop => ({
+    const coordinates = stops.map((stop) => ({
       latitude: stop.lat,
       longitude: stop.lng,
     }));
@@ -98,14 +105,17 @@ export default function JobMap() {
             coordinate={{ latitude: stop.lat, longitude: stop.lng }}
             title={`${stop.sequence}. ${stop.type}`}
             description={`Stop #${stop.sequence}`}
-            pinColor={stop.type === "PICKUP" ? "green" : "red"} 
+            pinColor={stop.type === "PICKUP" ? "green" : "red"}
           />
         ))}
 
         {/* Render Route Polyline */}
         {manifest.length > 1 && (
           <Polyline
-            coordinates={manifest.map(s => ({ latitude: s.lat, longitude: s.lng }))}
+            coordinates={manifest.map((s) => ({
+              latitude: s.lat,
+              longitude: s.lng,
+            }))}
             strokeColor="#2f855a" // FreshRoute Green
             strokeWidth={4}
           />
@@ -116,15 +126,18 @@ export default function JobMap() {
       <View style={styles.infoCard}>
         <Text style={styles.routeTitle}>{routeName}</Text>
         <Text style={styles.subtitle}>
-            {manifest.length} Stops • Total Distance approx.{" "}
-            {manifest.reduce((acc, item) => acc + (item.distance_from_last_km || 0), 0).toFixed(1)} km
+          {manifest.length} Stops • Total Distance approx.{" "}
+          {manifest
+            .reduce((acc, item) => acc + (item.distance_from_last_km || 0), 0)
+            .toFixed(1)}{" "}
+          km
         </Text>
-        
-        <TouchableOpacity 
-            style={styles.recenterBtn} 
-            onPress={() => fitMapToMarkers(manifest)}
+
+        <TouchableOpacity
+          style={styles.recenterBtn}
+          onPress={() => fitMapToMarkers(manifest)}
         >
-            <Text style={styles.recenterText}>Recenter Route</Text>
+          <Text style={styles.recenterText}>Recenter Route</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -135,7 +148,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
   map: { width: "100%", height: "100%" },
-  
+
   backButton: {
     position: "absolute",
     top: 50,
@@ -162,11 +175,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 10,
     elevation: 10,
-    alignItems: "center"
+    alignItems: "center",
   },
   routeTitle: { fontSize: 18, fontWeight: "bold", color: "#333" },
   subtitle: { fontSize: 14, color: "#666", marginTop: 4, marginBottom: 12 },
-  
+
   recenterBtn: {
     backgroundColor: "#edf2f7",
     paddingVertical: 8,
