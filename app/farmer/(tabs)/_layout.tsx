@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Stack, useRouter } from "expo-router";
-import React, { useState } from "react";
+import { Stack, usePathname, useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
 import {
   StyleSheet,
   Text,
@@ -12,7 +12,23 @@ const PRIMARY_GREEN = "#2f855a";
 
 function CustomBottomNavigation() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"home" | "forecast" | "market" | "profile">("home");
+  const pathname = usePathname();
+  const [activeTab, setActiveTab] = useState<"home" | "forecast" | "orders" | "market" | "profile">("home");
+
+  useEffect(() => {
+    // Determine active tab based on current route
+    if (pathname === "/farmer" || pathname === "/farmer/(tabs)") {
+      setActiveTab("home");
+    } else if (pathname.includes("forecast")) {
+      setActiveTab("forecast");
+    } else if (pathname.includes("orders")) {
+      setActiveTab("orders");
+    } else if (pathname.includes("live-market")) {
+      setActiveTab("market");
+    } else if (pathname.includes("profile")) {
+      setActiveTab("profile");
+    }
+  }, [pathname]);
 
   return (
     <View style={styles.bottomNav}>
@@ -47,6 +63,23 @@ function CustomBottomNavigation() {
         />
         <Text style={[styles.navLabel, activeTab === "forecast" && styles.navLabelActive]}>
           Forecast
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.navItem}
+        onPress={() => {
+          setActiveTab("orders");
+          router.push("/farmer/orders");
+        }}
+      >
+        <Ionicons
+          name={activeTab === "orders" ? "receipt" : "receipt-outline"}
+          size={24}
+          color={activeTab === "orders" ? PRIMARY_GREEN : "#999"}
+        />
+        <Text style={[styles.navLabel, activeTab === "orders" && styles.navLabelActive]}>
+          Orders
         </Text>
       </TouchableOpacity>
 
@@ -107,7 +140,8 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: "#f0f0f0",
     paddingVertical: 8,
-    paddingBottom: 16,
+    paddingBottom: 28,
+    paddingHorizontal: 8,
   },
   navItem: {
     alignItems: "center",

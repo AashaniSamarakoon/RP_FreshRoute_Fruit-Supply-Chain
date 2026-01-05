@@ -138,7 +138,7 @@ export default function NotificationsScreen() {
       );
       setUnreadCount((prev) => Math.max(0, prev - 1));
       router.push({
-        pathname: "/farmer/screens/notification-detail",
+        pathname: "/screens/notification-detail",
         params: {
           id: String(id),
           title: notification.title,
@@ -151,7 +151,7 @@ export default function NotificationsScreen() {
     } catch (err) {
       console.error("[NOTIFICATIONS] markAsRead error", err);
       router.push({
-        pathname: "/farmer/screens/notification-detail",
+        pathname: "/screens/notification-detail",
         params: {
           id: String(id),
           title: notification.title,

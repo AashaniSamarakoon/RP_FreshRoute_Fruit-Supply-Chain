@@ -2,11 +2,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { Href, useRouter } from 'expo-router';
 import React, { useMemo } from 'react';
 import {
-    Alert,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Alert,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { useTranslationContext } from '../../../context/TranslationContext';
 
@@ -63,7 +63,7 @@ export default function FeatureGrid() {
       title: t("farmer.cards.predictionTitle"),
       subtitle: t("farmer.cards.predictionSubtitle"),
       icon: 'analytics',
-      comingSoon: true,
+      route: '/farmer/screens/add-stock',
     },
     {
       id: 'daily-prices',

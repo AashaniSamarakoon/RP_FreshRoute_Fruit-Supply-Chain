@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
@@ -124,22 +125,17 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <Header
-        title="Profile"
-        showNotification={true}
-        onNotificationPress={() => {
-          console.log("Notifications pressed");
-        }}
-      />
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Ionicons name="chevron-back" size={24} color="#000" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>{t("profile.headerTitle")}</Text>
-          <TouchableOpacity onPress={() => router.push("/farmer/screens/edit-profile")}>
-            <Ionicons name="create-outline" size={24} color="#000" />
+          <View style={styles.headerLeft}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.headerButton}>
+              <Ionicons name="chevron-back" size={24} color={PRIMARY_GREEN} />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>{t("profile.headerTitle")}</Text>
+          </View>
+          <TouchableOpacity onPress={() => router.push("/farmer/screens/edit-profile")} style={styles.headerButton}>
+            <Ionicons name="create-outline" size={24} color={PRIMARY_GREEN} />
           </TouchableOpacity>
         </View>
 
@@ -206,6 +202,16 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#f0f0f0",
+  },
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    gap: 12,
+  },
+  headerButton: {
+    padding: 8,
+    marginHorizontal: -8,
   },
   headerTitle: {
     fontSize: 16,

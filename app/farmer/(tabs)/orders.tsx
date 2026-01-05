@@ -1,4 +1,3 @@
-import Header from "@/components/Header";
 import { useRouter } from "expo-router";
 import { CheckCircle, Eye, ShoppingCart, XCircle } from "lucide-react-native";
 import React, { useState } from "react";
@@ -97,7 +96,7 @@ export default function OrdersTab() {
   };
 
   const handleViewProfile = (buyerId: string) => {
-    router.push(`/farmer/screens/buyer-trust-profile/${buyerId}`);
+    router.push(`/farmer/screens/buyer-trust-profile/${buyerId}` as any);
   };
 
   const pendingOrders = orders.filter((order) => order.status === "pending");
@@ -179,15 +178,7 @@ export default function OrdersTab() {
   );
 
   return (
-    <SafeAreaView style={styles.container} edges={["bottom"]}>
-      <Header
-        title="Orders"
-        showNotification={true}
-        onNotificationPress={() => {
-          // Handle notification press
-          console.log("Notifications pressed");
-        }}
-      />
+    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.content}

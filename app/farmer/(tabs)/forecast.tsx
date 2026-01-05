@@ -109,23 +109,18 @@ export default function ForecastScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <Header
-        title="7-Day Prediction"
-        showNotification={true}
-        onNotificationPress={() => {
-          console.log("Notifications pressed");
-        }}
-      />
+    <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Ionicons name="chevron-back" size={24} color="#000" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>{t("forecast.headerTitle")}</Text>
-          <TouchableOpacity>
-            <Ionicons name="notifications-outline" size={22} color="#000" />
+          <View style={styles.headerLeft}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.headerButton}>
+              <Ionicons name="chevron-back" size={24} color={PRIMARY_GREEN} />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>{t("forecast.headerTitle")}</Text>
+          </View>
+          <TouchableOpacity style={styles.headerButton}>
+            <Ionicons name="notifications-outline" size={22} color={PRIMARY_GREEN} />
           </TouchableOpacity>
         </View>
 
@@ -277,7 +272,31 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#fff",
   },
-
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingTop: 40,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
+  },
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    gap: 12,
+  },
+  headerButton: {
+    padding: 8,
+    marginHorizontal: -8,
+  },
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#000",
+  },
   tabContainer: {
     flexDirection: "row",
     marginHorizontal: 16,

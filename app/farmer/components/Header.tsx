@@ -1,13 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
+import { BACKEND_URL } from '../../../config';
 import { useTranslationContext } from '../../../context/TranslationContext';
 
 const PRIMARY_GREEN = "#2f855a";
@@ -24,8 +26,34 @@ export default function Header({
 }: HeaderProps) {
   const router = useRouter();
   const { t, locale, setLocale } = useTranslationContext();
+  const [unreadCount, setUnreadCount] = useState(0);
 
   console.log('[Header] Rendering with locale:', locale);
+
+  useEffect(() => {
+    const loadUnreadCount = async () => {
+      try {
+        const token = await AsyncStorage.getItem("token");
+        if (!token) return;
+
+        const res = await fetch(`${BACKEND_URL}/api/farmer/notifications`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          setUnreadCount(data.unreadCount || 0);
+        }
+      } catch (err) {
+        console.error("[Header] Failed to load unread count", err);
+      }
+    };
+
+    loadUnreadCount();
+    // Refresh every 30 seconds
+    const interval = setInterval(loadUnreadCount, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <>
@@ -36,11 +64,16 @@ export default function Header({
           <Text style={styles.greeting}>{t("farmer.greeting", { name: userName })}</Text>
         </View>
         <View style={styles.headerIcons}>
-          <TouchableOpacity onPress={() => router.push("/farmer/screens/notifications")}>
+          <TouchableOpacity 
+            onPress={() => router.push("/farmer/screens/notifications")}
+            style={styles.notificationButton}
+          >
             <Ionicons name="notifications-outline" size={24} color="#000" />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => router.push("/farmer/profile")} style={{ marginLeft: 12 }}>
-            <Ionicons name="person-outline" size={24} color="#000" />
+            {unreadCount > 0 && (
+              <View style={styles.badge}>
+                <View style={styles.badgeDot} />
+              </View>
+            )}
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.langToggle, { marginLeft: 12 }]}
@@ -100,6 +133,23 @@ const styles = StyleSheet.create({
   headerIcons: {
     flexDirection: "row",
     alignItems: "center",
+  },
+  notificationButton: {
+    position: 'relative',
+  },
+  badge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 2,
+  },
+  badgeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#ef4444',
   },
   langToggle: {
     borderWidth: 1,

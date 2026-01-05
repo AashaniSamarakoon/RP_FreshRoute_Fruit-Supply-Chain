@@ -1,5 +1,5 @@
 import { Tabs } from "expo-router";
-import { Home, Package, ShoppingCart, User } from "lucide-react-native";
+import { Home, Package, ShoppingCart, Tag, User } from "lucide-react-native";
 
 export default function BuyerLayout() {
   return (
@@ -45,6 +45,15 @@ export default function BuyerLayout() {
           title: "Market Price",
           tabBarIcon: ({ color, size }) => (
             <Package size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="freshroutePrices"
+        options={{
+          title: "FreshRoute",
+          tabBarIcon: ({ color, size }) => (
+            <Tag size={size} color={color} />
           ),
         }}
       />

@@ -1,4 +1,3 @@
-import Header from "@/components/Header";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -42,13 +41,18 @@ interface FruitPrice {
   _id?: string;
   fruitCategory?: string;
   market?: string;
+  economic_center?: string;
   price?: number;
+  min_price?: number;
+  max_price?: number;
+  currency?: string;
   demand?: string;
   date?: string;
   name?: string;
   emoji?: string;
   image?: string;
   unit?: string;
+  priceRange?: string;
   status?: "High" | "Medium" | "Low";
   statusColor?: string;
 }
@@ -73,14 +77,98 @@ export default function LiveMarketScreen() {
     const fruitName = rawFruit.fruitCategory || rawFruit.fruit || rawFruit.name || "Unknown";
     const fruitKey = fruitName.toLowerCase();
     const demandStatus = (rawFruit.demand || rawFruit.status || "Medium").toLowerCase();
+    const parsePriceValue = (value: any) => {
+      if (value === undefined || value === null) return undefined;
+      const numeric = Number(String(value).replace(/[^0-9.-]/g, ""));
+      return Number.isFinite(numeric) ? numeric : undefined;
+    };
+
+    const extractRangeFromString = (value: any): { min?: number; max?: number } => {
+      if (!value) return {};
+      const text = String(value);
+      const parts = text.split(/-|to|–/).map(part => parsePriceValue(part)).filter(v => v !== undefined);
+      if (parts.length >= 2) {
+        return { min: parts[0], max: parts[1] };
+      }
+      if (parts.length === 1) {
+        return { min: parts[0], max: parts[0] };
+      }
+      return {};
+    };
+
+    const priceRangeText = rawFruit.priceRange || rawFruit.price_range || rawFruit.price;
+    const rangeFromText = extractRangeFromString(priceRangeText);
+    const priceFromString = parsePriceValue(rawFruit.price);
+    const avgPrice = parsePriceValue(rawFruit.avgPrice ?? rawFruit.averagePrice);
+
+    const minPrice = rawFruit.min_price
+      ?? rawFruit.minPrice
+      ?? rawFruit.price_min
+      ?? rangeFromText.min
+      ?? priceFromString
+      ?? avgPrice
+      ?? rawFruit.amount;
+
+    const maxPrice = rawFruit.max_price
+      ?? rawFruit.maxPrice
+      ?? rawFruit.price_max
+      ?? rangeFromText.max
+      ?? priceFromString
+      ?? avgPrice
+      ?? rawFruit.amount;
+
+    const currency = rawFruit.currency || "LKR";
+    const unitRaw = (rawFruit.unit || rawFruit.unitName || "kg").toString().trim();
+    const unit = unitRaw.startsWith("/") ? unitRaw : `/ ${unitRaw}`;
+
+    const formatCurrency = (value?: number) => {
+      if (value === undefined || value === null || Number.isNaN(Number(value))) return "0";
+      return Number(value).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+    };
+
+    const minNum = Number.isFinite(Number(minPrice)) ? Number(minPrice) : undefined;
+    const maxNum = Number.isFinite(Number(maxPrice)) ? Number(maxPrice) : undefined;
+    const prefix = currency === "LKR" ? "Rs." : currency;
+
+    const normalizeRange = (range: any): string | undefined => {
+      if (!range) return undefined;
+      if (typeof range === "string") return range;
+      if (typeof range === "object") {
+        const minVal = parsePriceValue(range.min);
+        const maxVal = parsePriceValue(range.max);
+        if (minVal !== undefined && maxVal !== undefined) {
+          return minVal === maxVal
+            ? `${prefix} ${formatCurrency(minVal)}`
+            : `${prefix} ${formatCurrency(minVal)} - ${formatCurrency(maxVal)}`;
+        }
+        if (minVal !== undefined) {
+          return `${prefix} ${formatCurrency(minVal)}`;
+        }
+      }
+      return undefined;
+    };
+
+    const apiRange = normalizeRange(rawFruit.priceRange || rawFruit.price_range);
+    const computedRange = (minNum !== undefined && maxNum !== undefined)
+      ? (minNum === maxNum
+          ? `${prefix} ${formatCurrency(minNum)}`
+          : `${prefix} ${formatCurrency(minNum)} - ${formatCurrency(maxNum)}`)
+      : (minNum !== undefined
+          ? `${prefix} ${formatCurrency(minNum)}`
+          : undefined);
+
+    const priceRange = apiRange || computedRange || priceRangeText || `${prefix} 0`;
     
     return {
       ...rawFruit,
       name: fruitName,
       emoji: FRUIT_IMAGES[fruitKey] || "🍎",
       image: FRUIT_IMAGES[fruitKey] || "🍎",
-      price: `Rs. ${rawFruit.price || rawFruit.amount || 0}`,
-      unit: rawFruit.unit || "/ kg",
+      min_price: minNum ?? 0,
+      max_price: maxNum ?? 0,
+      currency,
+      priceRange,
+      unit,
       status: (demandStatus.charAt(0).toUpperCase() + demandStatus.slice(1)) as "High" | "Medium" | "Low",
       statusColor: 
         demandStatus === "high" 
@@ -159,22 +247,17 @@ export default function LiveMarketScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <Header
-        title="Market Price"
-        showNotification={true}
-        onNotificationPress={() => {
-          console.log("Notifications pressed");
-        }}
-      />
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Ionicons name="chevron-back" size={24} color="#000" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>{t("liveMarket.headerTitle")}</Text>
-          <TouchableOpacity>
-            <Ionicons name="search" size={24} color="#000" />
+          <View style={styles.headerLeft}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.headerButton}>
+              <Ionicons name="chevron-back" size={24} color={PRIMARY_GREEN} />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>{t("liveMarket.headerTitle")}</Text>
+          </View>
+          <TouchableOpacity style={styles.headerButton}>
+            <Ionicons name="search" size={24} color={PRIMARY_GREEN} />
           </TouchableOpacity>
         </View>
 
@@ -355,7 +438,7 @@ export default function LiveMarketScreen() {
                 <View style={styles.fruitInfo}>
                   <Text style={styles.fruitName}>{fruit.name}</Text>
                   <Text style={styles.fruitPrice}>
-                    {fruit.price} {fruit.unit}
+                    {fruit.priceRange} {fruit.unit}
                   </Text>
                 </View>
               </View>
@@ -423,6 +506,16 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#f0f0f0",
+  },
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    gap: 12,
+  },
+  headerButton: {
+    padding: 8,
+    marginHorizontal: -8,
   },
   headerTitle: {
     fontSize: 16,
