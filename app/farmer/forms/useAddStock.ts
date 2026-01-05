@@ -50,8 +50,8 @@ export const useAddStock = () => {
 
   // Load fruit properties data
   useEffect(() => {
+    
     const loadFruitProperties = async () => {
-      console.log("[useAddStock] Starting loadFruitProperties");
       try {
         const token = await AsyncStorage.getItem("token");
         console.log("[useAddStock] Token retrieved:", token ? "present" : "null");
@@ -98,16 +98,21 @@ export const useAddStock = () => {
           return;
         }
 
+
+
         const data: FruitPropertyRow[] = Array.isArray(raw)
           ? raw
           : raw?.fruits ?? raw?.data ?? raw?.items ?? [];
 
-        console.log("[useAddStock] Extracted data array:", data);
         if (!Array.isArray(data)) {
           console.log("[useAddStock] Data not array, raw:", raw);
           Alert.alert("Error", "Unexpected data format from server");
           setState(prev => ({ ...prev, loading: false }));
           return;
+        }
+        
+        if (data.length === 0) {
+          console.log("[useAddStock] Warning: Data array is empty!");
         }
 
         setRows(data);
@@ -134,10 +139,12 @@ export const useAddStock = () => {
 
     loadFruitProperties();
   }, []);
+  
 
   // Update category items when fruit changes
-  useEffect(() => {
+  useEffect(() => {    
     if (!state.formData.fruit) {
+      console.log("[useAddStock] No fruit selected, clearing categories");
       setState(prev => ({
         ...prev,
         categoryItems: [],
@@ -147,7 +154,10 @@ export const useAddStock = () => {
     }
 
     const filtered = rows.filter((r) => r.name === state.formData.fruit);
+    console.log("[useAddStock] Filtered results for fruit:", state.formData.fruit, "found:", filtered.length, filtered);
+    
     const categoryItems = filtered.map((r) => ({ label: r.variety, value: r.variety }));
+    console.log("[useAddStock] Generated categories:", categoryItems);
 
     setState(prev => ({
       ...prev,
@@ -220,7 +230,7 @@ export const useAddStock = () => {
 
       const payload = {
         fruit_type: state.formData.fruit,
-        variety: state.formData.category,
+        variant: state.formData.category,
         quantity: parseInt(state.formData.quantity, 10),
         grade: state.formData.grade,
         estimated_harvest_date: state.formData.estimatedDate,

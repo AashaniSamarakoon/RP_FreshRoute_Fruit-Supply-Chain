@@ -1,10 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import {
-  Alert,
   Animated,
   Platform,
   SafeAreaView,
@@ -16,7 +14,8 @@ import {
   View,
 } from "react-native";
 import RNPickerSelect from "react-native-picker-select";
-import { BACKEND_URL } from "../../../config";
+import Header from "../../../components/Header";
+import { useAddStock } from "../forms/useAddStock";
 
 const PRIMARY_GREEN = "#2E7D32";
 const LIGHT_GRAY = "#f5f5f5";
@@ -131,164 +130,19 @@ const SkeletonLoader = () => {
 
 export default function AddStock() {
   const router = useRouter();
-
-  const [rows, setRows] = useState<FruitPropertyRow[]>([]);
-  const [fruitItems, setFruitItems] = useState<
-    { label: string; value: string }[]
-  >([]);
-  const [categoryItems, setCategoryItems] = useState<
-    { label: string; value: string }[]
-  >([]);
-
-  const [fruit, setFruit] = useState<string | null>(null); // fruit_name
-  const [category, setCategory] = useState<string | null>(null); // variant string
-  const [quantity, setQuantity] = useState("");
-  const [grade, setGrade] = useState<string>("A");
-  const [estimatedDate, setEstimatedDate] = useState("");
-
-  const [datePickerVisible, setDatePickerVisible] = useState(false);
-  const [dateValue, setDateValue] = useState<Date | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const token = await AsyncStorage.getItem("token");
-        if (!token) {
-          setLoading(false);
-          return;
-        }
-
-        const res = await fetch(`${BACKEND_URL}/api/fruit-properties`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        // Read text and attempt to parse JSON
-        const text = await res.text();
-        let raw: any = text;
-        try {
-          raw = text ? JSON.parse(text) : text;
-        } catch (parseErr) {
-          // fall back to raw text
-        }
-
-        if (!res.ok) {
-          Alert.alert(
-            "Error",
-            `Failed to load fruit properties (${res.status})`
-          );
-          setLoading(false);
-          return;
-        }
-
-        const data: FruitPropertyRow[] = Array.isArray(raw)
-          ? raw
-          : raw?.fruits ?? raw?.data ?? raw?.items ?? [];
-
-        if (!Array.isArray(data)) {
-          Alert.alert("Error", "Unexpected data format from server");
-          setLoading(false);
-          return;
-        }
-
-        setRows(data);
-
-        // unique fruit names
-        const unique = Array.from(new Set(data.map((r) => r.fruit_name)));
-        setFruitItems(unique.map((name) => ({ label: name, value: name })));
-      } catch (e) {
-        console.error(
-          "[AddStock] exception while loading fruit properties:",
-          e
-        );
-        Alert.alert("Error", "Could not load fruit properties");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    load();
-  }, []);
-
-  useEffect(() => {
-    if (!fruit) {
-      setCategoryItems([]);
-      setCategory(null);
-      return;
-    }
-    // filter rows for selected fruit_name and map variants -> variant string
-    const filtered = rows.filter((r) => r.fruit_name === fruit);
-    setCategoryItems(
-      filtered.map((r) => ({ label: r.variant, value: r.variant }))
-    );
-    setCategory(null);
-  }, [fruit, rows]);
-
-  const isFutureDate = (dateStr: string) => {
-    if (!dateStr) return false;
-    const selected = new Date(dateStr);
-    const today = new Date();
-    selected.setHours(0, 0, 0, 0);
-    today.setHours(0, 0, 0, 0);
-    return selected.getTime() > today.getTime();
-  };
-
-  const onSubmit = async () => {
-    if (!fruit || !category || !quantity) {
-      return Alert.alert("Error", "Please fill fruit, category and quantity");
-    }
-    // require a future date (tomorrow or later)
-    if (!estimatedDate || !isFutureDate(estimatedDate)) {
-      return Alert.alert(
-        "Error",
-        "Please select a future estimated harvest date (tomorrow or later)"
-      );
-    }
-    try {
-      const token = await AsyncStorage.getItem("token");
-      const masked = token
-        ? token.length > 10
-          ? `${token.slice(0, 6)}...${token.slice(-4)}`
-          : token
-        : null;
-      if (!token) return Alert.alert("Error", "Not authenticated");
-
-      const payload = {
-        fruit_type: fruit,
-        variant: category,
-        quantity: parseInt(quantity, 10),
-        grade,
-        estimated_harvest_date: estimatedDate,
-      };
-      console.log(
-        "[AddStock] submitting stock, Authorization: Bearer",
-        masked,
-        "payload:",
-        payload
-      );
-
-      const res = await fetch(`${BACKEND_URL}/api/farmer/add-predict-stock`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const body = await res.json();
-      if (!res.ok) {
-        console.error("Submit error:", body);
-        return Alert.alert("Error", body.message || "Failed to submit stock");
-      }
-
-      Alert.alert("Success", "Stock submitted successfully");
-      router.back();
-    } catch (err) {
-      console.error(err);
-      Alert.alert("Error", "Could not submit stock");
-    }
-  };
+  const {
+    loading,
+    formData,
+    fruitItems,
+    categoryItems,
+    updateField,
+    setDatePickerVisible,
+    datePickerVisible,
+    dateValue,
+    setDateValue,
+    handleDateChange,
+    handleSubmit,
+  } = useAddStock();
 
   if (loading) {
     return <SkeletonLoader />;
@@ -297,14 +151,7 @@ export default function AddStock() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Ionicons name="chevron-back" size={24} color="#000" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Add Expected Stock</Text>
-          <View style={{ width: 24 }} />
-        </View>
+        <Header title="Add Expected Stock" onBack={() => router.back()} />
 
         <ScrollView
           style={styles.container}
@@ -313,8 +160,8 @@ export default function AddStock() {
           <View style={styles.formCard}>
             <Text style={styles.label}>Fruit type</Text>
             <RNPickerSelect
-              onValueChange={(val) => setFruit(val)}
-              value={fruit}
+              onValueChange={(val) => updateField("fruit", val)}
+              value={formData.fruit}
               placeholder={{ label: "Select fruit", value: null }}
               items={fruitItems}
               style={{
@@ -327,16 +174,19 @@ export default function AddStock() {
 
             <Text style={styles.label}>Category (variant)</Text>
             <RNPickerSelect
-              onValueChange={(val) => setCategory(val)}
-              value={category}
+              onValueChange={(val) => updateField("category", val)}
+              value={formData.category}
               placeholder={{ label: "Select category", value: null }}
               items={categoryItems}
-              disabled={!fruit}
+              disabled={!formData.fruit}
               style={{
-                inputIOS: [styles.selectInput, !fruit && styles.selectDisabled],
+                inputIOS: [
+                  styles.selectInput,
+                  !formData.fruit && styles.selectDisabled,
+                ],
                 inputAndroid: [
                   styles.selectInput,
-                  !fruit && styles.selectDisabled,
+                  !formData.fruit && styles.selectDisabled,
                 ],
                 placeholder: { color: "#aaa" },
               }}
@@ -348,8 +198,8 @@ export default function AddStock() {
               style={styles.textInput}
               placeholder="Enter quantity"
               keyboardType="numeric"
-              value={quantity}
-              onChangeText={setQuantity}
+              value={formData.quantity}
+              onChangeText={(val) => updateField("quantity", val)}
             />
 
             <Text style={styles.label}>Grade</Text>
@@ -359,15 +209,15 @@ export default function AddStock() {
                   key={g}
                   style={[
                     styles.tab,
-                    grade === g && styles.tabActive,
+                    formData.grade === g && styles.tabActive,
                     idx > 0 && styles.tabDivider,
                   ]}
-                  onPress={() => setGrade(g)}
+                  onPress={() => updateField("grade", g)}
                 >
                   <Text
                     style={[
                       styles.tabText,
-                      grade === g && styles.tabTextActive,
+                      formData.grade === g && styles.tabTextActive,
                     ]}
                   >
                     {g}
@@ -382,9 +232,12 @@ export default function AddStock() {
               onPress={() => setDatePickerVisible(true)}
             >
               <Text
-                style={[styles.selectText, !estimatedDate && { color: "#aaa" }]}
+                style={[
+                  styles.selectText,
+                  !formData.estimatedDate && { color: "#aaa" },
+                ]}
               >
-                {estimatedDate || "Select date"}
+                {formData.estimatedDate || "Select date"}
               </Text>
               <Ionicons name="calendar" size={18} color="#666" />
             </TouchableOpacity>
@@ -400,14 +253,9 @@ export default function AddStock() {
                   d.setHours(0, 0, 0, 0);
                   return d;
                 })()}
-                textColor={PRIMARY_GREEN} // iOS
-                accentColor={PRIMARY_GREEN} // Android (supported in newer versions)
-                onChange={(event, selectedDate) => {
-                  if (Platform.OS === "android") setDatePickerVisible(false);
-                  const current = selectedDate || dateValue || new Date();
-                  setDateValue(current);
-                  setEstimatedDate(current.toISOString().slice(0, 10));
-                }}
+                textColor={PRIMARY_GREEN}
+                accentColor={PRIMARY_GREEN}
+                onChange={handleDateChange}
               />
             )}
           </View>
@@ -415,7 +263,10 @@ export default function AddStock() {
 
         {/* Fixed footer submit */}
         <View style={styles.footer} pointerEvents="box-none">
-          <TouchableOpacity style={styles.submitButtonFixed} onPress={onSubmit}>
+          <TouchableOpacity
+            style={styles.submitButtonFixed}
+            onPress={handleSubmit}
+          >
             <Text style={styles.submitText}>Submit Stock</Text>
           </TouchableOpacity>
         </View>
@@ -425,19 +276,8 @@ export default function AddStock() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#fff" },
+  safeArea: { flex: 1, backgroundColor: "#fff", paddingTop: 40 },
   container: { flex: 1, backgroundColor: "#fff" },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingTop: 40,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
-  },
-  headerTitle: { fontSize: 18, fontWeight: "600", color: "#000" },
 
   formCard: {
     backgroundColor: "#fff",

@@ -144,20 +144,24 @@ export default function AddStock() {
       // Show success modal with appropriate message
       setModalData({
         title: "Order Submitted",
-        message: result.farmersFound
-          ? "We've found matching suppliers for your order. Let's explore your options."
-          : "Your order has been submitted successfully. We're searching for the best suppliers and will notify you shortly.",
+        message: "",
+        // message: result.farmersFound
+        //   ? "We've found matching suppliers for your order. Let's explore your options."
+        //   : "Your order has been submitted successfully. We're searching for the best suppliers and will notify you shortly.",
         farmersFound: result.farmersFound || false,
       });
       setShowModal(true);
 
-      // Auto-navigate if farmers found, after a delay
-      if (result.farmersFound) {
+      // Auto-close modal and navigate to MatchedStocks after 2 seconds
+      setTimeout(() => {
+        setShowModal(false);
         setTimeout(() => {
-          setShowModal(false);
-          router.push("/buyer/screens/MatchedStocks");
-        }, 1500);
-      }
+          router.push({
+            pathname: "/buyer/screens/MatchedStocks",
+            params: result.orderId ? { orderId: result.orderId } : {},
+          });
+        }, 100); // Small delay to ensure modal closes before navigation
+      }, 2000);
     }
   };
 
@@ -177,14 +181,7 @@ export default function AddStock() {
           visible={showModal}
           title={modalData.title}
           message={modalData.message}
-          onClose={() => {
-            setShowModal(false);
-            if (!modalData.farmersFound) {
-              // If no suppliers found, navigate to home page
-              router.push("/buyer/(tabs)");
-            }
-          }}
-          buttonText={modalData.farmersFound ? "View Matches" : "Done"}
+          onClose={() => setShowModal(false)}
         />
       )}
 
@@ -363,7 +360,7 @@ export default function AddStock() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#fff", paddingTop: 20 },
+  safeArea: { flex: 1, backgroundColor: "#fff" },
   container: { flex: 1, backgroundColor: "#fff" },
 
   formCard: {

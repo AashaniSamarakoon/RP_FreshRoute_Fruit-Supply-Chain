@@ -1,4 +1,5 @@
-import { useRouter } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { ChevronRight, MapPin, ShieldCheck } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
@@ -12,11 +13,13 @@ import {
 } from "react-native";
 import Header from "../../../components/Header";
 import SuccessModal from "../../../components/modals/SuccessModal";
+import { BACKEND_URL } from "../../../config";
 import { BuyerColors } from "../../../constants/theme";
 
 // ... [Keep your MatchedStock interface the same] ...
 interface MatchedStock {
   id: string;
+  farmerId: string;
   farmerName: string;
   fruitType: string;
   category: string;
@@ -31,36 +34,128 @@ interface MatchedStock {
 
 export default function MatchedStocksScreen() {
   const router = useRouter();
+  const { orderId } = useLocalSearchParams();
   const [stocks, setStocks] = useState<MatchedStock[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [successModalVisible, setSuccessModalVisible] = useState(false);
   const [selectedStock, setSelectedStock] = useState<MatchedStock | null>(null);
 
-  // Updated Mock Data with Trust Scores
-  const mockMatchedStocks: MatchedStock[] = [
-    {
-      id: "1",
-      farmerName: "Lakshan Farms",
-      fruitType: "Banana",
-      category: "Premium Cavendish",
-      quantity: 900,
-      availableUnit: "kg",
-      grade: "A",
-      quality: "Organic",
-      farmLocation: "Awissawella",
-      distance: 2.3,
-      trustScore: "98% On-time Delivery",
-    },
-  ];
-
   useEffect(() => {
-    // ... [Keep your existing useEffect] ...
-    const timer = setTimeout(() => {
-      setStocks(mockMatchedStocks);
+    console.log("MatchedStocks useEffect, orderId:", orderId);
+    const fetchMatchedStocks = async () => {
+      try {
+        setError(null);
+        setLoading(true);
+
+        if (!orderId || typeof orderId !== "string") {
+          setError("Invalid order ID. Please go back and try again.");
+          setLoading(false);
+          return;
+        }
+
+        const token = await AsyncStorage.getItem("token");
+        if (!token) {
+          setError("Authentication failed. Please log in again.");
+          setLoading(false);
+          return;
+        }
+
+        const apiUrl = `${BACKEND_URL}/api/buyer/place-order/matches/${orderId}`;
+        console.log("Fetching from:", apiUrl);
+
+        const res = await fetch(apiUrl, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        const data = await res.json();
+        console.log("API response:", res.status, data);
+
+        if (!res.ok) {
+          const errorMsg =
+            data?.message || `Failed to load matched stocks (${res.status})`;
+          setError(errorMsg);
+          setLoading(false);
+          return;
+        }
+
+        let matches: any[] = [];
+        if (Array.isArray(data)) {
+          matches = data;
+        } else if (data?.matches && Array.isArray(data.matches)) {
+          matches = data.matches;
+        } else {
+          setError("No matching stocks found for your order.");
+          setStocks([]);
+          setLoading(false);
+          return;
+        }
+
+        if (matches.length === 0) {
+          setError("No matching stocks found for your order.");
+          setStocks([]);
+          setLoading(false);
+          return;
+        }
+
+        try {
+          const transformedStocks = matches.map((item: any) => {
+            if (!item?.stock_id || !item?.farmer_id) {
+              throw new Error("Missing required fields in stock data");
+            }
+
+            const quantity = parseInt(item.quantity_allocated ?? 0, 10);
+            const distance = parseFloat(item.farmer_lat ?? 0);
+            const productName = `${data?.order?.variant || ""} ${data?.order?.fruit_type || ""}`.trim();
+            const grade = data?.order?.grade || item.grade || "";
+
+            return {
+              id: item.stock_id,
+              farmerId: item.farmer_id,
+              farmerName:
+                item.farmer_name || `Farmer ${item.farmer_id.slice(0, 8)}`,
+              fruitType: data?.order?.fruit_type || "",
+              category: productName,
+              quantity: isNaN(quantity) ? 0 : quantity,
+              availableUnit: "kg",
+              grade: grade,
+              quality: item.quality || "",
+              farmLocation: data?.order?.delivery_location || "",
+              distance: isNaN(distance) ? 0 : distance,
+              trustScore: item.farmer_reputation
+                ? `${item.farmer_reputation}/5`
+                : "",
+            };
+          });
+
+          setStocks(transformedStocks);
+          setError(null);
+        } catch (transformError) {
+          console.error("Error transforming stock data:", transformError);
+          setError("Error processing matched stocks data.");
+          setStocks([]);
+        }
+
+        setLoading(false);
+      } catch (error) {
+        console.error("Error fetching matched stocks:", error);
+        const errorMsg =
+          error instanceof Error
+            ? error.message
+            : "Failed to load matched stocks. Please try again.";
+        setError(errorMsg);
+        setStocks([]);
+        setLoading(false);
+      }
+    };
+
+    if (orderId && typeof orderId === "string") {
+      fetchMatchedStocks();
+    } else {
+      setError("Invalid order ID. Please go back and try again.");
       setLoading(false);
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, []);
+    }
+  }, [orderId]);
 
   const navigateToProfile = (farmerId: string) => {
     // Navigate to the dynamic trust profile route
@@ -95,12 +190,6 @@ export default function MatchedStocksScreen() {
       createdAt: new Date().toISOString().split("T")[0],
     };
 
-    // Store order in global state (in real app use Context/Redux)
-    if (!global.buyerOrders) {
-      global.buyerOrders = [];
-    }
-    global.buyerOrders.unshift(buyerOrder);
-
     // Send order to farmer (in real app via API)
     console.log("Order sent to farmer:", orderNotification);
 
@@ -114,7 +203,7 @@ export default function MatchedStocksScreen() {
       <TouchableOpacity
         style={styles.cardHeader}
         activeOpacity={0.7}
-        onPress={() => navigateToProfile(item.id)}
+        onPress={() => navigateToProfile(item.farmerId)}
       >
         <View style={styles.farmerInfo}>
           <View style={styles.nameRow}>
@@ -197,6 +286,31 @@ export default function MatchedStocksScreen() {
       {loading ? (
         <View style={styles.loaderContainer}>
           <ActivityIndicator size="large" color={BuyerColors.primaryGreen} />
+          <Text style={styles.loadingText}>Loading matched stocks...</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorTitle}>Unable to Load Stocks</Text>
+          <Text style={styles.errorMessage}>{error}</Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => router.back()}
+          >
+            <Text style={styles.retryButtonText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      ) : stocks.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyTitle}>No Stocks Available</Text>
+          <Text style={styles.emptyMessage}>
+            No matching stocks found for your order.
+          </Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => router.back()}
+          >
+            <Text style={styles.retryButtonText}>Go Back</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <FlatList
@@ -222,7 +336,7 @@ export default function MatchedStocksScreen() {
             ? `Your order for ${selectedStock.category} has been sent to ${selectedStock.farmerName}. They will review and confirm shortly.`
             : ""
         }
-        buttonText="Done"
+        // buttonText="Done"
       />
     </SafeAreaView>
   );
@@ -256,6 +370,72 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    gap: 16,
+  },
+
+  loadingText: {
+    fontSize: 14,
+    color: BuyerColors.textGray,
+    marginTop: 12,
+  },
+
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+    gap: 16,
+  },
+
+  errorTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#d32f2f",
+    textAlign: "center",
+  },
+
+  errorMessage: {
+    fontSize: 14,
+    color: BuyerColors.textGray,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+    gap: 16,
+  },
+
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#666",
+    textAlign: "center",
+  },
+
+  emptyMessage: {
+    fontSize: 14,
+    color: BuyerColors.textGray,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+
+  retryButton: {
+    backgroundColor: BuyerColors.primaryGreen,
+    paddingVertical: 12,
+    paddingHorizontal: 32,
+    borderRadius: 20,
+    marginTop: 8,
+  },
+
+  retryButtonText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 15,
+    textAlign: "center",
   },
 
   listContent: {

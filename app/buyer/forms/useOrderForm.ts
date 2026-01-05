@@ -61,12 +61,9 @@ export const useOrderForm = () => {
   // Load fruit properties data
   useEffect(() => {
     const loadFruitProperties = async () => {
-      console.log("[useOrderForm] Starting loadFruitProperties");
       try {
         const token = await AsyncStorage.getItem("token");
-        console.log("[useOrderForm] Token retrieved:", token ? "present" : "null");
         if (!token) {
-          console.log("[useOrderForm] No token, setting loading false");
           setState(prev => ({ ...prev, loading: false }));
           return;
         }
@@ -225,7 +222,7 @@ export const useOrderForm = () => {
 
       const payload = {
         fruit_type: state.formData.fruit,
-        variety: state.formData.category,
+        variant: state.formData.category,
         quantity: parseInt(state.formData.quantity, 10),
         unit: state.formData.unit,
         grade: state.formData.grade,
@@ -235,7 +232,6 @@ export const useOrderForm = () => {
         delivery_location: state.formData.deliveryLocation,
         target_price: state.formData.targetPrice ? parseFloat(state.formData.targetPrice) : null,
       };
-
       const res = await fetch(`${BACKEND_URL}/api/buyer/place-order`, {
         method: "POST",
         headers: {
@@ -246,17 +242,24 @@ export const useOrderForm = () => {
       });
 
       const body = await res.json();
+      console.log("Place order response:", body);
       if (!res.ok) {
         console.error("Submit error:", body);
         Alert.alert("Error", body.message || "Failed to submit order");
-        return;
+        return {
+          success: false,
+          farmersFound: false,
+          message: "Could not submit order",
+          orderId: null,
+        };
       }
 
-      // Return the response with farmersFound status
+      // Return the response with farmersFound status and orderId
       return {
         success: true,
         farmersFound: body.farmersFound || false,
         message: body.message || "Order placed successfully",
+        orderId: body.id || body.orderId || body.order?.id,
       };
     } catch (err) {
       console.error(err);
@@ -265,6 +268,7 @@ export const useOrderForm = () => {
         success: false,
         farmersFound: false,
         message: "Could not submit order",
+        orderId: null,
       };
     }
   };

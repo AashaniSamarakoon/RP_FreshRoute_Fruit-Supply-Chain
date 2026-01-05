@@ -1,14 +1,13 @@
-import { BuyerColors } from "@/constants/theme";
 import { CheckCircle } from "lucide-react-native";
 import React from "react";
-import { Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Modal, StyleSheet, Text, View } from "react-native";
+import { BuyerColors } from "../../constants/theme";
 
 interface SuccessModalProps {
   visible: boolean;
   onClose: () => void;
   title: string;
   message: string;
-  buttonText?: string;
 }
 
 export default function SuccessModal({
@@ -16,7 +15,6 @@ export default function SuccessModal({
   onClose,
   title,
   message,
-  buttonText = "Done",
 }: SuccessModalProps) {
   return (
     <Modal
@@ -38,10 +36,7 @@ export default function SuccessModal({
           {/* Message */}
           <Text style={styles.message}>{message}</Text>
 
-          {/* Button */}
-          <TouchableOpacity style={styles.button} onPress={onClose}>
-            <Text style={styles.buttonText}>{buttonText}</Text>
-          </TouchableOpacity>
+          {/* Button removed as per user request */}
         </View>
       </View>
     </Modal>
@@ -88,20 +83,5 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 22,
     marginBottom: 28,
-  },
-
-  button: {
-    backgroundColor: BuyerColors.primaryGreen,
-    paddingVertical: 12,
-    paddingHorizontal: 40,
-    borderRadius: 12,
-    width: "100%",
-    alignItems: "center",
-  },
-
-  buttonText: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "700",
   },
 });
