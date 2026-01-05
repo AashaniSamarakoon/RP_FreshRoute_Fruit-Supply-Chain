@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BACKEND_URL } from "../../../config";
-import DashboardHeader from "../../components/DashboardHeader";
+import DashboardHeader from "@/components/DashboardHeader";
 
 interface FarmerDashboardData {
   message?: string;
@@ -73,7 +73,7 @@ export default function FarmerDashboard() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <DashboardHeader />
+      <DashboardHeader/>
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         {/* Search Bar */}
         <View style={styles.searchContainer}>

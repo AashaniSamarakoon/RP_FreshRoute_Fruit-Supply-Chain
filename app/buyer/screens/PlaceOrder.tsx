@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useRouter } from "expo-router";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Animated,
@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import RNPickerSelect from "react-native-picker-select";
 import Header from "../../../components/Header";
+import SuccessModal from "../../../components/modals/SuccessModal";
 import { useOrderForm } from "../forms/useOrderForm";
 
 const PRIMARY_GREEN = "#2E7D32";
@@ -115,6 +116,13 @@ export const options = {
 
 export default function AddStock() {
   const router = useRouter();
+  const [showModal, setShowModal] = useState(false);
+  const [modalData, setModalData] = useState({
+    title: "",
+    message: "",
+    farmersFound: false,
+  });
+
   const {
     formData,
     loading,
@@ -129,16 +137,58 @@ export default function AddStock() {
   } = useOrderForm();
 
   const handleSubmit = async () => {
-    // For now, bypass form submission and navigate directly to matched stocks
-    router.push("/buyer/screens/MatchedStocks");
+    // Submit the form using the hook's handler
+    const result = await originalHandleSubmit();
+
+    if (result?.success) {
+      // Show success modal with appropriate message
+      setModalData({
+        title: "Order Submitted",
+        message: result.farmersFound
+          ? "We've found matching suppliers for your order. Let's explore your options."
+          : "Your order has been submitted successfully. We're searching for the best suppliers and will notify you shortly.",
+        farmersFound: result.farmersFound || false,
+      });
+      setShowModal(true);
+
+      // Auto-navigate if farmers found, after a delay
+      if (result.farmersFound) {
+        setTimeout(() => {
+          setShowModal(false);
+          router.push("/buyer/screens/MatchedStocks");
+        }, 1500);
+      }
+    }
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        {/* Header - always displayed */}
-        <Header title="Place Order" onBack={() => router.back()} />
+      <Header
+        title="Place Order"
+        showNotification={true}
+        onNotificationPress={() => {
+          console.log("Notifications pressed");
+        }}
+      />
 
+      {/* Success Modal */}
+      {showModal && (
+        <SuccessModal
+          visible={showModal}
+          title={modalData.title}
+          message={modalData.message}
+          onClose={() => {
+            setShowModal(false);
+            if (!modalData.farmersFound) {
+              // If no suppliers found, navigate to home page
+              router.push("/buyer/(tabs)");
+            }
+          }}
+          buttonText={modalData.farmersFound ? "View Matches" : "Done"}
+        />
+      )}
+
+      <View style={styles.container}>
         {loading ? (
           <SkeletonLoader />
         ) : (
@@ -313,7 +363,7 @@ export default function AddStock() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#fff" },
+  safeArea: { flex: 1, backgroundColor: "#fff", paddingTop: 20 },
   container: { flex: 1, backgroundColor: "#fff" },
 
   formCard: {

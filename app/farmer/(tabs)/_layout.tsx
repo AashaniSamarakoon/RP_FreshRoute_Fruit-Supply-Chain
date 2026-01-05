@@ -1,5 +1,12 @@
 import { Tabs } from "expo-router";
-import { Bell, Calendar, Home, TrendingUp, User } from "lucide-react-native";
+import {
+  Bell,
+  Calendar,
+  Home,
+  ShoppingCart,
+  TrendingUp,
+  User,
+} from "lucide-react-native";
 
 export default function FarmerLayout() {
   return (
@@ -46,6 +53,15 @@ export default function FarmerLayout() {
           title: "Forecast",
           tabBarIcon: ({ color, size }) => (
             <Calendar size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="orders"
+        options={{
+          title: "Orders",
+          tabBarIcon: ({ color, size }) => (
+            <ShoppingCart size={size} color={color} />
           ),
         }}
       />

@@ -1,4 +1,3 @@
-import DashboardHeader from "@/app/components/DashboardHeader";
 import React from "react";
 import {
   ScrollView,
@@ -11,10 +10,12 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BuyerColors } from "../../../constants/theme";
 import { DealData } from "../../../types";
-import DealCard from "../../components/buyer/DealCard";
-import Hero from "../../components/buyer/Hero";
-import PriceComparisonChart from "../../components/buyer/PriceComparisonChart";
-import Search from "../../components/buyer/Search";
+import Search from "../components/Search";
+import Hero from "../components/Hero";
+import DealCard from "../components/DealCard";
+import PriceComparisonChart from "../components/PriceComparisonChart";
+import DashboardHeader from "@/components/DashboardHeader";
+
 
 // --- Main Component ---
 

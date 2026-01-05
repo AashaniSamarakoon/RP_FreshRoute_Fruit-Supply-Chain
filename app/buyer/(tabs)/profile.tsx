@@ -1,9 +1,10 @@
-import React from "react";
-import { StyleSheet, Text, View, TouchableOpacity } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { BuyerColors } from "../../../constants/theme";
-import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useRouter } from "expo-router";
+import React from "react";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import Header from "../../../components/Header";
+import { BuyerColors } from "../../../constants/theme";
 
 export default function BuyerProfile() {
   const router = useRouter();
@@ -16,6 +17,13 @@ export default function BuyerProfile() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <Header
+        title="Profile"
+        showNotification={true}
+        onNotificationPress={() => {
+          console.log("Notifications pressed");
+        }}
+      />
       <View style={styles.content}>
         <Text style={styles.title}>Profile</Text>
         <Text style={styles.subtitle}>Manage your account settings here.</Text>
@@ -41,7 +49,12 @@ const styles = StyleSheet.create({
     color: BuyerColors?.textBlack || "#000",
     marginBottom: 8,
   },
-  subtitle: { fontSize: 16, color: "#666", textAlign: "center", marginBottom: 20 },
+  subtitle: {
+    fontSize: 16,
+    color: "#666",
+    textAlign: "center",
+    marginBottom: 20,
+  },
   logoutButton: {
     backgroundColor: "red",
     paddingVertical: 12,

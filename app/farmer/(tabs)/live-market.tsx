@@ -1,3 +1,4 @@
+import Header from "@/components/Header";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
@@ -70,18 +71,14 @@ export default function LiveMarketScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <Header
+        title="Market Price"
+        showNotification={true}
+        onNotificationPress={() => {
+          console.log("Notifications pressed");
+        }}
+      />
       <View style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Ionicons name="chevron-back" size={24} color="#000" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Prices & Demand</Text>
-          <TouchableOpacity>
-            <Ionicons name="search" size={24} color="#000" />
-          </TouchableOpacity>
-        </View>
-
         {/* FreshRoute daily prices CTA */}
         <TouchableOpacity
           style={styles.ctaCard}

@@ -1,4 +1,3 @@
-import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
@@ -11,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import Header from "../../../components/Header";
 
 const PRIMARY_GREEN = "#2E7D32";
 const LIGHT_GREEN = "#e8f4f0";
@@ -74,16 +74,14 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <Header
+        title="Profile"
+        showNotification={true}
+        onNotificationPress={() => {
+          console.log("Notifications pressed");
+        }}
+      />
       <View style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Ionicons name="chevron-back" size={24} color="#000" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Farmer Profile</Text>
-          <View style={{ width: 24 }} />
-        </View>
-
         <ScrollView
           style={styles.scrollView}
           showsVerticalScrollIndicator={false}

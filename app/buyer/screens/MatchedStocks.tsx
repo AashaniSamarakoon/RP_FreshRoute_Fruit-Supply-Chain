@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 import Header from "../../../components/Header";
+import SuccessModal from "../../../components/modals/SuccessModal";
 import { BuyerColors } from "../../../constants/theme";
 
 // ... [Keep your MatchedStock interface the same] ...
@@ -30,9 +31,10 @@ interface MatchedStock {
 
 export default function MatchedStocksScreen() {
   const router = useRouter();
-  // ... [Keep your state and mock data setup] ...
   const [stocks, setStocks] = useState<MatchedStock[]>([]);
   const [loading, setLoading] = useState(true);
+  const [successModalVisible, setSuccessModalVisible] = useState(false);
+  const [selectedStock, setSelectedStock] = useState<MatchedStock | null>(null);
 
   // Updated Mock Data with Trust Scores
   const mockMatchedStocks: MatchedStock[] = [
@@ -66,6 +68,44 @@ export default function MatchedStocksScreen() {
       pathname: "/buyer/screens/trust-profile/[id]",
       params: { id: farmerId },
     });
+  };
+
+  const handleSelectAndConfirm = (item: MatchedStock) => {
+    // Create order notification for farmer
+    const orderNotification = {
+      id: Math.random().toString(36).substr(2, 9),
+      buyerName: "Fresh Mart",
+      productName: item.category,
+      quantity: item.quantity.toString(),
+      unit: item.availableUnit,
+      grade: item.grade,
+      amount: `Rs. ${(item.quantity * 250).toLocaleString()}`,
+      status: "pending" as const,
+    };
+
+    // Add to buyer's orders with "waiting" status
+    const buyerOrder = {
+      id: Math.random().toString(36).substr(2, 9),
+      farmerName: item.farmerName,
+      product: item.category,
+      quantity: item.quantity.toString(),
+      unit: item.availableUnit,
+      amount: `Rs. ${(item.quantity * 250).toLocaleString()}`,
+      status: "waiting" as const,
+      createdAt: new Date().toISOString().split("T")[0],
+    };
+
+    // Store order in global state (in real app use Context/Redux)
+    if (!global.buyerOrders) {
+      global.buyerOrders = [];
+    }
+    global.buyerOrders.unshift(buyerOrder);
+
+    // Send order to farmer (in real app via API)
+    console.log("Order sent to farmer:", orderNotification);
+
+    setSelectedStock(item);
+    setSuccessModalVisible(true);
   };
 
   const renderStockCard = ({ item }: { item: MatchedStock }) => (
@@ -134,7 +174,10 @@ export default function MatchedStocksScreen() {
       </View>
 
       {/* Action Button */}
-      <TouchableOpacity style={styles.selectButton}>
+      <TouchableOpacity
+        style={styles.selectButton}
+        onPress={() => handleSelectAndConfirm(item)}
+      >
         <Text style={styles.selectButtonText}>Select & Confirm</Text>
       </TouchableOpacity>
     </View>
@@ -164,12 +207,29 @@ export default function MatchedStocksScreen() {
           showsVerticalScrollIndicator={false}
         />
       )}
+
+      {/* Success Modal */}
+      <SuccessModal
+        visible={successModalVisible}
+        onClose={() => {
+          setSuccessModalVisible(false);
+          // Navigate to Orders tab
+          router.push("/buyer/(tabs)/orders");
+        }}
+        title="Order Sent"
+        message={
+          selectedStock
+            ? `Your order for ${selectedStock.category} has been sent to ${selectedStock.farmerName}. They will review and confirm shortly.`
+            : ""
+        }
+        buttonText="Done"
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#ffffffff" },
+  container: { flex: 1, backgroundColor: "#ffffffff", paddingTop: 20 },
 
   headerInfo: {
     paddingHorizontal: 16,
