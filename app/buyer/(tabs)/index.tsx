@@ -1,3 +1,5 @@
+import DashboardHeader from "@/components/DashboardHeader";
+import { useRouter } from "expo-router";
 import React from "react";
 import {
   ScrollView,
@@ -10,16 +12,16 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BuyerColors } from "../../../constants/theme";
 import { DealData } from "../../../types";
-import Search from "../components/Search";
-import Hero from "../components/Hero";
 import DealCard from "../components/DealCard";
+import Hero from "../components/Hero";
 import PriceComparisonChart from "../components/PriceComparisonChart";
-import DashboardHeader from "@/components/DashboardHeader";
+import Search from "../components/Search";
 
 
 // --- Main Component ---
 
 export default function BuyerDashboardScreen(): React.JSX.Element {
+  const router = useRouter();
   // Sample Data for Wholesale Deals
   const deals: DealData[] = [
     {
@@ -59,6 +61,18 @@ export default function BuyerDashboardScreen(): React.JSX.Element {
         <Search />
 
         <Hero />
+
+        {/* FreshRoute Prices Quick Access */}
+        <TouchableOpacity
+          style={styles.quickCard}
+          onPress={() => router.push("/buyer/(tabs)/freshroutePrices")}
+        >
+          <View>
+            <Text style={styles.quickTitle}>FreshRoute Prices</Text>
+            <Text style={styles.quickSubtitle}>See latest curated prices by grade</Text>
+          </View>
+          <Text style={styles.quickAction}>View</Text>
+        </TouchableOpacity>
 
         {/* Wholesale Deals Section */}
         <View style={styles.sectionHeader}>
@@ -136,5 +150,31 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
     // marginTop: 32,
     marginBottom: 16,
+  },
+  quickCard: {
+    marginHorizontal: 20,
+    marginTop: 16,
+    marginBottom: 8,
+    padding: 16,
+    borderRadius: 14,
+    backgroundColor: BuyerColors.primaryGreen,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  quickTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#fff",
+  },
+  quickSubtitle: {
+    fontSize: 12,
+    color: "#f1f5f9",
+    marginTop: 4,
+  },
+  quickAction: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#fff",
   },
 });

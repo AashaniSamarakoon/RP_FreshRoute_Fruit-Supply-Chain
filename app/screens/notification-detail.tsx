@@ -1,170 +1,252 @@
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
+  Linking,
+  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import Header from "../../components/Header";
+import { BACKEND_URL } from "../../config";
+import { useTranslation } from "../../hooks/farmer/useTranslation";
 
 const PRIMARY_GREEN = "#2E7D32";
 const LIGHT_GREEN = "#e8f4f0";
+const BLUE = "#3b82f6";
+const ORANGE = "#f59e0b";
+const RED = "#ef4444";
 
 interface NotificationDetail {
-  id: number;
-  icon: string;
-  iconColor: string;
-  iconBg: string;
+  id: string | number;
   title: string;
-  subtitle: string;
-  description: string;
-  detailedDescription: string;
-  time: string;
-  actionButtonText: string;
-  actionButtonUrl?: string;
+  body: string;
+  created_at?: string;
+  read_at?: string | null;
+  category?: string;
+  severity?: string;
+  action_button_text?: string;
+  action_url?: string;
 }
-
-const notificationDetails: { [key: string]: NotificationDetail } = {
-  "1": {
-    id: 1,
-    icon: "trending-up",
-    iconColor: "#10b981",
-    iconBg: LIGHT_GREEN,
-    title: "Price Alert: Avocados are Trending Up",
-    subtitle: "16 minutes ago",
-    description:
-      "FreshRoute AI predicts a 15% increase in avocado prices over the next 48 hours due to a surge in regional demand.",
-    detailedDescription:
-      "FreshRoute AI predicts a 15% increase in avocado prices over the next 48 hours due to a surge in regional demand. Consider adjusting your inventory levels.",
-    time: "16 minutes ago",
-    actionButtonText: "View Avocado Demand Report",
-  },
-  "2": {
-    id: 2,
-    icon: "alert-circle",
-    iconColor: "#f59e0b",
-    iconBg: "#fef3c7",
-    title: "Price Alert: Apple prices may rise 8%",
-    subtitle: "Just now",
-    description:
-      "The forecast predicts a significant price increase. Consider holding apples for next 3 days to maximize profit.",
-    detailedDescription:
-      "The forecast predicts a significant price increase in apples. Consider holding apples for the next 3 days to maximize profit potential.",
-    time: "Just now",
-    actionButtonText: "View Apple Price Forecast",
-  },
-  "3": {
-    id: 3,
-    icon: "trending-up",
-    iconColor: "#3b82f6",
-    iconBg: "#dbeafe",
-    title: "High demand for strawberries",
-    subtitle: "1h ago",
-    description:
-      "New forecast shows high demand for strawberries in economic centers in your region this weekend.",
-    detailedDescription:
-      "New forecast shows high demand for strawberries in economic centers in your region this weekend. Prepare your inventory accordingly.",
-    time: "1h ago",
-    actionButtonText: "View Forecast Details",
-  },
-  "4": {
-    id: 4,
-    icon: "leaf",
-    iconColor: PRIMARY_GREEN,
-    iconBg: LIGHT_GREEN,
-    title: "Tip: Delay orange harvest",
-    subtitle: "3h ago",
-    description:
-      "Consider delaying orange harvest by 3 days for a potential 5% price increase.",
-    detailedDescription:
-      "Consider delaying orange harvest by 3 days for a potential 5% price increase based on upcoming market trends.",
-    time: "3h ago",
-    actionButtonText: "View Orange Market Trends",
-  },
-};
-
-export const options = {
-  headerShown: false,
-};
 
 export default function NotificationDetailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const notificationId = (params.id as string) || "1";
+  const notificationId = (params.id as string) || "";
+  const initialFromParams: NotificationDetail | null = notificationId
+    ? {
+        id: notificationId,
+        title: (params.title as string) || "",
+        body: (params.body as string) || "",
+        created_at: (params.created_at as string) || undefined,
+        category: (params.category as string) || undefined,
+        severity: (params.severity as string) || undefined,
+      }
+    : null;
+  const { t } = useTranslation();
 
-  const notification =
-    notificationDetails[notificationId] || notificationDetails["1"];
+  const [notification, setNotification] = useState<NotificationDetail | null>(initialFromParams);
+  const [loading, setLoading] = useState(!initialFromParams);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!notificationId) {
+      setError("Missing notification id");
+      setLoading(false);
+      return;
+    }
+    const loadDetail = async () => {
+      // If we already have data from params, keep showing it while fetching.
+      if (!notification) {
+        setLoading(true);
+      }
+      setError(null);
+      try {
+        const token = await AsyncStorage.getItem("token");
+        if (!token) {
+          setError("Not authenticated");
+          setLoading(false);
+          return;
+        }
+
+        const res = await fetch(`${BACKEND_URL}/api/farmer/notifications/${notificationId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        // Safely handle non-JSON responses from the server (e.g., HTML error pages).
+        const raw = await res.text();
+        let data: any = null;
+        try {
+          data = raw ? JSON.parse(raw) : {};
+        } catch (parseErr) {
+          setError(`Failed to parse response (status ${res.status})`);
+          console.log("[NOTIFICATION-DETAIL] parse error", parseErr, raw?.slice(0, 200));
+          if (!notification) {
+            setNotification(null);
+          }
+          setLoading(false);
+          return;
+        }
+
+        if (!res.ok) {
+          setError(data?.message || `Failed to load notification (status ${res.status})`);
+          if (!notification) {
+            setNotification(null);
+          }
+          setLoading(false);
+          return;
+        }
+
+        const n = data.notification || data;
+        setNotification({
+          id: n.id || n._id || notificationId,
+          title: n.title || initialFromParams?.title || "",
+          body: n.body || n.description || initialFromParams?.body || "",
+          created_at: n.created_at || initialFromParams?.created_at,
+          read_at: n.read_at,
+          category: n.category || initialFromParams?.category,
+          severity: n.severity || initialFromParams?.severity,
+          action_button_text: n.action_button_text || n.actionButtonText,
+          action_url: n.action_url || n.actionButtonUrl,
+        });
+
+        // Ensure it is marked as read if still unread.
+        if (!n.read_at) {
+          try {
+            await fetch(`${BACKEND_URL}/api/farmer/notifications/${n.id || n._id}/read`, {
+              method: "PUT",
+              headers: { Authorization: `Bearer ${token}` },
+            });
+          } catch (markErr) {
+            console.log("[NOTIFICATION-DETAIL] mark read failed", markErr);
+          }
+        }
+      } catch (err) {
+        console.error("[NOTIFICATION-DETAIL] Unexpected error", err);
+        setError("Something went wrong");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    // If we already have body/title from params, still fetch to confirm but keep showing content.
+    loadDetail();
+  }, [notificationId, notification]);
+
+  const iconMeta = useMemo(() => {
+    if (!notification) return { name: "notifications", color: PRIMARY_GREEN, bg: LIGHT_GREEN };
+    if (notification.severity === "high") return { name: "alert-circle", color: RED, bg: "#fee2e2" };
+    if (notification.category?.toLowerCase().includes("price")) return { name: "trending-up", color: BLUE, bg: "#dbeafe" };
+    if (notification.category?.toLowerCase().includes("demand")) return { name: "pulse", color: PRIMARY_GREEN, bg: LIGHT_GREEN };
+    return { name: "notifications", color: ORANGE, bg: "#fef3c7" };
+  }, [notification]);
+
+  const onActionPress = () => {
+    if (!notification?.action_url) return;
+    Linking.openURL(notification.action_url).catch(() => {
+      Alert.alert("Unable to open link");
+    });
+  };
+
+  const formattedTime = notification?.created_at
+    ? new Date(notification.created_at).toLocaleString()
+    : notification?.read_at
+      ? new Date(notification.read_at).toLocaleString()
+      : "";
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         {/* Header */}
-        <Header
-          title="Notifications"
-          onBack={() => router.back()}
-          rightComponent={
-            <TouchableOpacity>
-              <Ionicons name="share-social" size={24} color="#000" />
-            </TouchableOpacity>
-          }
-        />
-
-        <ScrollView
-          style={styles.scrollView}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Notification Icon */}
-          <View style={styles.iconContainer}>
-            <View
-              style={[
-                styles.largeIconCircle,
-                { backgroundColor: notification.iconBg },
-              ]}
-            >
-              <Ionicons
-                name={notification.icon as any}
-                size={40}
-                color={notification.iconColor}
-              />
-            </View>
-          </View>
-
-          {/* Notification Title */}
-          <View style={styles.titleContainer}>
-            <Text style={styles.notificationTitle}>{notification.title}</Text>
-            <Text style={styles.notificationSubtitle}>
-              {notification.subtitle}
-            </Text>
-          </View>
-
-          {/* Notification Description */}
-          <View style={styles.descriptionContainer}>
-            <Text style={styles.descriptionText}>
-              {notification.detailedDescription}
-            </Text>
-          </View>
-
-          {/* Action Button */}
-          <TouchableOpacity style={styles.actionButton} onPress={() => {}}>
-            <Text style={styles.actionButtonText}>
-              {notification.actionButtonText}
-            </Text>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Ionicons name="chevron-back" size={24} color="#000" />
           </TouchableOpacity>
+          <Text style={styles.headerTitle}>{t("notificationDetail.headerTitle")}</Text>
+          <TouchableOpacity>
+            <Ionicons name="share-social" size={24} color="#000" />
+          </TouchableOpacity>
+        </View>
 
-          {/* Additional Info */}
-          <View style={styles.infoContainer}>
-            <View style={styles.infoRow}>
-              <Ionicons name="time-outline" size={16} color="#999" />
-              <Text style={styles.infoText}>Received {notification.time}</Text>
-            </View>
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={PRIMARY_GREEN} />
+            <Text style={styles.loadingText}>{t("notifications.loading" as any) || "Loading..."}</Text>
           </View>
+        ) : error && !notification ? (
+          <View style={styles.loadingContainer}>
+            <Ionicons name="alert-circle" size={40} color={RED} />
+            <Text style={styles.loadingText}>{error}</Text>
+          </View>
+        ) : !notification ? (
+          <View style={styles.loadingContainer}>
+            <Ionicons name="notifications-off-outline" size={40} color="#ccc" />
+            <Text style={styles.loadingText}>{t("notifications.emptyText")}</Text>
+          </View>
+        ) : (
+          <ScrollView
+            style={styles.scrollView}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Notification Icon */}
+            <View style={styles.iconContainer}>
+              <View style={[styles.largeIconCircle, { backgroundColor: iconMeta.bg }]}>
+                <Ionicons name={iconMeta.name as any} size={40} color={iconMeta.color} />
+              </View>
+            </View>
 
-          <View style={{ height: 30 }} />
-        </ScrollView>
+            {/* Notification Title */}
+            <View style={styles.titleContainer}>
+              <Text style={styles.notificationTitle}>{notification.title}</Text>
+              <Text style={styles.notificationSubtitle}>{formattedTime}</Text>
+            </View>
+
+            {/* Notification Description */}
+            <View style={styles.descriptionContainer}>
+              <Text style={styles.descriptionText}>{notification.body}</Text>
+            </View>
+
+            {/* Action Button */}
+            {notification.action_button_text && (
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={onActionPress}
+                disabled={!notification.action_url}
+              >
+                <Text style={styles.actionButtonText}>{notification.action_button_text}</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Additional Info */}
+            <View style={styles.infoContainer}>
+              <View style={styles.infoRow}>
+                <Ionicons name="time-outline" size={16} color="#999" />
+                <Text style={styles.infoText}>
+                  {t("notificationDetail.received", { time: formattedTime || "" })}
+                </Text>
+              </View>
+              {notification.category && (
+                <View style={styles.infoRow}>
+                  <Ionicons name="pricetag" size={16} color="#999" />
+                  <Text style={styles.infoText}>{notification.category}</Text>
+                </View>
+              )}
+              {notification.severity && (
+                <View style={styles.infoRow}>
+                  <Ionicons name="warning" size={16} color="#999" />
+                  <Text style={styles.infoText}>{notification.severity}</Text>
+                </View>
+              )}
+            </View>
+
+            <View style={{ height: 30 }} />
+          </ScrollView>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -179,8 +261,36 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#fff",
   },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingTop: 40,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
+  },
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#000",
+  },
   scrollView: {
     flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 60,
+  },
+  loadingText: {
+    marginTop: 8,
+    fontSize: 13,
+    color: "#666",
+    textAlign: "center",
+    paddingHorizontal: 24,
   },
   iconContainer: {
     alignItems: "center",
