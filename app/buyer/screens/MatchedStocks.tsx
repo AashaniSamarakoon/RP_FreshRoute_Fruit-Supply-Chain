@@ -338,14 +338,14 @@ export default function MatchedStocksScreen() {
             ? `Your order for ${selectedStock.category} has been sent to ${selectedStock.farmerName}. They will review and confirm shortly.`
             : ""
         }
-        // buttonText="Done"
+        buttonText="Done"
       />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#ffffffff", paddingTop: 20 },
+  container: { flex: 1, backgroundColor: "#ffffffff", paddingTop: 40 },
 
   headerInfo: {
     paddingHorizontal: 16,

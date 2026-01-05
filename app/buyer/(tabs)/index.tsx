@@ -97,7 +97,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: BuyerColors.cardWhite,
-    paddingTop: 20, // Add top padding since no default header
+    // paddingTop: 20, // Add top padding since no default header
   },
 
   contentContainer: {

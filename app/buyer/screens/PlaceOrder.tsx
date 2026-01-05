@@ -167,13 +167,8 @@ export default function AddStock() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <Header
-        title="Place Order"
-        showNotification={true}
-        onNotificationPress={() => {
-          console.log("Notifications pressed");
-        }}
-      />
+      <Header title="Place Order" onBack={() => router.back()} />
+
 
       {/* Success Modal */}
       {showModal && (
@@ -360,7 +355,7 @@ export default function AddStock() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#fff" },
+  safeArea: { flex: 1, backgroundColor: "#fff", paddingTop: 40 },
   container: { flex: 1, backgroundColor: "#fff" },
 
   formCard: {
