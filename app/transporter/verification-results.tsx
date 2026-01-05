@@ -3,6 +3,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   Image,
   ScrollView,
   StyleSheet,
@@ -10,6 +12,7 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
+import { BACKEND_URL } from "../../config";
 
 interface VerificationResult {
   imageUri: string;
@@ -26,6 +29,11 @@ export default function VerificationResults() {
   const [farmerGrade, setFarmerGrade] = useState<string>("");
   const [isMatch, setIsMatch] = useState<boolean>(false);
   const [hasError, setHasError] = useState<boolean>(false);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [jobId, setJobId] = useState<string>("");
+  const [orderId, setOrderId] = useState<string>("");
+  const [imagesBase64, setImagesBase64] = useState<string[]>([]); // Can contain URIs or base64 strings
+  const [imageUris, setImageUris] = useState<string[]>([]); // Store URIs separately
   const paramsProcessed = useRef(false);
 
   useEffect(() => {
@@ -54,43 +62,217 @@ export default function VerificationResults() {
   useEffect(() => {
     if (!isAuthenticated || checkingAuth || paramsProcessed.current) return;
 
-    try {
-      const errorParam = params.error;
-      const resultsParam = params.results;
-      const farmerGradeParam = params.farmerGrade;
+    const loadData = async () => {
+      try {
+        const errorParam = params.error;
+        const resultsParam = params.results;
+        const farmerGradeParam = params.farmerGrade;
 
-      if (errorParam === "true") {
+        if (errorParam === "true") {
+          setHasError(true);
+          paramsProcessed.current = true;
+          return;
+        }
+
+        if (!resultsParam) {
+          // Wait for params to be available
+          return;
+        }
+
+        const resultsData = JSON.parse(resultsParam as string);
+        const farmerGradeData = (farmerGradeParam as string) || "Grade A";
+        const jobIdParam = (params.job_id as string) || "";
+        const orderIdParam = (params.order_id as string) || "";
+        const imageUrisParam = (params.imageUris as string) || "";
+        const imagesBase64Param = (params.imagesBase64 as string) || ""; // Fallback for old method
+        const imagesStorageKey = (params.imagesStorageKey as string) || ""; // Fallback for AsyncStorage method
+
+        setResults(resultsData);
+        setFarmerGrade(farmerGradeData);
+        setJobId(jobIdParam || "");
+        setOrderId(orderIdParam || "");
+        
+        // Store image URIs for later base64 conversion
+        if (imageUrisParam) {
+          try {
+            const imageUris = JSON.parse(imageUrisParam);
+            // Store URIs - we'll convert to base64 when saving
+            setImagesBase64(imageUris); // Temporarily store URIs, will convert to base64 later
+          } catch (e) {
+            console.error("Error parsing image URIs:", e);
+          }
+        } else if (imagesStorageKey) {
+          // Fallback: Try to load from AsyncStorage
+          try {
+            const storedImages = await AsyncStorage.getItem(imagesStorageKey);
+            if (storedImages) {
+              setImagesBase64(JSON.parse(storedImages));
+              console.log("✅ Loaded base64 images from AsyncStorage");
+              AsyncStorage.removeItem(imagesStorageKey).catch(() => {});
+            }
+          } catch (e) {
+            console.error("Error loading base64 images from storage:", e);
+          }
+        } else if (imagesBase64Param) {
+          // Fallback: Old method (URL params)
+          try {
+            setImagesBase64(JSON.parse(imagesBase64Param));
+          } catch (e) {
+            console.error("Error parsing base64 images from params:", e);
+          }
+        }
+
+        // Check if all detected grades match farmer's declared grade
+        const allMatch = resultsData.every(
+          (result: VerificationResult) => result.detectedGrade === farmerGradeData
+        );
+        setIsMatch(allMatch);
+        paramsProcessed.current = true;
+      } catch (error) {
+        console.error("Error parsing results:", error);
         setHasError(true);
         paramsProcessed.current = true;
-        return;
       }
+    };
 
-      if (!resultsParam) {
-        // Wait for params to be available
-        return;
+    loadData();
+  }, [isAuthenticated, checkingAuth, params.error, params.results, params.farmerGrade, params.imageUris, params.imagesStorageKey, params.imagesBase64]);
+
+  const convertUriToBase64 = async (uri: string): Promise<string> => {
+    try {
+      // Check if it's already base64
+      if (uri.startsWith("data:image")) {
+        return uri;
       }
-
-      const resultsData = JSON.parse(resultsParam as string);
-      const farmerGradeData = (farmerGradeParam as string) || "Grade A";
-
-      setResults(resultsData);
-      setFarmerGrade(farmerGradeData);
-
-      // Check if all detected grades match farmer's declared grade
-      const allMatch = resultsData.every(
-        (result: VerificationResult) => result.detectedGrade === farmerGradeData
-      );
-      setIsMatch(allMatch);
-      paramsProcessed.current = true;
+      
+      // Convert file URI to base64 using fetch
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64String = reader.result as string;
+          resolve(base64String);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
     } catch (error) {
-      console.error("Error parsing results:", error);
-      setHasError(true);
-      paramsProcessed.current = true;
+      console.error("Error converting URI to base64:", error);
+      throw error;
     }
-  }, [isAuthenticated, checkingAuth, params.error, params.results, params.farmerGrade]);
+  };
+
+  const saveGradingData = async () => {
+    if (!jobId || !orderId || (imagesBase64.length === 0 && imageUris.length === 0) || results.length === 0) {
+      Alert.alert("Error", "Missing required data to save grading information.");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const token = await AsyncStorage.getItem("token");
+      if (!token) {
+        Alert.alert("Error", "Authentication required");
+        router.replace("/login");
+        return;
+      }
+
+      // Convert image URIs to base64 if needed
+      let base64Images: string[] = [];
+      const imagesToProcess = imageUris.length > 0 ? imageUris : imagesBase64;
+      
+      for (const image of imagesToProcess) {
+        if (image.startsWith("data:image")) {
+          // Already base64
+          base64Images.push(image);
+        } else {
+          // Convert URI to base64
+          const base64 = await convertUriToBase64(image);
+          base64Images.push(base64);
+        }
+      }
+
+      // Generate grading_id (UUID format)
+      const gradingId = `grading-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+      // Use FormData to send large payloads (avoids "request entity too large" error)
+      const formData = new FormData();
+      formData.append("grading_id", gradingId);
+      formData.append("job_id", jobId);
+      formData.append("order_id", orderId);
+
+      // Add images and metadata as FormData fields
+      // Send base64 images as strings in FormData (more efficient than JSON for large data)
+      base64Images.forEach((base64, index) => {
+        // Append base64 image string
+        formData.append(`image_${index}_base64`, base64);
+        formData.append(`image_${index}_predicted_grade`, results[index].detectedGrade);
+        formData.append(`image_${index}_accuracy`, (results[index].confidence || 0).toString());
+        formData.append(`image_${index}_sequence`, (index + 1).toString());
+      });
+
+      // Call backend API to save grading data using FormData
+      const response = await fetch(`${BACKEND_URL}/api/gradings`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          // Don't set Content-Type - let fetch set it automatically with boundary for FormData
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || "Failed to save grading data");
+      }
+
+      // Save verified order to AsyncStorage
+      try {
+        const verifiedOrdersJson = await AsyncStorage.getItem(`verified_orders_${jobId}`);
+        const verifiedOrders = verifiedOrdersJson ? JSON.parse(verifiedOrdersJson) : [];
+        if (!verifiedOrders.includes(orderId)) {
+          verifiedOrders.push(orderId);
+          await AsyncStorage.setItem(`verified_orders_${jobId}`, JSON.stringify(verifiedOrders));
+        }
+      } catch (error) {
+        console.error("Error saving verified order:", error);
+      }
+
+      // Navigate back to job details page
+      router.push(`/transporter/job/${jobId}`);
+    } catch (error) {
+      console.error("Error saving grading data:", error);
+      Alert.alert(
+        "Error",
+        error instanceof Error ? error.message : "Failed to save grading data. Please try again."
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const handleContinue = () => {
-    router.push("/transporter/final-order");
+    // Only proceed if grades match - save grading data and go to job details
+    if (isMatch && jobId && orderId) {
+      saveGradingData();
+    }
+    // If mismatch, user cannot proceed - they must re-verify
+  };
+
+  const handleReverify = () => {
+    // Navigate back to fruit grading camera page to re-capture images
+    if (jobId && orderId) {
+      router.push({
+        pathname: "/transporter/fruit-grading",
+        params: {
+          job_id: jobId,
+          order_id: orderId,
+        },
+      });
+    } else {
+      Alert.alert("Error", "Missing job or order information. Please go back and try again.");
+    }
   };
 
   if (checkingAuth || !isAuthenticated) {
@@ -128,7 +310,7 @@ export default function VerificationResults() {
 
         <View style={styles.comparisonContainer}>
           <View style={styles.comparisonRow}>
-            <Text style={styles.comparisonLabel}>Farmer's Declared Grade:</Text>
+            <Text style={styles.comparisonLabel}>Farmer Provided Grade:</Text>
             <Text style={styles.comparisonValue}>{farmerGrade}</Text>
           </View>
           <View style={styles.comparisonGradesContainer}>
@@ -184,26 +366,35 @@ export default function VerificationResults() {
           <View style={styles.matchContainer}>
             <Ionicons name="checkmark-circle" size={64} color="#2f855a" />
             <Text style={styles.matchText}>
-              All AI-verified grades match the farmer&apos;s declared grade ({farmerGrade})
+              All AI-verified grades match the farmer provided grade ({farmerGrade})
             </Text>
             <TouchableOpacity
               style={styles.continueButton}
               onPress={handleContinue}
+              disabled={isSaving}
             >
-              <Text style={styles.continueButtonText}>Continue</Text>
+              {isSaving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.continueButtonText}>Proceed to Pickup</Text>
+              )}
             </TouchableOpacity>
           </View>
         ) : (
           <View style={styles.mismatchContainer}>
             <Ionicons name="warning" size={64} color="#e53e3e" />
             <Text style={styles.mismatchText}>
-              Grade mismatch detected. Some AI-verified grades do not match the farmer&apos;s declared grade ({farmerGrade}).
+              Grade mismatch detected. Some AI-verified grades do not match the farmer provided grade ({farmerGrade}).
+            </Text>
+            <Text style={styles.mismatchSubText}>
+              Please re-verify the fruit quality by capturing images again.
             </Text>
             <TouchableOpacity
-              style={styles.continueButtonWarning}
-              onPress={handleContinue}
+              style={styles.reverifyButton}
+              onPress={handleReverify}
             >
-              <Text style={styles.continueButtonText}>Continue</Text>
+              <Ionicons name="camera-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+              <Text style={styles.continueButtonText}>Re-verify</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -316,10 +507,16 @@ const styles = StyleSheet.create({
   },
   mismatchText: {
     marginTop: 12,
-    marginBottom: 20,
+    marginBottom: 12,
     fontSize: 16,
     color: "#e53e3e",
     fontWeight: "600",
+    textAlign: "center",
+  },
+  mismatchSubText: {
+    marginBottom: 20,
+    fontSize: 14,
+    color: "#666",
     textAlign: "center",
   },
   gridContainer: {
@@ -370,12 +567,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     width: "100%",
   },
-  continueButtonWarning: {
-    backgroundColor: "#e53e3e",
+  reverifyButton: {
+    backgroundColor: "#2f855a",
     padding: 16,
     borderRadius: 10,
     alignItems: "center",
     width: "100%",
+    flexDirection: "row",
+    justifyContent: "center",
   },
   continueButtonText: {
     color: "#fff",

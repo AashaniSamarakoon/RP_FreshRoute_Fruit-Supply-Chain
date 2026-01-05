@@ -45,6 +45,12 @@
           "cameraPermission": "Allow FreshRoute to access your camera to capture fruit images for quality verification."
         }
       ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow FreshRoute to access your location to track delivery routes and provide navigation."
+        }
+      ],
       "expo-web-browser"
     ],
     "experiments": {

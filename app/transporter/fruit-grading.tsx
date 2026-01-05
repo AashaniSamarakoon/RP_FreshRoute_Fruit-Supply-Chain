@@ -3,7 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Audio } from "expo-av";
 import { CameraType, CameraView, useCameraPermissions } from "expo-camera";
 import * as Haptics from "expo-haptics";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -17,14 +17,25 @@ import {
   View,
 } from "react-native";
 import { BACKEND_URL } from "../../config";
+import {
+  openGoogleMapsToLocation,
+  verifyLocation,
+} from "../../utils/locationVerification";
 
 const TOTAL_IMAGES = 5;
 
 export default function FruitGrading() {
   const router = useRouter();
+  const params = useLocalSearchParams();
+  const jobId = params.job_id as string;
+  const orderId = params.order_id as string;
+  const pickupLat = params.pickup_lat ? parseFloat(params.pickup_lat as string) : null;
+  const pickupLng = params.pickup_lng ? parseFloat(params.pickup_lng as string) : null;
+  
   const [facing, setFacing] = useState<CameraType>("back");
   const [permission, requestPermission] = useCameraPermissions();
   const [capturedImages, setCapturedImages] = useState<string[]>([]);
+  const [capturedImagesBase64, setCapturedImagesBase64] = useState<string[]>([]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
@@ -34,9 +45,20 @@ export default function FruitGrading() {
   const [showSettingsTray, setShowSettingsTray] = useState(false);
   const [showVerifyingPopup, setShowVerifyingPopup] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
+  const [farmerDeclaredGrade, setFarmerDeclaredGrade] = useState<string>("Grade A");
+  
+  // Location verification state
+  const [showLocationVerification, setShowLocationVerification] = useState(false);
+  const [isVerifyingLocation, setIsVerifyingLocation] = useState(false);
+  const [locationVerified, setLocationVerified] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [locationDistance, setLocationDistance] = useState<number | null>(null);
+  const locationScanAnimation = useRef(new Animated.Value(0)).current;
+  
   const trayAnimation = useRef(new Animated.Value(0)).current;
   const scanAnimation = useRef(new Animated.Value(0)).current;
   const cameraRef = useRef<CameraView>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -53,6 +75,19 @@ export default function FruitGrading() {
           return;
         }
         setIsAuthenticated(true);
+        
+        // Get farmer's declared grade (mock for now - in real app, fetch from order data)
+        // TODO: Fetch from order data using orderId
+        setFarmerDeclaredGrade("Grade A");
+        
+        // Start location verification if pickup location is provided
+        if (pickupLat !== null && pickupLng !== null) {
+          setShowLocationVerification(true);
+          handleVerifyLocation();
+        } else {
+          // If no pickup location, allow capture (for testing)
+          setLocationVerified(true);
+        }
       } catch (e) {
         router.replace("/login");
       } finally {
@@ -60,7 +95,7 @@ export default function FruitGrading() {
       }
     };
     checkAuth();
-  }, [router]);
+  }, [router, pickupLat, pickupLng]);
 
   useEffect(() => {
     Animated.spring(trayAnimation, {
@@ -94,6 +129,28 @@ export default function FruitGrading() {
   }, [showVerifyingPopup, scanAnimation]);
 
   useEffect(() => {
+    if (isVerifyingLocation) {
+      // Start location scanning animation
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(locationScanAnimation, {
+            toValue: 1,
+            duration: 2000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(locationScanAnimation, {
+            toValue: 0,
+            duration: 0,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else {
+      locationScanAnimation.setValue(0);
+    }
+  }, [isVerifyingLocation, locationScanAnimation]);
+
+  useEffect(() => {
     const setAudioMode = async () => {
       try {
         if (soundEnabled) {
@@ -114,8 +171,49 @@ export default function FruitGrading() {
     setAudioMode();
   }, [soundEnabled]);
 
+  const handleVerifyLocation = async () => {
+    if (pickupLat === null || pickupLng === null) {
+      setLocationVerified(true);
+      setShowLocationVerification(false);
+      return;
+    }
+
+    setIsVerifyingLocation(true);
+    setLocationError(null);
+
+    // Use utility function to verify location
+    const result = await verifyLocation(pickupLat, pickupLng, 100);
+
+    setLocationDistance(result.distance);
+
+    if (result.success) {
+      // Location matches
+      setLocationVerified(true);
+      setLocationError(null);
+      setIsVerifyingLocation(false);
+      // Close popup after short delay
+      setTimeout(() => {
+        setShowLocationVerification(false);
+      }, 1000);
+    } else {
+      // Location doesn't match or error occurred
+      setLocationError(result.error || "Location verification failed.");
+      setIsVerifyingLocation(false);
+    }
+  };
+
+  const handleOpenGoogleMaps = () => {
+    openGoogleMapsToLocation(pickupLat, pickupLng);
+  };
+
   const takePicture = async () => {
     if (!cameraRef.current || capturedImages.length >= TOTAL_IMAGES) return;
+    
+    // Prevent capture if location not verified
+    if (!locationVerified) {
+      Alert.alert("Location Not Verified", "Please verify your location first before capturing images.");
+      return;
+    }
 
     try {
       // Provide haptic feedback when sound is muted
@@ -135,6 +233,10 @@ export default function FruitGrading() {
 
       if (photo?.uri) {
         setCapturedImages([...capturedImages, photo.uri]);
+        // Store base64 for later use
+        if (photo.base64) {
+          setCapturedImagesBase64([...capturedImagesBase64, photo.base64]);
+        }
       }
     } catch (error) {
       Alert.alert("Error", "Failed to capture image");
@@ -180,7 +282,9 @@ export default function FruitGrading() {
 
   const removeImage = (index: number) => {
     const newImages = capturedImages.filter((_, i) => i !== index);
+    const newBase64Images = capturedImagesBase64.filter((_, i) => i !== index);
     setCapturedImages(newImages);
+    setCapturedImagesBase64(newBase64Images);
   };
 
   const handleVerify = async () => {
@@ -195,6 +299,17 @@ export default function FruitGrading() {
     setShowVerifyingPopup(true);
     setIsVerifying(true);
 
+    // Set a timeout to prevent infinite waiting (30 seconds max)
+    timeoutRef.current = setTimeout(() => {
+      console.error("⏱️ Verification timeout - taking too long");
+      setIsVerifying(false);
+      setShowVerifyingPopup(false);
+      Alert.alert(
+        "Timeout",
+        "Verification is taking too long. Please try again."
+      );
+    }, 30000);
+
     try {
       const token = await AsyncStorage.getItem("token");
 
@@ -203,8 +318,7 @@ export default function FruitGrading() {
         return;
       }
 
-      // Hardcoded farmer's declared grade for now
-      const farmerDeclaredGrade = "Grade A";
+      // Use farmer's declared grade from state (set in useEffect)
 
       // Prepare FormData for backend API call
       const formData = new FormData();
@@ -266,19 +380,50 @@ export default function FruitGrading() {
 
       console.log("✅ Mapped Results:", JSON.stringify(results, null, 2));
 
+      // Clear timeout since we got a response
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+
+      // Close popup first
       setIsVerifying(false);
       setShowVerifyingPopup(false);
 
-      // Navigate to results page
-      router.push({
-        pathname: "/transporter/verification-results",
-        params: {
+      // Small delay to ensure popup closes before navigation
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      try {
+        // Pass image URIs instead of base64 to avoid storage issues
+        // URIs are small strings (file paths), base64 will be generated when saving
+        const params: Record<string, string> = {
           results: JSON.stringify(results),
-          farmerGrade: farmerDeclaredGrade,
-        },
-      });
+          farmerGrade: farmerDeclaredGrade || "Grade A",
+          job_id: jobId || "",
+          order_id: orderId || "",
+          imageUris: JSON.stringify(capturedImages), // Pass file URIs instead of base64
+        };
+
+        console.log("🚀 Navigating to verification results...");
+        
+        // Navigate to results page
+        router.push({
+          pathname: "/transporter/verification-results",
+          params,
+        });
+      } catch (navError) {
+        console.error("❌ Navigation error:", navError);
+        Alert.alert(
+          "Navigation Error",
+          "Failed to navigate to results page. Please try again."
+        );
+      }
     } catch (error) {
       console.error("Verification error:", error);
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
       setIsVerifying(false);
       setShowVerifyingPopup(false);
       Alert.alert(
@@ -490,6 +635,105 @@ export default function FruitGrading() {
         </View>
       </View>
 
+      {/* Location Verification Popup */}
+      {showLocationVerification && (
+        <View style={styles.verifyingOverlay}>
+          <View style={styles.verifyingPopup}>
+            {isVerifyingLocation ? (
+              <>
+                <View style={styles.scanningContainer}>
+                  <View style={styles.scanningFrame}>
+                    <Animated.View
+                      style={[
+                        styles.scanningBeam,
+                        {
+                          opacity: locationScanAnimation.interpolate({
+                            inputRange: [0, 0.5, 1],
+                            outputRange: [0.4, 1, 0.4],
+                          }),
+                          transform: [
+                            {
+                              translateY: locationScanAnimation.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: [-50, 50],
+                              }),
+                            },
+                          ],
+                        },
+                      ]}
+                    />
+                    <Animated.View
+                      style={[
+                        styles.scanningCircle,
+                        {
+                          transform: [
+                            {
+                              rotate: locationScanAnimation.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: ["0deg", "360deg"],
+                              }),
+                            },
+                          ],
+                        },
+                      ]}
+                    >
+                      <MaterialIcons name="location-on" size={40} color="#2f855a" />
+                    </Animated.View>
+                  </View>
+                </View>
+                <Text style={styles.verifyingText}>Verifying location…</Text>
+              </>
+            ) : locationError ? (
+              <>
+                <MaterialIcons name="location-off" size={64} color="#e53e3e" />
+                <Text style={styles.verifyingText}>Location Not Matching</Text>
+                <Text style={styles.locationErrorText}>{locationError}</Text>
+                {locationDistance !== null && (
+                  <Text style={styles.distanceText}>
+                    Distance: {locationDistance < 1000 
+                      ? `${locationDistance.toFixed(0)}m` 
+                      : `${(locationDistance / 1000).toFixed(2)} km`}
+                  </Text>
+                )}
+                <View style={styles.locationButtonContainer}>
+                  <TouchableOpacity
+                    style={styles.goToLocationButton}
+                    onPress={handleOpenGoogleMaps}
+                  >
+                    <View style={styles.goToLocationButtonContent}>
+                      <Text style={styles.buttonText}>Go to Correct Location</Text>
+                    </View>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.retryButton}
+                    onPress={handleVerifyLocation}
+                  >
+                    <View style={styles.retryButtonContent}>
+                      <Text style={styles.buttonText}>Retry</Text>
+                    </View>
+                  </TouchableOpacity>
+                </View>
+                {/* Cancel button for testing */}
+                <TouchableOpacity
+                  style={styles.cancelButton}
+                  onPress={() => {
+                    setShowLocationVerification(false);
+                    setLocationVerified(true); // Bypass for testing
+                  }}
+                >
+                  <Text style={styles.cancelButtonText}>Cancel (Testing)</Text>
+                </TouchableOpacity>
+              </>
+            ) : locationVerified ? (
+              <>
+                <MaterialIcons name="check-circle" size={64} color="#2f855a" />
+                <Text style={styles.verifyingText}>Location Verified</Text>
+              </>
+            ) : null}
+          </View>
+        </View>
+      )}
+
       {/* Verifying Popup */}
       {showVerifyingPopup && (
         <View style={styles.verifyingOverlay}>
@@ -535,6 +779,22 @@ export default function FruitGrading() {
               </View>
             </View>
             <Text style={styles.verifyingText}>Verifying fruit grade…</Text>
+            {isVerifying && (
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => {
+                  if (timeoutRef.current) {
+                    clearTimeout(timeoutRef.current);
+                    timeoutRef.current = null;
+                  }
+                  setIsVerifying(false);
+                  setShowVerifyingPopup(false);
+                  Alert.alert("Cancelled", "Verification cancelled.");
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       )}
@@ -777,6 +1037,8 @@ const styles = StyleSheet.create({
   buttonText: {
     color: "#fff",
     fontWeight: "bold",
+    textAlign: "center",
+    width: "100%",
   },
   message: {
     fontSize: 16,
@@ -799,7 +1061,8 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 32,
     alignItems: "center",
-    minWidth: 280,
+    minWidth: 240,
+    maxWidth: "85%",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -850,6 +1113,67 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#11181C",
     textAlign: "center",
+  },
+  cancelButton: {
+    marginTop: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    backgroundColor: "#e53e3e",
+    borderRadius: 8,
+  },
+  cancelButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 14,
+  },
+  locationErrorText: {
+    marginTop: 12,
+    marginBottom: 8,
+    fontSize: 14,
+    color: "#e53e3e",
+    textAlign: "center",
+    paddingHorizontal: 16,
+  },
+  distanceText: {
+    marginBottom: 20,
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#666",
+    textAlign: "center",
+  },
+  locationButtonContainer: {
+    width: "100%",
+    gap: 12,
+  },
+  goToLocationButton: {
+    backgroundColor: "#2f855a",
+    padding: 16,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+    minHeight: 52,
+  },
+  goToLocationButtonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+  },
+  retryButton: {
+    backgroundColor: "#3182ce",
+    padding: 16,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+    minHeight: 52,
+  },
+  retryButtonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
   },
 });
 

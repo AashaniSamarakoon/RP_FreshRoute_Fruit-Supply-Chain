@@ -1,6 +1,5 @@
 // app/transporter/index.tsx
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
@@ -13,6 +12,7 @@ import {
   View,
 } from "react-native";
 import { BACKEND_URL } from "../../config";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Types
 interface Job {
@@ -35,15 +35,12 @@ export default function TransporterDashboard() {
     try {
       const token = await AsyncStorage.getItem("token");
       if (!token) return;
-
       const res = await fetch(`${BACKEND_URL}/api/transporter/jobs`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-
       if (res.ok) {
         setJobs(data.jobs || []);
-        // Note: We ignore data.alerts here now, handled by GlobalTelemetry
         setVehicleInfo(data.vehicle);
       }
     } catch (error) {

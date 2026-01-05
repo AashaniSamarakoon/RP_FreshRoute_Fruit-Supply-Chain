@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -50,6 +50,9 @@ export default function JobDetails() {
 
   const [loading, setLoading] = useState(true);
 
+  // Track verification status per order
+  const [verifiedOrders, setVerifiedOrders] = useState<Set<string>>(new Set());
+
   // Modal State
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<OrderInfo | null>(null);
@@ -58,8 +61,28 @@ export default function JobDetails() {
     fetchJobDetails();
   }, [id]);
 
+  // Check for verified order when screen is focused (returning from verification)
+  useFocusEffect(
+    useCallback(() => {
+      // Check AsyncStorage for verified orders
+      const checkVerifiedOrders = async () => {
+        try {
+          const verifiedOrdersJson = await AsyncStorage.getItem(`verified_orders_${id}`);
+          if (verifiedOrdersJson) {
+            const orders = JSON.parse(verifiedOrdersJson);
+            setVerifiedOrders(new Set(orders));
+          }
+        } catch (error) {
+          console.error("Error checking verified orders:", error);
+        }
+      };
+      checkVerifiedOrders();
+    }, [id])
+  );
+
   const fetchJobDetails = async () => {
     try {
+      
       const token = await AsyncStorage.getItem("token");
       const res = await fetch(`${BACKEND_URL}/api/transporter/jobs/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -68,7 +91,6 @@ export default function JobDetails() {
       if (res.ok) {
         setJob(data);
         setManifest(data.route_manifest || []);
-        // Store the detailed order map
         setOrdersData(data.orders_data || {});
       }
     } catch (error) {
@@ -94,7 +116,42 @@ export default function JobDetails() {
     Linking.openURL(url);
   };
 
-  const handleAction = (type: "PICKUP" | "DROP", seq: number) => {
+  const handleVerifyQuality = (orderId: string) => {
+    // Find the pickup stop for this order
+    const pickupStop = manifest.find(
+      (stop) => stop.type === "PICKUP" && stop.order_id === orderId
+    );
+
+    if (!pickupStop) {
+      Alert.alert("Error", "Pickup location not found for this order.");
+      return;
+    }
+
+    // Navigate to fruit grading screen with job_id, order_id, and pickup location
+    router.push({
+      pathname: "/transporter/fruit-grading",
+      params: {
+        job_id: id as string,
+        order_id: orderId,
+        pickup_lat: pickupStop.lat.toString(),
+        pickup_lng: pickupStop.lng.toString(),
+      },
+    });
+  };
+
+  const handleAction = (type: "PICKUP" | "DROP", seq: number, orderId: string) => {
+    if (type === "PICKUP") {
+      // Check if verification is done
+      if (!verifiedOrders.has(orderId)) {
+        Alert.alert(
+          "Verification Required",
+          "Please verify the quality before confirming pickup.",
+          [{ text: "OK" }]
+        );
+        return;
+      }
+    }
+
     Alert.alert(
       "Confirm Action",
       `Are you sure you want to confirm this ${type}?`,
@@ -209,15 +266,25 @@ export default function JobDetails() {
                     <Text style={styles.infoBtnText}>View Info</Text>
                   </TouchableOpacity>
 
-                  {/* Action Button */}
-                  <TouchableOpacity
-                    style={styles.actionBtn}
-                    onPress={() => handleAction(stop.type, stop.sequence)}
-                  >
-                    <Text style={styles.actionBtnText}>
-                      Confirm {stop.type === "PICKUP" ? "Pickup" : "Drop"}
-                    </Text>
-                  </TouchableOpacity>
+                  {/* Action Button - Show Verify Quality for PICKUP if not verified, else Confirm Pickup */}
+                  {stop.type === "PICKUP" && !verifiedOrders.has(stop.order_id) ? (
+                    <TouchableOpacity
+                      style={styles.verifyBtn}
+                      onPress={() => handleVerifyQuality(stop.order_id)}
+                    >
+                      <Ionicons name="checkmark-circle-outline" size={18} color="#2f855a" />
+                      <Text style={styles.verifyBtnText}>Verify Quality</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.actionBtn}
+                      onPress={() => handleAction(stop.type, stop.sequence, stop.order_id)}
+                    >
+                      <Text style={styles.actionBtnText}>
+                        Confirm {stop.type === "PICKUP" ? "Pickup" : "Drop"}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               </View>
             </View>
@@ -425,6 +492,21 @@ const styles = StyleSheet.create({
     flex: 0.5,
   },
   actionBtnText: { color: "#2d3748", fontWeight: "600", fontSize: 12 },
+  verifyBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#c6f6d5",
+    padding: 8,
+    borderRadius: 6,
+    flex: 0.5,
+    justifyContent: "center",
+  },
+  verifyBtnText: {
+    color: "#2f855a",
+    fontSize: 12,
+    fontWeight: "600",
+    marginLeft: 4,
+  },
 
   // Modal Styles
   modalOverlay: {
