@@ -19,60 +19,80 @@ const LIGHT_GREEN = "#e8f4f0";
 const LIGHT_GRAY = "#f5f5f5";
 const LIGHT_BLUE = "#e3f2fd";
 
-interface AccuracyMetric {
-  label: string;
-  value: number;
+interface FruitAccuracy {
+  fruit: string;
+  accuracy: number;
   trend: "up" | "down" | "stable";
   change: string;
+  variety?: string;
+}
+
+interface AccuracyData {
+  overallAccuracy: number;
+  fruitBreakdown: FruitAccuracy[];
 }
 
 export default function AccuracyInsightsScreen() {
   const router = useRouter();
   const { t } = useTranslation();
-  const [metrics, setMetrics] = useState<AccuracyMetric[]>([]);
-  const [accuracy, setAccuracy] = useState<number | null>(null);
+  const [data, setData] = useState<AccuracyData | null>(null);
+  const [fruitDetails, setFruitDetails] = useState<FruitAccuracy[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadAccuracy();
+    loadAccuracyData();
   }, []);
 
-  const loadAccuracy = async () => {
+  const loadAccuracyData = async () => {
     console.log("[ACCURACY] Loading accuracy insights...");
     setLoading(true);
     try {
       const token = await AsyncStorage.getItem("token");
       if (!token) {
         console.log("[ACCURACY] No token found");
-        setMetrics([]);
-        setAccuracy(null);
+        setData(null);
+        setFruitDetails([]);
+        setLoading(false);
         return;
       }
 
-      const res = await fetch(`${BACKEND_URL}/api/farmer/accuracy`, {
+      // Fetch overall accuracy insights with per-fruit breakdown
+      const insightsRes = await fetch(`${BACKEND_URL}/api/farmer/accuracy/insights`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = await res.json();
+      const insightsData = await insightsRes.json();
+      console.log("[ACCURACY] Insights response:", insightsRes.status, insightsData);
 
-      if (!res.ok) {
-        console.log("[ACCURACY] Error:", data.message);
-        setMetrics([]);
-        setAccuracy(null);
+      if (!insightsRes.ok) {
+        console.log("[ACCURACY] Error fetching insights:", insightsData.message);
+        setData(null);
+        setFruitDetails([]);
+        setLoading(false);
         return;
       }
 
-      setAccuracy(typeof data.accuracy === "number" ? data.accuracy : null);
-      const formatted: AccuracyMetric[] = (data.metrics || []).map((m: any) => ({
-        label: m.label || m.labelKey || "",
-        value: m.value ?? 0,
-        trend: (m.trend as AccuracyMetric["trend"]) || "stable",
-        change: m.change || m.changeKey || "",
+      // Extract per-fruit accuracies from the insights response
+      const perFruitList = insightsData.perFruitAccuracyList || insightsData.individualAccuracies || [];
+      console.log("[ACCURACY] Per-fruit accuracy list:", perFruitList);
+
+      // Map per-fruit data to FruitAccuracy format
+      const mappedFruits: FruitAccuracy[] = perFruitList.map((fruit: any) => ({
+        fruit: fruit.fruitName || fruit.name || "",
+        accuracy: fruit.accuracyPercent || fruit.accuracy || 0,
+        trend: fruit.trend || "stable",
+        change: `Avg Error: ${(fruit.averagePercentError || 0).toFixed(1)}%`,
+        variety: fruit.variety || "",
       }));
-      setMetrics(formatted);
+
+      setData({
+        overallAccuracy: insightsData.overallAccuracy || insightsData.overall || 0,
+        fruitBreakdown: insightsData.perFruitBreakdown || [],
+      });
+      setFruitDetails(mappedFruits);
     } catch (err) {
       console.error("[ACCURACY] Unexpected error", err);
-      setMetrics([]);
-      setAccuracy(null);
+      setData(null);
+      setFruitDetails([]);
     } finally {
       setLoading(false);
     }
@@ -102,45 +122,45 @@ export default function AccuracyInsightsScreen() {
             </View>
           ) : (
             <View style={styles.accuracyCard}>
-              <Text style={styles.cardTitle}>{t("accuracy.cardTitle")}</Text>
+              <Text style={styles.cardTitle}>Overall Prediction Accuracy</Text>
               <View style={styles.circularProgressContainer}>
                 <View style={styles.circularProgress}>
                   <Text style={styles.accuracyPercent}>
-                    {accuracy !== null ? `${accuracy}%` : "--"}
+                    {data?.overallAccuracy !== null ? `${data?.overallAccuracy.toFixed(1)}%` : "--"}
                   </Text>
-                  <Text style={styles.accuracyLabel}>{t("accuracy.accuracyLabel")}</Text>
+                  <Text style={styles.accuracyLabel}>Accuracy</Text>
                 </View>
               </View>
               <Text style={styles.accuracyDescription}>
-                {t("accuracy.accuracyDescription")}
+                Based on price predictions across all fruits
               </Text>
-              <Text style={styles.accuracySubtext}>{t("accuracy.accuracySubtext")}</Text>
+              <Text style={styles.accuracySubtext}>Last 30 days analysis</Text>
             </View>
           )}
 
-          {/* Key Metrics */}
+          {/* Key Metrics - Fruit-Specific Accuracy */}
           <View style={styles.metricsSection}>
-            <Text style={styles.sectionTitle}>{t("accuracy.sectionTitle")}</Text>
+            <Text style={styles.sectionTitle}>Individual Fruit Accuracy</Text>
 
             {loading ? (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="small" color={PRIMARY_GREEN} />
                 <Text style={styles.loadingText}>Loading metrics...</Text>
               </View>
-            ) : metrics.length === 0 ? (
+            ) : fruitDetails.length === 0 ? (
               <View style={styles.emptyContainer}>
                 <Ionicons name="cloud-offline" size={48} color="#ccc" />
                 <Text style={styles.emptyText}>No accuracy data available</Text>
-                <TouchableOpacity style={styles.retryButton} onPress={loadAccuracy}>
+                <TouchableOpacity style={styles.retryButton} onPress={loadAccuracyData}>
                   <Text style={styles.retryText}>Retry</Text>
                 </TouchableOpacity>
               </View>
             ) : (
               <View style={styles.metricsGrid}>
-                {metrics.map((metric, idx) => (
+                {fruitDetails.map((metric, idx) => (
                   <View key={idx} style={styles.metricCard}>
                     <View style={styles.metricHeader}>
-                      <Text style={styles.metricValue}>{metric.value}%</Text>
+                      <Text style={styles.metricValue}>{metric.accuracy.toFixed(1)}%</Text>
                       <View
                         style={[
                           styles.trendIcon,
@@ -173,8 +193,8 @@ export default function AccuracyInsightsScreen() {
                         />
                       </View>
                     </View>
-                    <Text style={styles.metricLabel}>{metric.label || t("accuracy.metricLabels.overall")}</Text>
-                    <Text style={styles.metricChange}>{metric.change || t("accuracy.metricChanges.stable")}</Text>
+                    <Text style={styles.metricLabel}>{metric.fruit}</Text>
+                    <Text style={styles.metricChange}>{metric.change}</Text>
                   </View>
                 ))}
               </View>
@@ -187,10 +207,25 @@ export default function AccuracyInsightsScreen() {
                 <Ionicons name="bulb" size={20} color={PRIMARY_GREEN} />
               </View>
               <View style={styles.insightContent}>
-                <Text style={styles.insightTitle}>{t("accuracy.insightTitle")}</Text>
-                <Text style={styles.insightText}>{t("accuracy.insightText")}</Text>
+                <Text style={styles.insightTitle}>Prediction Tips</Text>
+                <Text style={styles.insightText}>
+                  {fruitDetails.length > 0 && data 
+                    ? `Your highest accuracy is ${Math.max(...fruitDetails.map(f => f.accuracy)).toFixed(1)}% with consistent predictions.`
+                    : "Keep tracking prices to improve accuracy insights."}
+                </Text>
               </View>
             </View>
+          </View>
+
+          {/* CTA Button to Predictions */}
+          <View style={styles.ctaSection}>
+            <TouchableOpacity
+              style={styles.ctaButton}
+              onPress={() => router.push("/farmer/forecast")}
+            >
+              <Text style={styles.ctaText}>Our Predictions</Text>
+              <Ionicons name="arrow-forward" size={16} color="#fff" />
+            </TouchableOpacity>
           </View>
 
           <View style={{ height: 30 }} />
@@ -228,7 +263,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   accuracyCard: {
-    margin: 16,
+    marginHorizontal: 16,
+    marginTop: 20,
+    marginBottom: 24,
     padding: 24,
     borderRadius: 16,
     backgroundColor: LIGHT_GREEN,
@@ -308,17 +345,18 @@ const styles = StyleSheet.create({
   },
   metricsSection: {
     paddingHorizontal: 16,
-    marginBottom: 24,
+    marginTop: 8,
+    marginBottom: 32,
   },
   sectionTitle: {
     fontSize: 16,
     fontWeight: "700",
     color: "#000",
-    marginBottom: 12,
+    marginBottom: 16,
   },
   metricsGrid: {
     flexDirection: "row",
-    gap: 12,
+    gap: 14,
     justifyContent: "space-between",
   },
   metricCard: {
@@ -473,14 +511,15 @@ const styles = StyleSheet.create({
   },
   insightSection: {
     paddingHorizontal: 16,
-    marginBottom: 24,
+    marginTop: 12,
+    marginBottom: 40,
   },
   insightCard: {
     flexDirection: "row",
-    padding: 16,
+    padding: 18,
     borderRadius: 12,
     backgroundColor: LIGHT_GREEN,
-    gap: 12,
+    gap: 14,
   },
   insightIcon: {
     width: 40,
@@ -503,5 +542,30 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#666",
     lineHeight: 18,
+  },
+  ctaSection: {
+    paddingHorizontal: 16,
+    marginBottom: 32,
+    marginTop: 8,
+  },
+  ctaButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: PRIMARY_GREEN,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  ctaText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
   },
 });

@@ -87,15 +87,18 @@ export default function NotificationsScreen() {
         return;
       }
 
-      const mapped: NotificationItem[] = (data.notifications || data || []).map((n: any) => ({
-        id: n.id || n._id,
-        title: n.title,
-        description: n.body,
-        time: n.created_at,
-        category: n.category,
-        severity: n.severity,
-        read_at: n.read_at,
-      }));
+      const mapped: NotificationItem[] = (data.notifications || data || []).map((n: any) => {
+        console.log("[NOTIFICATIONS] Raw notification:", { id: n.id, _id: n._id, title: n.title });
+        return {
+          id: n.id || n._id,
+          title: n.title,
+          description: n.body,
+          time: n.created_at,
+          category: n.category,
+          severity: n.severity,
+          read_at: n.read_at,
+        };
+      });
 
       setNotifications(mapped);
       setUnreadCount(data.unreadCount || 0);
@@ -125,10 +128,13 @@ export default function NotificationsScreen() {
 
   const markAsReadAndNavigate = async (notification: NotificationItem) => {
     const { id } = notification;
+    console.log("[NOTIFICATIONS] Marking as read - ID:", id, "Full notification:", notification);
     try {
       const token = await AsyncStorage.getItem("token");
-      if (token) {
-        await fetch(`${BACKEND_URL}/api/farmer/notifications/${id}/read`, {
+      if (token && id) {
+        const url = `${BACKEND_URL}/api/farmer/notifications/${id}/read`;
+        console.log("[NOTIFICATIONS] Calling URL:", url);
+        await fetch(url, {
           method: "PUT",
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -138,7 +144,7 @@ export default function NotificationsScreen() {
       );
       setUnreadCount((prev) => Math.max(0, prev - 1));
       router.push({
-        pathname: "/screens/notification-detail",
+        pathname: "../screens/notification-detail",
         params: {
           id: String(id),
           title: notification.title,
@@ -151,7 +157,7 @@ export default function NotificationsScreen() {
     } catch (err) {
       console.error("[NOTIFICATIONS] markAsRead error", err);
       router.push({
-        pathname: "/screens/notification-detail",
+        pathname: "../screens/notification-detail",
         params: {
           id: String(id),
           title: notification.title,
@@ -267,14 +273,15 @@ export default function NotificationsScreen() {
             </TouchableOpacity>
           </View>
         ) : (
-          <ScrollView
-            style={styles.scrollView}
-            showsVerticalScrollIndicator={false}
-          >
-            {unreadNotifications.length > 0 && (
-              <>
-                <Text style={styles.sectionTitle}>{t("notifications.sections.unread")}</Text>
-                {unreadNotifications.map((notification) => {
+          <>
+            <ScrollView
+              style={styles.scrollView}
+              showsVerticalScrollIndicator={false}
+            >
+              {unreadNotifications.length > 0 && (
+                <>
+                  <Text style={styles.sectionTitle}>{t("notifications.sections.unread")}</Text>
+                  {unreadNotifications.map((notification) => {
                   const icon = iconForNotification(notification);
                   return (
                     <TouchableOpacity
@@ -335,9 +342,9 @@ export default function NotificationsScreen() {
               <Text style={styles.allCaughtUpTitle}>{t("notifications.emptyTitle")}</Text>
               <Text style={styles.allCaughtUpText}>{t("notifications.emptyText")}</Text>
             </View>
-
-            <View style={{ height: 30 }} />
-          </ScrollView>
+            </ScrollView>
+            <View style={styles.footer} />
+          </>
         )}
       </View>
     </SafeAreaView>
@@ -507,5 +514,9 @@ const styles = StyleSheet.create({
   allCaughtUpText: {
     fontSize: 13,
     color: "#999",
+  },
+  footer: {
+    height: 80,
+    backgroundColor: "#fff",
   },
 });
