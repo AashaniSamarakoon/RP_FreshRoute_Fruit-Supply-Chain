@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useRef } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Dimensions,
   ScrollView,
@@ -7,6 +8,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { BACKEND_URL } from '../../../config';
 import { useTranslationContext } from '../../../context/TranslationContext';
 
 const { width } = Dimensions.get('window');
@@ -18,7 +20,18 @@ interface FruitDemandData {
   price: number;
   trend: 'up' | 'down' | 'stable';
   image: string;
+  dayLabel?: string;
 }
+
+const demandLevel = (score: number) => {
+  // Score ranges from 0 to 1
+  // Near 1 = High demand
+  // Near 0.5 = Medium demand
+  // Near 0 = Low demand
+  if (score >= 0.65) return 'High';
+  if (score >= 0.35) return 'Medium';
+  return 'Low';
+};
 
 const SAMPLE_FRUIT_DATA: FruitDemandData[] = [
   {
@@ -54,12 +67,12 @@ export default function FruitDemandCards() {
   const scrollViewRef = useRef<ScrollView>(null);
   const currentIndex = useRef(0);
   const { t, locale } = useTranslationContext();
-
-  console.log('[FruitDemandCards] Rendering with locale:', locale);
+  const [cards, setCards] = useState<FruitDemandData[]>(SAMPLE_FRUIT_DATA);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      currentIndex.current = (currentIndex.current + 1) % SAMPLE_FRUIT_DATA.length;
+      if (cards.length === 0) return;
+      currentIndex.current = (currentIndex.current + 1) % cards.length;
       scrollViewRef.current?.scrollTo({
         x: currentIndex.current * width * 0.85,
         animated: true,
@@ -67,7 +80,77 @@ export default function FruitDemandCards() {
     }, 3000); // Auto-scroll every 3 seconds
 
     return () => clearInterval(interval);
-  }, []);
+  }, [cards.length]);
+
+  useEffect(() => {
+    const loadForecastCards = async () => {
+      try {
+        const token = await AsyncStorage.getItem('token');
+        if (!token) return;
+
+        const fruits = [
+          { id: '1', name: 'Mango', image: '🥭' },
+          { id: '2', name: 'Banana', image: '🍌' },
+          { id: '3', name: 'Pineapple', image: '🍍' },
+        ];
+
+        const fetchForecast = async (fruitName: string) => {
+          const demandUrl = `${BACKEND_URL}/api/farmer/forecast/7day?fruit=${encodeURIComponent(fruitName)}&target=demand`;
+          const priceUrl = `${BACKEND_URL}/api/farmer/forecast/7day?fruit=${encodeURIComponent(fruitName)}&target=price`;
+
+          const [demandRes, priceRes] = await Promise.all([
+            fetch(demandUrl, { headers: { Authorization: `Bearer ${token}` } }),
+            fetch(priceUrl, { headers: { Authorization: `Bearer ${token}` } }),
+          ]);
+
+          const demandJson = await demandRes.json();
+          const priceJson = await priceRes.json();
+
+          const firstDemand = demandJson?.days?.[0];
+          const firstPrice = priceJson?.days?.[0];
+
+          // Determine trend based on demand level
+          let trend: 'up' | 'down' | 'stable' = 'stable';
+          const demandScore = Number(firstDemand?.value) || 0;
+          
+          if (demandScore >= 0.65) {
+            trend = 'up';    // High demand
+          } else if (demandScore < 0.35) {
+            trend = 'down';  // Low demand
+          }
+          // else stable for medium demand (0.35-0.65)
+
+          return {
+            demand: Number(firstDemand?.value) || 0,
+            price: Number(firstPrice?.value) || 0,
+            trend: trend,
+            dayLabel: firstDemand?.day || firstPrice?.day || 'Today',
+          };
+        };
+
+        const results = await Promise.all(
+          fruits.map(async (fruit) => {
+            const data = await fetchForecast(fruit.name);
+            return {
+              id: fruit.id,
+              name: fruit.name,
+              demand: data.demand,
+              price: data.price,
+              trend: data.trend,
+              image: fruit.image,
+              dayLabel: data.dayLabel,
+            } as FruitDemandData;
+          })
+        );
+
+        setCards(results);
+      } catch (err) {
+        console.error('[FruitDemandCards] Failed to load forecasts', err);
+      }
+    };
+
+    loadForecastCards();
+  }, [locale]);
 
   const getTrendIcon = (trend: string) => {
     switch (trend) {
@@ -92,7 +175,7 @@ export default function FruitDemandCards() {
         snapToAlignment="start"
         contentContainerStyle={styles.scrollContainer}
       >
-        {SAMPLE_FRUIT_DATA.map((fruit) => (
+        {cards.map((fruit) => (
           <View key={fruit.id} style={styles.card}>
             <View style={styles.cardBody}>
               <View style={styles.emojiContainer}>
@@ -104,21 +187,15 @@ export default function FruitDemandCards() {
                 
                 <View style={styles.cardContent}>
                   <View style={styles.demandRow}>
-                    <Text style={styles.demandText}>{t("farmer.demandLabel")}: {fruit.demand}%</Text>
+                    <Text style={styles.demandText}>{t("farmer.demandLabel")}: {demandLevel(fruit.demand)}</Text>
                     {getTrendIcon(fruit.trend)}
                   </View>
                   <Text style={styles.priceText}>Rs. {fruit.price}{t("farmer.perKg")}</Text>
+                  {fruit.dayLabel ? (
+                    <Text style={styles.dateText}>{fruit.dayLabel}</Text>
+                  ) : null}
                 </View>
               </View>
-            </View>
-            
-            <View style={styles.progressBar}>
-              <View 
-                style={[
-                  styles.progressFill, 
-                  { width: `${fruit.demand}%` }
-                ]} 
-              />
             </View>
           </View>
         ))}
@@ -129,13 +206,12 @@ export default function FruitDemandCards() {
 
 const styles = StyleSheet.create({
   container: {
-    // marginBottom: 16,
-    marginBottom: 32,
+    marginBottom: 12,
     marginTop: 8,
   },
   scrollContainer: {
     paddingHorizontal: 16,
-    paddingBottom: 8,
+    paddingBottom: 4,
   },
   card: {
     width: width * 0.85,
@@ -148,6 +224,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 4,
+    minHeight: 150,
   },
   cardBody: {
     flexDirection: 'row',
@@ -193,6 +270,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#000',
     fontWeight: '600',
+  },
+  dateText: {
+    fontSize: 12,
+    color: '#4b5563',
+    fontWeight: '600',
+    marginTop: 4,
   },
   progressBar: {
     height: 6,

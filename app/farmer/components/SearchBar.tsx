@@ -20,8 +20,6 @@ export default function SearchBar({
 }: SearchBarProps) {
   const { t, locale } = useTranslationContext();
 
-  console.log('[SearchBar] Rendering with locale:', locale);
-
   return (
     <View style={styles.searchContainer}>
       <Ionicons name="search" size={18} color="#999" />
