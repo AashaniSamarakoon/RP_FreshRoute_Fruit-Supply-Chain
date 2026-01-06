@@ -832,9 +832,9 @@ export default function JobDetails() {
                       : "Start"}
                   </Text>
                 </View>
-                {/* <Text style={styles.stopCoords}>
+                <Text style={styles.stopCoords}>
                   Lat: {stop.lat.toFixed(4)}, Lng: {stop.lng.toFixed(4)}
-                </Text> */}
+                </Text>
 
                 <View style={styles.stopButtons}>
                   <TouchableOpacity
