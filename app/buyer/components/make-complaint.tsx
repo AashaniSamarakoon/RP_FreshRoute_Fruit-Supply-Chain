@@ -1,15 +1,15 @@
-import React, { useState, useEffect } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  TextInput,
-  ScrollView,
-  Alert,
-} from "react-native";
-import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
+import {
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 export default function MakeComplaint() {
   const router = useRouter();
@@ -49,7 +49,7 @@ export default function MakeComplaint() {
     }
 
     router.push({
-      pathname: "/buyer/complaint-camera",
+      pathname: "/buyer/complaint-camera" as any,
       params: {
         orderId,
         reason,

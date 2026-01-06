@@ -1,22 +1,21 @@
-import React, { useState, useEffect, useRef } from "react";
+import { MaterialIcons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Audio } from "expo-av";
+import { CameraType, CameraView, useCameraPermissions } from "expo-camera";
+import * as Haptics from "expo-haptics";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { useEffect, useRef, useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
+  ActivityIndicator,
   Alert,
+  Animated,
   Image,
   ScrollView,
-  ActivityIndicator,
-  Animated,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { CameraView, CameraType, useCameraPermissions } from "expo-camera";
-import { useRouter, useLocalSearchParams } from "expo-router";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { MaterialIcons } from "@expo/vector-icons";
-import { Audio } from "expo-av";
-import * as Haptics from "expo-haptics";
-import { BACKEND_URL } from "../../config";
 
 const TOTAL_IMAGES = 5;
 
@@ -138,7 +137,7 @@ export default function ComplaintCamera() {
 
       // Navigate to final complaint received page
       router.push({
-        pathname: "/buyer/complaint-received",
+        pathname: "/buyer/complaint-received" as any,
         params: {
           orderId: params.orderId as string,
           reason: params.reason as string,

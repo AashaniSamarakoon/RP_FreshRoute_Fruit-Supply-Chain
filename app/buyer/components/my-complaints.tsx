@@ -1,18 +1,16 @@
-import React, { useState, useEffect } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  Modal,
-  Image,
-  Alert,
-} from "react-native";
-import { useRouter } from "expo-router";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
-import { BACKEND_URL } from "../../config";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
+import {
+  Image,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
+} from "react-native";
 
 interface Complaint {
   id: string;
@@ -94,7 +92,7 @@ export default function MyComplaints() {
 
   const handleChatAgent = (complaintId: string) => {
     router.push({
-      pathname: "/buyer/chat",
+      pathname: "/buyer/chat" as any,
       params: { complaintId },
     });
   };

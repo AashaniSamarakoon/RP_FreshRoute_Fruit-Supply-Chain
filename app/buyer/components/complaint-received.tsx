@@ -1,14 +1,14 @@
-import React, { useState, useEffect } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-} from "react-native";
-import { useRouter, useLocalSearchParams } from "expo-router";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
+import {
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 export default function ComplaintReceived() {
   const router = useRouter();
@@ -40,7 +40,7 @@ export default function ComplaintReceived() {
   }, [router]);
 
   const handleProceed = () => {
-    router.replace("/buyer/my-complaints");
+    (router.replace as any)("/buyer/my-complaints");
   };
 
   if (checkingAuth || !isAuthenticated) {
