@@ -63,29 +63,36 @@ const mockFruits: Fruit[] = [
 const mockActivities: Activity[] = [
   {
     id: '1',
-    title: "Sold 50kg of Fuji Apples",
-    date: "Oct 18, 2025",
-    amount: "$125.00",
+    title: "Delivered 120kg ripe pineapples",
+    date: "Jan 02, 2026",
+    amount: "LKR 360.00",
   },
   {
     id: '2',
-    title: "Sold 20kg of Mixed Berries",
-    date: "Oct 18, 2025",
-    amount: "$80.50",
+    title: "Packed 40 boxes of golden pineapple",
+    date: "Jan 04, 2026",
+    amount: "LKR 210.00",
   },
   {
     id: '3',
-    title: "Sold 100kg of Navel Oranges",
-    date: "Oct 18, 2025",
-    amount: "$210.00",
+    title: "Received advance for next pineapple lot",
+    date: "Jan 06, 2026",
+    amount: "LKR 150.00",
   },
 ];
+
+const demoOrderStats = {
+  completedCount: 15,
+  lastCompletedDate: "Jan 05, 2026",
+  nextOrderDate: "Jan 12, 2026",
+};
 
 export default function ProfileScreen() {
   const router = useRouter();
   const { t } = useTranslationContext();
   const [user, setUser] = useState<UserData | null>(null);
   const [profileData, setProfileData] = useState<any>(null);
+  const [orderStats, setOrderStats] = useState(demoOrderStats);
 
   const loadUser = useCallback(async () => {
     try {
@@ -98,10 +105,43 @@ export default function ProfileScreen() {
       if (profileJson) {
         setProfileData(JSON.parse(profileJson));
       }
+
+      // Fetch order statistics
+      await fetchOrderStats();
     } catch (err) {
       console.error(err);
     }
   }, []);
+
+  const fetchOrderStats = async () => {
+    try {
+      const BACKEND_URL = require("../../../config").BACKEND_URL;
+      const token = await AsyncStorage.getItem("token");
+      
+      const response = await fetch(`${BACKEND_URL}/api/farmer/orders/stats`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setOrderStats({
+          completedCount: data.completedCount ?? demoOrderStats.completedCount,
+          lastCompletedDate: data.lastCompletedDate
+            ? new Date(data.lastCompletedDate).toLocaleDateString()
+            : demoOrderStats.lastCompletedDate,
+          nextOrderDate: data.nextOrderDate
+            ? new Date(data.nextOrderDate).toLocaleDateString()
+            : demoOrderStats.nextOrderDate,
+        });
+      } else {
+        setOrderStats(demoOrderStats);
+      }
+    } catch (err) {
+      console.error("Error fetching order stats:", err);
+      // Set mock data if API fails
+      setOrderStats(demoOrderStats);
+    }
+  };
 
   useEffect(() => {
     loadUser();
@@ -117,10 +157,6 @@ export default function ProfileScreen() {
   const logout = async () => {
     await AsyncStorage.multiRemove(["token", "user"]);
     router.replace("/login");
-  };
-
-  const handleMessagePress = () => {
-    console.log("Message button pressed");
   };
 
   return (
@@ -145,14 +181,44 @@ export default function ProfileScreen() {
         >
           {/* Profile Header Component */}
           <ProfileHeader
-            userName={profileData?.name || user?.name || "Aashani"}
-            farmName={profileData?.farmName || user?.farmName || "Dumas Family Farm"}
-            memberSince={t("profile.memberSince")}
+            userName={profileData?.name || user?.name || "Chaminda Wathuhewa"}
+            farmName={profileData?.farmName || user?.farmName || "Pineaplle Farm"}
+            memberSince={profileData?.memberSince || user?.memberSince || "Member since Jan 2026"}
             avatarUri={profileData?.avatarUri}
-            onMessagePress={handleMessagePress}
           />
 
-          {/* Farm Location Map Component */}
+          <Text style={styles.sectionTitle}>Overview</Text>
+
+          {/* Overview Cards */}
+          <View style={styles.overviewContainer}>
+            {/* Completed Orders Card */}
+            <View style={styles.overviewCard}>
+              <View style={styles.cardIconContainer}>
+                <Ionicons name="checkmark-circle" size={28} color={PRIMARY_GREEN} />
+              </View>
+              <Text style={styles.cardValue}>{orderStats.completedCount}</Text>
+              <Text style={styles.cardLabel}>Completed Orders</Text>
+            </View>
+
+            {/* Last Order Completed Card */}
+            <View style={styles.overviewCard}>
+              <View style={styles.cardIconContainer}>
+                <Ionicons name="calendar" size={28} color={PRIMARY_GREEN} />
+              </View>
+              <Text style={styles.cardValue} numberOfLines={1}>{orderStats.lastCompletedDate}</Text>
+              <Text style={styles.cardLabel}>Last Order</Text>
+            </View>
+
+            {/* Next Order Card */}
+            <View style={styles.overviewCard}>
+              <View style={styles.cardIconContainer}>
+                <Ionicons name="hourglass" size={28} color={PRIMARY_GREEN} />
+              </View>
+              <Text style={styles.cardValue} numberOfLines={1}>{orderStats.nextOrderDate}</Text>
+              <Text style={styles.cardLabel}>Next Order</Text>
+            </View>
+          </View>
+
           <FarmLocationMap
             latitude={6.9271}
             longitude={79.8612}
@@ -160,7 +226,6 @@ export default function ProfileScreen() {
             farmName={profileData?.farmName || user?.farmName || "Dumas Family Farm"}
           />
 
-          {/* Growing Fruits Component */}
           <GrowingFruits 
             fruits={
               profileData?.selectedFruits 
@@ -169,7 +234,6 @@ export default function ProfileScreen() {
             } 
           />
 
-          {/* Recent Activity Component */}
           <RecentActivity activities={mockActivities} />
 
           {/* Logout Button */}
@@ -218,8 +282,58 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#000",
   },
+  sectionTitle: {
+    marginHorizontal: 16,
+    marginTop: 6,
+    marginBottom: 8,
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#1f2937",
+  },
   scrollView: {
     flex: 1,
+  },
+  overviewContainer: {
+    flexDirection: "row",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 12,
+    justifyContent: "space-between",
+  },
+  overviewCard: {
+    flex: 1,
+    backgroundColor: "#f7fdf9",
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(47,133,90,0.12)",
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  cardIconContainer: {
+    marginBottom: 10,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#e8f4ef",
+  },
+  cardValue: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: PRIMARY_GREEN,
+    marginBottom: 4,
+  },
+  cardLabel: {
+    fontSize: 11,
+    color: "#4b5563",
+    textAlign: "center",
   },
   logoutButton: {
     marginHorizontal: 16,
