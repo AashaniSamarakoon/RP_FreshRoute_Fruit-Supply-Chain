@@ -12,7 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { BACKEND_URL } from "../../../config";
+import { BACKEND_URL } from "../../config";
 
 // Types
 interface Job {
@@ -35,12 +35,15 @@ export default function TransporterDashboard() {
     try {
       const token = await AsyncStorage.getItem("token");
       if (!token) return;
+
       const res = await fetch(`${BACKEND_URL}/api/transporter/jobs`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
+
       if (res.ok) {
         setJobs(data.jobs || []);
+        // Note: We ignore data.alerts here now, handled by GlobalTelemetry
         setVehicleInfo(data.vehicle);
       }
     } catch (error) {
