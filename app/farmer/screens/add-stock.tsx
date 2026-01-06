@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import RNPickerSelect from "react-native-picker-select";
 import Header from "../../../components/Header";
+import { useTranslationContext } from "../../../context/TranslationContext";
 import { useAddStock } from "../forms/useAddStock";
 
 const PRIMARY_GREEN = "#2E7D32";
@@ -52,15 +53,6 @@ const SkeletonLoader = () => {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
-        {/* Header Skeleton */}
-        <View style={styles.header}>
-          <Animated.View style={[styles.skeletonIcon, { opacity: fadeAnim }]} />
-          <Animated.View
-            style={[styles.skeletonTitle, { opacity: fadeAnim }]}
-          />
-          <View style={{ width: 24 }} />
-        </View>
-
         <ScrollView
           style={styles.container}
           contentContainerStyle={{ paddingBottom: 140 }}
@@ -94,14 +86,14 @@ const SkeletonLoader = () => {
             <Animated.View
               style={[styles.skeletonLabel, { opacity: fadeAnim }]}
             />
-            <View style={styles.tabsContainer}>
+            <View style={styles.skeletontabsContainer}>
               {[1, 2, 3].map((_, idx) => (
                 <Animated.View
                   key={idx}
                   style={[
                     styles.skeletonTab,
                     { opacity: fadeAnim },
-                    idx > 0 && styles.tabDivider,
+                    idx > 0 && styles.skeletontabDivider,
                   ]}
                 />
               ))}
@@ -130,6 +122,7 @@ const SkeletonLoader = () => {
 
 export default function AddStock() {
   const router = useRouter();
+  const { t } = useTranslationContext();
   const {
     loading,
     formData,
@@ -158,11 +151,11 @@ export default function AddStock() {
           contentContainerStyle={{ paddingBottom: 140 }}
         >
           <View style={styles.formCard}>
-            <Text style={styles.label}>Fruit type</Text>
+            <Text style={styles.label}>{t("form.fruitType")}</Text>
             <RNPickerSelect
               onValueChange={(val) => updateField("fruit", val)}
               value={formData.fruit}
-              placeholder={{ label: "Select fruit", value: null }}
+              placeholder={{ label: t("form.selectFruit"), value: null }}
               items={fruitItems}
               style={{
                 inputIOS: styles.selectInput,
@@ -172,11 +165,11 @@ export default function AddStock() {
               useNativeAndroidPickerStyle={false}
             />
 
-            <Text style={styles.label}>Category (variant)</Text>
+            <Text style={styles.label}>{t("form.category")}</Text>
             <RNPickerSelect
               onValueChange={(val) => updateField("category", val)}
               value={formData.category}
-              placeholder={{ label: "Select category", value: null }}
+              placeholder={{ label: t("form.selectCategory"), value: null }}
               items={categoryItems}
               disabled={!formData.fruit}
               style={{
@@ -193,16 +186,39 @@ export default function AddStock() {
               useNativeAndroidPickerStyle={false}
             />
 
-            <Text style={styles.label}>Expected Harvest Quantity</Text>
-            <TextInput
-              style={styles.textInput}
-              placeholder="Enter quantity"
-              keyboardType="numeric"
-              value={formData.quantity}
-              onChangeText={(val) => updateField("quantity", val)}
-            />
+            <Text style={styles.label}>{t("form.expectedQuantity")}</Text>
+            <View style={styles.quantityContainer}>
+              <TextInput
+                style={[styles.textInput, styles.quantityInput]}
+                placeholder={t("form.enterQuantity")}
+                keyboardType="numeric"
+                value={formData.quantity}
+                onChangeText={(val) => updateField("quantity", val)}
+              />
+              <View style={styles.unitTabs}>
+                {["kg", "ton"].map((u) => (
+                  <TouchableOpacity
+                    key={u}
+                    style={[
+                      styles.unitTab,
+                      formData.unit === u && styles.unitTabActive,
+                    ]}
+                    onPress={() => updateField("unit", u)}
+                  >
+                    <Text
+                      style={[
+                        styles.unitTabText,
+                        formData.unit === u && styles.unitTabTextActive,
+                      ]}
+                    >
+                      {u}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
 
-            <Text style={styles.label}>Grade</Text>
+            <Text style={styles.label}>{t("form.grade")}</Text>
             <View style={styles.tabsContainer}>
               {["A", "B", "C"].map((g, idx) => (
                 <TouchableOpacity
@@ -226,7 +242,8 @@ export default function AddStock() {
               ))}
             </View>
 
-            <Text style={styles.label}>Estimated harvest date</Text>
+            <Text style={styles.label}>{t("form.estimatedHarvestDate")}</Text>
+            <Text style={styles.helperText}>{t("form.selectDateRange")}</Text>
             <TouchableOpacity
               style={styles.selectInput}
               onPress={() => setDatePickerVisible(true)}
@@ -237,7 +254,7 @@ export default function AddStock() {
                   !formData.estimatedDate && { color: "#aaa" },
                 ]}
               >
-                {formData.estimatedDate || "Select date"}
+                {formData.estimatedDate || t("form.selectDate")}
               </Text>
               <Ionicons name="calendar" size={18} color="#666" />
             </TouchableOpacity>
@@ -250,6 +267,12 @@ export default function AddStock() {
                 minimumDate={(() => {
                   const d = new Date();
                   d.setDate(d.getDate() + 1);
+                  d.setHours(0, 0, 0, 0);
+                  return d;
+                })()}
+                maximumDate={(() => {
+                  const d = new Date();
+                  d.setDate(d.getDate() + 7);
                   d.setHours(0, 0, 0, 0);
                   return d;
                 })()}
@@ -267,7 +290,7 @@ export default function AddStock() {
             style={styles.submitButtonFixed}
             onPress={handleSubmit}
           >
-            <Text style={styles.submitText}>Submit Stock</Text>
+            <Text style={styles.submitText}>{t("form.submitStock")}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -286,6 +309,12 @@ const styles = StyleSheet.create({
     // margin: 16,
   },
   label: { fontSize: 14, color: "#333", marginBottom: 8, marginTop: 12 },
+  helperText: {
+    fontSize: 12,
+    color: "#999",
+    marginBottom: 8,
+    fontStyle: "italic",
+  },
   selectInput: {
     backgroundColor: LIGHT_GRAY,
     borderRadius: 10,
@@ -303,6 +332,42 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 16,
+  },
+
+  quantityContainer: {
+    flexDirection: "row",
+    gap: 10,
+    alignItems: "center",
+  },
+  quantityInput: {
+    flex: 1,
+  },
+  unitTabs: {
+    flexDirection: "row",
+    borderWidth: 1,
+    borderColor: PRIMARY_GREEN,
+    borderRadius: 8,
+    height: 42,
+    overflow: "hidden",
+    backgroundColor: "#fff",
+  },
+  unitTab: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: "#fff",
+    borderRightWidth: 1,
+    borderRightColor: PRIMARY_GREEN,
+  },
+  unitTabActive: {
+    backgroundColor: PRIMARY_GREEN,
+  },
+  unitTabText: {
+    color: "#333",
+    fontWeight: "600",
+    fontSize: 14,
+  },
+  unitTabTextActive: {
+    color: "#fff",
   },
 
   tabsContainer: {
@@ -372,6 +437,16 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginBottom: 12,
   },
+
+  skeletontabsContainer: {
+    flexDirection: "row",
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: LIGHT_GRAY,
+    borderRadius: 16,
+    overflow: "hidden",
+    backgroundColor: "#fff",
+  },
   skeletonTab: {
     flex: 1,
     height: 48,
@@ -384,4 +459,5 @@ const styles = StyleSheet.create({
     borderRadius: 27,
     marginHorizontal: 16,
   },
+  skeletontabDivider: { borderLeftWidth: 1, borderLeftColor: LIGHT_GRAY },
 });

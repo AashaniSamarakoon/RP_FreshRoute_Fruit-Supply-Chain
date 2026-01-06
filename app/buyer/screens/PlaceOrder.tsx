@@ -169,7 +169,6 @@ export default function AddStock() {
     <SafeAreaView style={styles.safeArea}>
       <Header title="Place Order" onBack={() => router.back()} />
 
-
       {/* Success Modal */}
       {showModal && (
         <SuccessModal
@@ -284,6 +283,9 @@ export default function AddStock() {
                 </View>
 
                 <Text style={styles.label}>Required Delivery Date</Text>
+                <Text style={styles.helperText}>
+                  Select a date from tomorrow up to 7 days
+                </Text>
                 <TouchableOpacity
                   style={styles.selectInput}
                   onPress={() => setDatePickerVisible(true)}
@@ -365,6 +367,12 @@ const styles = StyleSheet.create({
     // margin: 16,
   },
   label: { fontSize: 16, color: "#333", marginBottom: 8, marginTop: 12 },
+  helperText: {
+    fontSize: 12,
+    color: "#999",
+    marginBottom: 8,
+    fontStyle: "italic",
+  },
   selectInput: {
     backgroundColor: LIGHT_GRAY,
     borderRadius: 10,

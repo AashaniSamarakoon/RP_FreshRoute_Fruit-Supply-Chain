@@ -62,7 +62,7 @@ export default function BuyerDashboardScreen(): React.JSX.Element {
 
         <Hero />
 
-        {/* FreshRoute Prices Quick Access */}
+        {/* FreshRoute Prices Quick Access
         <TouchableOpacity
           style={styles.quickCard}
           onPress={() => router.push("/buyer/(tabs)/freshroutePrices")}
@@ -72,7 +72,7 @@ export default function BuyerDashboardScreen(): React.JSX.Element {
             <Text style={styles.quickSubtitle}>See latest curated prices by grade</Text>
           </View>
           <Text style={styles.quickAction}>View</Text>
-        </TouchableOpacity>
+        </TouchableOpacity> */}
 
         {/* Wholesale Deals Section */}
         <View style={styles.sectionHeader}>
@@ -156,7 +156,7 @@ const styles = StyleSheet.create({
     marginTop: 16,
     marginBottom: 8,
     padding: 16,
-    borderRadius: 14,
+    borderRadius: 16,
     backgroundColor: BuyerColors.primaryGreen,
     flexDirection: "row",
     alignItems: "center",

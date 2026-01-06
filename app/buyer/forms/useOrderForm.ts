@@ -50,7 +50,7 @@ export const useOrderForm = () => {
       latitude: 34.0522,
       longitude: -118.2437,
     },
-    loading: true,
+    loading: false,
     datePickerVisible: false,
     dateValue: null,
     fruitItems: [],
@@ -91,11 +91,7 @@ export const useOrderForm = () => {
         }
 
         if (!res.ok) {
-          console.log("[useOrderForm] Response not ok, alerting error");
-          Alert.alert(
-            "Error",
-            `Failed to load fruit properties (${res.status})`
-          );
+          console.log("[useOrderForm] Response not ok, status:", res.status);
           setState(prev => ({ ...prev, loading: false }));
           return;
         }
@@ -106,8 +102,7 @@ export const useOrderForm = () => {
 
         console.log("[useOrderForm] Extracted data array:", data);
         if (!Array.isArray(data)) {
-          console.log("[useOrderForm] Data not array, raw:", raw);
-          Alert.alert("Error", "Unexpected data format from server");
+          console.log("[useOrderForm] Data not array, showing form anyway");
           setState(prev => ({ ...prev, loading: false }));
           return;
         }
@@ -128,8 +123,10 @@ export const useOrderForm = () => {
         }));
         console.log("[useOrderForm] loadFruitProperties completed successfully");
       } catch (e) {
-        console.error("[useOrderForm] Exception:", e);
-
+        // Silently suppress errors and show form anyway
+        if (e instanceof Error && e.name !== "AbortError") {
+          console.log("[useOrderForm] Error loading fruit properties, showing form");
+        }
         setState(prev => ({ ...prev, loading: false }));
       }
     };
@@ -245,7 +242,6 @@ export const useOrderForm = () => {
       console.log("Place order response:", body);
       if (!res.ok) {
         console.error("Submit error:", body);
-        Alert.alert("Error", body.message || "Failed to submit order");
         return {
           success: false,
           farmersFound: false,
@@ -262,8 +258,7 @@ export const useOrderForm = () => {
         orderId: body.id || body.orderId || body.order?.id,
       };
     } catch (err) {
-      console.error(err);
-      Alert.alert("Error", "Could not submit order");
+      // Silently suppress errors and return failure gracefully
       return {
         success: false,
         farmersFound: false,

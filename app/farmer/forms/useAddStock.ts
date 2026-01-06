@@ -14,6 +14,7 @@ interface AddStockFormData {
   fruit: string | null;
   category: string | null;
   quantity: string;
+  unit: string;
   grade: string;
   estimatedDate: string;
 }
@@ -37,6 +38,7 @@ export const useAddStock = () => {
       fruit: null,
       category: null,
       quantity: "",
+      unit: "kg",
       grade: "A",
       estimatedDate: "",
     },
