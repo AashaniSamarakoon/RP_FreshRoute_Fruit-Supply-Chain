@@ -1,5 +1,6 @@
 // app/transporter/index.tsx
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
@@ -12,7 +13,6 @@ import {
   View,
 } from "react-native";
 import { BACKEND_URL } from "../../config";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Types
 interface Job {

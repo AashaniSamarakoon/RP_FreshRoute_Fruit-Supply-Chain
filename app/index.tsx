@@ -20,7 +20,7 @@ export default function Index() {
         }
         const user = JSON.parse(userJson) as { role: Role };
         const route = getDashboardRoute(user.role);
-        router.replace(route);
+        router.replace(route as any);
       } catch (e) {
         router.replace("/login");
       } finally {
