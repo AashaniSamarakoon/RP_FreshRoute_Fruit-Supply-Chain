@@ -27,8 +27,6 @@ export default function FeatureGrid() {
   const router = useRouter();
   const { t, locale } = useTranslationContext();
 
-  console.log('[FeatureGrid] Rendering with locale:', locale);
-
   const gridItems: GridItem[] = useMemo(() => [
     {
       id: 'forecast',
@@ -125,22 +123,22 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   iconCircle: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 8,
+    marginBottom: 6,
   },
   gridTitle: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700",
     color: "#000",
     textAlign: "center",
-    marginBottom: 4,
+    marginBottom: 2,
   },
   gridSubtitle: {
-    fontSize: 11,
+    fontSize: 10,
     color: "#999",
     textAlign: "center",
   },

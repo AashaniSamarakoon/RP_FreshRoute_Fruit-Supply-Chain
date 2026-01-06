@@ -29,8 +29,6 @@ export default function FarmerDashboard() {
   const [data, setData] = useState<FarmerDashboardData | null>(null);
   const [user, setUser] = useState<UserData | null>(null);
 
-  console.log('[FarmerDashboard] Rendering with locale:', locale);
-
   useEffect(() => {
     const load = async () => {
       console.log("[DASHBOARD] Loading dashboard...");
@@ -119,6 +117,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   scrollContent: {
-    paddingBottom: 40, // Trim excess bottom space while keeping content clear of nav
+    paddingBottom: 10,
   },
 });

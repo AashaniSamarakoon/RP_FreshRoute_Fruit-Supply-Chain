@@ -28,8 +28,6 @@ export default function Header({
   const { t, locale, setLocale } = useTranslationContext();
   const [unreadCount, setUnreadCount] = useState(0);
 
-  console.log('[Header] Rendering with locale:', locale);
-
   useEffect(() => {
     const loadUnreadCount = async () => {
       try {
