@@ -3,6 +3,7 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Animated,
   Platform,
@@ -117,10 +118,10 @@ export const options = {
 export default function AddStock() {
   const router = useRouter();
   const [showModal, setShowModal] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [modalData, setModalData] = useState({
     title: "",
     message: "",
-    farmersFound: false,
   });
 
   const {
@@ -136,32 +137,44 @@ export default function AddStock() {
     handleDateChange,
   } = useOrderForm();
 
+  const handleNavigateToHome = () => {
+    setShowModal(false);
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/buyer/(tabs)");
+    }
+  };
+
   const handleSubmit = async () => {
-    // Submit the form using the hook's handler
-    const result = await originalHandleSubmit();
+    setSubmitting(true);
+    try {
+      // Submit the form using the hook's handler
+      const result = await originalHandleSubmit();
 
-    if (result?.success) {
-      // Show success modal with appropriate message
-      setModalData({
-        title: "Order Submitted",
-        message: "",
-        // message: result.farmersFound
-        //   ? "We've found matching suppliers for your order. Let's explore your options."
-        //   : "Your order has been submitted successfully. We're searching for the best suppliers and will notify you shortly.",
-        farmersFound: result.farmersFound || false,
-      });
-      setShowModal(true);
+      if (result?.success) {
+        // First navigate to home
+        if (router.canGoBack()) {
+          router.back();
+        } else {
+          router.replace("/buyer/(tabs)");
+        }
 
-      // Auto-close modal and navigate to MatchedStocks after 2 seconds
-      setTimeout(() => {
-        setShowModal(false);
+        // Then show success modal after a small delay
         setTimeout(() => {
-          router.push({
-            pathname: "/buyer/screens/MatchedStocks",
-            params: result.orderId ? { orderId: result.orderId } : {},
+          setModalData({
+            title: "Order Placed Successfully!",
+            message: result.farmersFound
+              ? "We've found matching suppliers for your order. Check the Best Matching Deals section to explore your options."
+              : "Your order has been submitted. We're searching for the best suppliers and will notify you when matches are found.",
           });
-        }, 100); // Small delay to ensure modal closes before navigation
-      }, 2000);
+          setShowModal(true);
+        }, 300);
+      }
+    } catch (error) {
+      console.error("Error placing order:", error);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -175,6 +188,8 @@ export default function AddStock() {
           visible={showModal}
           title={modalData.title}
           message={modalData.message}
+          buttonText="OK"
+          onButtonPress={() => setShowModal(false)}
           onClose={() => setShowModal(false)}
         />
       )}
@@ -343,10 +358,27 @@ export default function AddStock() {
             {/* Fixed footer submit */}
             <View style={styles.footer} pointerEvents="box-none">
               <TouchableOpacity
-                style={styles.submitButtonFixed}
+                style={[
+                  styles.submitButtonFixed,
+                  submitting && { opacity: 0.7 },
+                ]}
                 onPress={handleSubmit}
+                disabled={submitting}
               >
-                <Text style={styles.submitText}>Place Order</Text>
+                {submitting ? (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <ActivityIndicator size="small" color="#fff" />
+                    <Text style={styles.submitText}>Submitting...</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.submitText}>Place Order</Text>
+                )}
               </TouchableOpacity>
             </View>
           </>

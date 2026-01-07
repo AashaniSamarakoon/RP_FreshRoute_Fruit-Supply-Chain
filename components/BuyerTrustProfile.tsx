@@ -40,7 +40,7 @@ interface TransactionItem {
   smartContract: string;
 }
 
-interface ProfileData {
+interface BuyerProfileData {
   name: string;
   location: string;
   verified: boolean;
@@ -52,23 +52,19 @@ interface ProfileData {
   transactions: TransactionItem[];
 }
 
-interface InitialProfileData {
-  name: string;
-  location: string;
-  trustScore: string;
+interface BuyerTrustProfileProps {
+  buyerId: string;
+  initialData?: {
+    name: string;
+    location: string;
+    trustScore: string;
+  };
 }
 
-interface TrustProfileProps {
-  userType: "farmer" | "buyer"; // 'farmer' or 'buyer'
-  userId?: string;
-  initialData?: InitialProfileData; // Data passed from MatchedStocks
-}
-
-export default function TrustProfileComponent({
-  userType,
-  userId,
+export default function BuyerTrustProfile({
+  buyerId,
   initialData,
-}: TrustProfileProps) {
+}: BuyerTrustProfileProps) {
   const router = useRouter();
 
   // --- STATE ---
@@ -77,27 +73,24 @@ export default function TrustProfileComponent({
   const [selectedTx, setSelectedTx] = useState<TransactionItem | null>(null);
   const [loading, setLoading] = useState(false);
   const [passportData, setPassportData] = useState<PassportData | null>(null);
-  // If initialData is provided, skip loading state
   const [profileLoading, setProfileLoading] = useState(!initialData);
-  const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [profile, setProfile] = useState<BuyerProfileData | null>(null);
 
-  // --- FETCH PROFILE DATA ---
+  // --- FETCH BUYER PROFILE DATA ---
   useEffect(() => {
-    // If initialData is provided from navigation, use it directly
     if (initialData) {
-      // Parse trust score from string like "4.5/5" to number
       const parsedScore = initialData.trustScore?.includes("/")
         ? parseFloat(initialData.trustScore.split("/")[0]) * 20
-        : 90;
+        : 85;
 
       setProfile({
         name: initialData.name,
         location: initialData.location,
         verified: true,
         trustScore: parsedScore,
-        onTimeDelivery: 98, // Default values for now
-        qualityGrade: 92,
-        successfulOrders: 10,
+        onTimeDelivery: 98,
+        qualityGrade: 95,
+        successfulOrders: 7,
         image: "https://via.placeholder.com/80",
         transactions: [],
       });
@@ -105,12 +98,7 @@ export default function TrustProfileComponent({
       return;
     }
 
-    const fetchProfile = async () => {
-      if (!userId) {
-        setProfileLoading(false);
-        return;
-      }
-
+    const fetchBuyerProfile = async () => {
       try {
         setProfileLoading(true);
         const token = await AsyncStorage.getItem("token");
@@ -121,42 +109,36 @@ export default function TrustProfileComponent({
           return;
         }
 
-        // Use trust profile endpoint which is accessible by any authenticated user
-        const endpoint =
-          userType === "buyer"
-            ? `${BACKEND_URL}/api/trust/farmer-profile/${userId}`
-            : `${BACKEND_URL}/api/trust/buyer-profile/${userId}`;
-
-        console.log("Fetching profile from:", endpoint);
-
-        const response = await fetch(endpoint, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        });
+        const response = await fetch(
+          `${BACKEND_URL}/api/trust/buyer-profile/${buyerId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
 
         if (!response.ok) {
-          throw new Error(`Failed to fetch profile: ${response.status}`);
+          throw new Error(`Failed to fetch buyer profile: ${response.status}`);
         }
 
         const data = await response.json();
-        console.log("Profile data:", data);
+        console.log("Buyer profile data:", data);
 
-        // Transform the API response to match our ProfileData structure
-        const profileData = data.farmer || data.buyer || data;
+        const profileData = data.buyer || data;
         const userData = profileData.user || {};
 
         setProfile({
-          name: userData.name || profileData.name || "Unknown",
+          name: userData.name || profileData.name || "Unknown Buyer",
           location:
             profileData.location || userData.location || "Unknown Location",
           verified: profileData.verified ?? true,
-          trustScore: profileData.reputation ? profileData.reputation * 20 : 90,
+          trustScore: profileData.reputation ? profileData.reputation * 20 : 85,
           onTimeDelivery: profileData.onTimeDelivery || 98,
-          qualityGrade: profileData.qualityGrade || 92,
+          qualityGrade: profileData.qualityGrade || 95,
           successfulOrders:
-            profileData.successfulOrders || profileData.total_orders || 10,
+            profileData.successfulOrders || profileData.total_orders || 150,
           image:
             userData.avatar ||
             profileData.image ||
@@ -164,16 +146,15 @@ export default function TrustProfileComponent({
           transactions: profileData.transactions || [],
         });
       } catch (error) {
-        console.error("Error fetching profile:", error);
-        // Fall back to default data on error
+        console.error("Error fetching buyer profile:", error);
         setProfile(null);
       } finally {
         setProfileLoading(false);
       }
     };
 
-    fetchProfile();
-  }, [userId, userType, initialData]);
+    fetchBuyerProfile();
+  }, [buyerId, initialData]);
 
   // --- ACTIONS ---
   const handleViewPassport = async () => {
@@ -181,9 +162,8 @@ export default function TrustProfileComponent({
     setModalVisible(true);
 
     try {
-      // const API_URL = "http://192.168.1.4:4000";
       const response = await fetch(
-        `${BACKEND_URL}/api/trust/test-identity/${userId || "user_123"}`
+        `${BACKEND_URL}/api/trust/test-identity/${buyerId || "buyer_123"}`
       );
       const data = await response.json();
 
@@ -197,20 +177,12 @@ export default function TrustProfileComponent({
       setTimeout(() => {
         setPassportData({
           serialNumber: "65FB229D9B2D6EAED82A1D563FE4D3BBA3529952",
-          issuer:
-            userType === "farmer"
-              ? "FreshRoute Buyer Network (Hyperledger Fabric)"
-              : "FreshRoute CA (Hyperledger Fabric)",
-          subject:
-            userType === "farmer"
-              ? "CN=Fresh Mart, OU=Buyer, O=FreshRoute, C=LK"
-              : "CN=Lakshan Farms, OU=Farmer, O=FreshRoute, C=LK",
+          issuer: "FreshRoute Buyer Network (Hyperledger Fabric)",
+          subject: "CN=Fresh Mart, OU=Buyer, O=FreshRoute, C=LK",
           validFrom: "Jan 01, 2026",
           validTo: "Jan 01, 2027",
           fingerprint:
-            userType === "farmer"
-              ? "3B:C9:F4:E7:2D:A1:8F:5C:9E:6B:D2:7A:4E:1F:8C:53:7B:C0:D4:A5"
-              : "27:AF:E2:F9:8B:DB:D9:09:7D:FB:D3:9B:3E:F1:15:62:34:80:FA:C1",
+            "3B:C9:F4:E7:2D:A1:8F:5C:9E:6B:D2:7A:4E:1F:8C:53:7B:C0:D4:A5",
         });
       }, 500);
     } finally {
@@ -223,149 +195,79 @@ export default function TrustProfileComponent({
     setReceiptModalVisible(true);
   };
 
-  // --- MOCK DATA (fallback when API fails or no userId) ---
-  // When buyer views, show farmer profile; when farmer views, show buyer profile
-  const fallbackProfile: ProfileData =
-    userType === "farmer"
-      ? {
-          name: "Fresh Mart",
-          location: "Colombo",
-          verified: true,
-          trustScore: 100,
-          onTimeDelivery: 96,
-          qualityGrade: 95,
-          successfulOrders: 150,
-          image: "https://via.placeholder.com/80",
-          transactions: [
-            {
-              id: "1",
-              txId: "b8a7c234-5d6e-47f9-9c1d-a2e4f6b3c9d1",
-              date: "Aug 24, 2024 • 14:00 PM",
-              item: "Fresh Vegetables Batch",
-              quantity: "1000kg",
-              amount: "Rs. 350,000",
-              status: "COMMITTED",
-              blockNumber: "#1050",
-              smartContract: "PurchaseContract:v1",
-            },
-            {
-              id: "2",
-              txId: "c9b8d345-6e7f-48g0-0d2e-b3f5g7c4d0e2...",
-              date: "Aug 20, 2024 • 09:30 AM",
-              item: "Premium Fruits Mix",
-              quantity: "500kg",
-              amount: "Rs. 180,000",
-              status: "COMMITTED",
-              blockNumber: "#1038",
-              smartContract: "PurchaseContract:v1",
-            },
-            {
-              id: "3",
-              txId: "d0c9e456-7f8g-49h1-1e3f-c4g6h8d5e1f3...",
-              date: "Aug 15, 2024 • 11:00 AM",
-              item: "Organic Produce",
-              quantity: "300kg",
-              amount: "Rs. 95,000",
-              status: "DELIVERED",
-              blockNumber: "#1020",
-              smartContract: "PurchaseContract:v1",
-            },
-            {
-              id: "4",
-              txId: "e1d0f567-8g9h-50i2-2f4g-d5h7i9e6f2g4...",
-              date: "Aug 10, 2024 • 16:45 PM",
-              item: "Seasonal Fruits",
-              quantity: "400kg",
-              amount: "Rs. 140,000",
-              status: "DELIVERED",
-              blockNumber: "#1005",
-              smartContract: "PurchaseContract:v1",
-            },
-          ],
-        }
-      : {
-          name: "Lakshan Farms",
-          location: "Awissawella",
-          verified: true,
-          trustScore: 90,
-          onTimeDelivery: 98,
-          qualityGrade: 92,
-          successfulOrders: 10,
-          image: "https://via.placeholder.com/80",
-          transactions: [
-            {
-              id: "1",
-              txId: "50ca8296-64c7-47f4-8946-d8f082d07f7c",
-              date: "Aug 24, 2024 • 10:30 AM",
-              item: "Ambul Banana (Grade A)",
-              quantity: "500kg",
-              amount: "Rs. 125,000",
-              status: "COMMITTED",
-              blockNumber: "#1042",
-              smartContract: "OrderContract:v1",
-            },
-            {
-              id: "2",
-              txId: "1868d481327a8-449b4847-8965-2f5od8d73...",
-              date: "Jun 12, 2024 • 02:15 PM",
-              item: "TJC Mango",
-              quantity: "200kg",
-              amount: "Rs. 80,000",
-              status: "COMMITTED",
-              blockNumber: "#988",
-              smartContract: "OrderContract:v1",
-            },
-            {
-              id: "3",
-              txId: "1868d88289169-449b4827-ae03-3f29d90ec...",
-              date: "Jun 01, 2024 • 09:00 AM",
-              item: "Papaya (Red Lady)",
-              quantity: "150kg",
-              amount: "Rs. 45,000",
-              status: "DELIVERED",
-              blockNumber: "#950",
-              smartContract: "OrderContract:v1",
-            },
-            {
-              id: "4",
-              txId: "1868d88289169-449b4827-ae03-3f29d90ec...",
-              date: "Jun 01, 2024 • 08:45 AM",
-              item: "Pineapple (Mauritius)",
-              quantity: "300kg",
-              amount: "Rs. 110,000",
-              status: "DELIVERED",
-              blockNumber: "#948",
-              smartContract: "OrderContract:v1",
-            },
-          ],
-        };
+  // --- FALLBACK BUYER PROFILE DATA ---
+  const fallbackBuyerProfile: BuyerProfileData = {
+    name: "Fresh Mart",
+    location: "Colombo",
+    verified: true,
+    trustScore: 88,
+    onTimeDelivery: 96,
+    qualityGrade: 95,
+    successfulOrders: 7,
+    image: "https://via.placeholder.com/80",
+    transactions: [
+      {
+        id: "1",
+        txId: "b8a7c234-5d6e-47f9-9c1d-a2e4f6b3c9d1",
+        date: "Jan 02, 2026 • 14:00 PM",
+        item: "Pineapple (Mauritius)",
+        quantity: "1000kg",
+        amount: "Rs. 350,000",
+        status: "COMMITTED",
+        blockNumber: "#145",
+        smartContract: "PurchaseContract:v1",
+      },
+      {
+        id: "2",
+        txId: "c9b8d345-6e7f-48g0-0d2e-b3f5g7c4d0e2...",
+        date: "Dec 28, 2025 • 09:30 AM",
+        item: "TJC Mango",
+        quantity: "500kg",
+        amount: "Rs. 180,000",
+        status: "COMMITTED",
+        blockNumber: "#120",
+        smartContract: "PurchaseContract:v1",
+      },
+      {
+        id: "3",
+        txId: "d0c9e456-7f8g-49h1-1e3f-c4g6h8d5e1f3...",
+        date: "Dec 15, 2025 • 11:00 AM",
+        item: "Ambul Banana (Grade A)",
+        quantity: "300kg",
+        amount: "Rs. 95,000",
+        status: "DELIVERED",
+        blockNumber: "#98",
+        smartContract: "PurchaseContract:v1",
+      },
+      {
+        id: "4",
+        txId: "e1d0f567-8g9h-50i2-2f4g-d5h7i9e6f2g4...",
+        date: "Nov 25, 2025 • 16:45 PM",
+        item: "Pineapple (Smooth Cayenne)",
+        quantity: "400kg",
+        amount: "Rs. 140,000",
+        status: "DELIVERED",
+        blockNumber: "#67",
+        smartContract: "PurchaseContract:v1",
+      },
+    ],
+  };
 
-  // Use fetched profile or fallback
-  const displayProfile = profile || fallbackProfile;
-
-  // If profile has no transactions, use fallback transactions
+  const displayProfile = profile || fallbackBuyerProfile;
   const displayTransactions =
     displayProfile.transactions.length > 0
       ? displayProfile.transactions
-      : fallbackProfile.transactions;
+      : fallbackBuyerProfile.transactions;
 
   const needleRotation = (displayProfile.trustScore / 100) * 180 - 90;
 
-  // Show loading state
   if (profileLoading) {
     return (
       <SafeAreaView style={styles.container}>
-        <Header
-          title={
-            userType === "farmer"
-              ? "Buyer Trust Profile"
-              : "Farmer Trust Profile"
-          }
-          onBack={() => router.back()}
-        />
+        <Header title="Buyer Trust Profile" onBack={() => router.back()} />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={BuyerColors.primaryGreen} />
-          <Text style={styles.loadingText}>Loading profile...</Text>
+          <Text style={styles.loadingText}>Loading buyer profile...</Text>
         </View>
       </SafeAreaView>
     );
@@ -373,12 +275,7 @@ export default function TrustProfileComponent({
 
   return (
     <SafeAreaView style={styles.container}>
-      <Header
-        title={
-          userType === "farmer" ? "Buyer Trust Profile" : "Farmer Trust Profile"
-        }
-        onBack={() => router.back()}
-      />
+      <Header title="Buyer Trust Profile" onBack={() => router.back()} />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -401,7 +298,6 @@ export default function TrustProfileComponent({
               <Text style={styles.locationText}>{displayProfile.location}</Text>
             </View>
 
-            {/* View Digital ID Button */}
             <TouchableOpacity
               style={styles.passportButton}
               onPress={handleViewPassport}
@@ -451,27 +347,19 @@ export default function TrustProfileComponent({
         {/* Metrics Cards */}
         <View style={styles.metricsContainer}>
           <View style={styles.metricCard}>
-            <Text style={styles.metricLabel}>
-              {userType === "buyer" ? "On-time Delivery" : "On-time Purchase"}
-            </Text>
+            <Text style={styles.metricLabel}>On-time Purchase</Text>
             <Text style={styles.metricValue}>
               {displayProfile.onTimeDelivery}%
             </Text>
           </View>
           <View style={styles.metricCard}>
-            <Text style={styles.metricLabel}>
-              {userType === "buyer" ? "Quality Grade A" : "Quality Standards"}
-            </Text>
+            <Text style={styles.metricLabel}>Quality Standards</Text>
             <Text style={styles.metricValue}>
               {displayProfile.qualityGrade}%
             </Text>
           </View>
           <View style={styles.metricCard}>
-            <Text style={styles.metricLabel}>
-              {userType === "buyer"
-                ? "Successful Orders"
-                : "Successful Purchases"}
-            </Text>
+            <Text style={styles.metricLabel}>Successful Purchases</Text>
             <Text style={styles.metricValue}>
               {displayProfile.successfulOrders}
             </Text>
@@ -481,9 +369,7 @@ export default function TrustProfileComponent({
         {/* Transactions Section */}
         <View style={styles.transactionsSection}>
           <Text style={styles.transactionsTitle}>
-            {userType === "buyer"
-              ? "Recent Sold Transactions"
-              : "Recent Purchase Transactions"}
+            Recent Purchase Transactions
           </Text>
 
           <View style={styles.transactionsContainer}>
@@ -627,7 +513,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: BuyerColors.textGray,
     fontWeight: "500",
-    // lineHeight: 20,
   },
 
   passportButton: {
@@ -667,7 +552,6 @@ const styles = StyleSheet.create({
     backgroundColor: BuyerColors.primaryGreen,
     paddingHorizontal: 24,
     paddingVertical: 0,
-
     alignItems: "center",
     justifyContent: "space-between",
     borderRadius: 20,

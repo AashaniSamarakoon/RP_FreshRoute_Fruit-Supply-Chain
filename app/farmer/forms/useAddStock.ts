@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Alert, Platform } from "react-native";
@@ -17,6 +18,7 @@ interface AddStockFormData {
   unit: string;
   grade: string;
   estimatedDate: string;
+  images: string[]; // <--- CHANGED: Array of strings
 }
 
 interface AddStockFormState {
@@ -41,6 +43,7 @@ export const useAddStock = () => {
       unit: "kg",
       grade: "A",
       estimatedDate: "",
+      images: [], // <--- Init Empty Array
     },
     loading: true,
     datePickerVisible: false,
@@ -52,136 +55,123 @@ export const useAddStock = () => {
 
   // Load fruit properties data
   useEffect(() => {
-    
     const loadFruitProperties = async () => {
       try {
         const token = await AsyncStorage.getItem("token");
-        console.log("[useAddStock] Token retrieved:", token ? "present" : "null");
         if (!token) {
-          console.log("[useAddStock] No token, setting loading false");
-          setState(prev => ({ ...prev, loading: false }));
+          setState((prev) => ({ ...prev, loading: false }));
           return;
         }
-
-        console.log("[useAddStock] Making fetch request to:", `${BACKEND_URL}/api/fruit-properties`);
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => {
-          console.log("[useAddStock] Fetch timed out after 10 seconds");
-          controller.abort();
-        }, 10000); // 10-second timeout
 
         const res = await fetch(`${BACKEND_URL}/api/fruit-properties`, {
           headers: { Authorization: `Bearer ${token}` },
-          signal: controller.signal,
         });
 
-        clearTimeout(timeoutId);
-        console.log("[useAddStock] Fetch completed, response status:", res.status);
-        console.log("[useAddStock] Fetch response ok:", res.ok);
-
-        const text = await res.text();
-        console.log("[useAddStock] Response text:", text);
-        let raw: any = text;
-        try {
-          raw = text ? JSON.parse(text) : text;
-          console.log("[useAddStock] Parsed response:", raw);
-        } catch (parseErr) {
-          console.log("[useAddStock] Parse error:", parseErr);
-          // fall back to raw text
-        }
-
         if (!res.ok) {
-          console.log("[useAddStock] Response not ok, alerting error");
-          Alert.alert(
-            "Error",
-            `Failed to load fruit properties (${res.status})`
-          );
-          setState(prev => ({ ...prev, loading: false }));
+          Alert.alert("Error", `Failed to load fruit properties`);
+          setState((prev) => ({ ...prev, loading: false }));
           return;
         }
 
-
-
+        const raw = await res.json();
         const data: FruitPropertyRow[] = Array.isArray(raw)
           ? raw
-          : raw?.fruits ?? raw?.data ?? raw?.items ?? [];
-
-        if (!Array.isArray(data)) {
-          console.log("[useAddStock] Data not array, raw:", raw);
-          Alert.alert("Error", "Unexpected data format from server");
-          setState(prev => ({ ...prev, loading: false }));
-          return;
-        }
-        
-        if (data.length === 0) {
-          console.log("[useAddStock] Warning: Data array is empty!");
-        }
+          : raw?.fruits ?? raw?.data ?? [];
 
         setRows(data);
-        console.log("[useAddStock] Set rows with data length:", data.length);
-
-        // unique fruit names
         const unique = Array.from(new Set(data.map((r) => r.name)));
-        console.log("[useAddStock] Unique fruit names:", unique);
         const fruitItems = unique.map((name) => ({ label: name, value: name }));
 
-        console.log("[useAddStock] Setting fruitItems and loading false");
-        setState(prev => ({
+        setState((prev) => ({
           ...prev,
           fruitItems,
-          loading: false
+          loading: false,
         }));
-        console.log("[useAddStock] loadFruitProperties completed successfully");
       } catch (e) {
-        console.error("[useAddStock] Exception:", e);
+        console.error(e);
         Alert.alert("Error", "Could not load fruit properties");
-        setState(prev => ({ ...prev, loading: false }));
+        setState((prev) => ({ ...prev, loading: false }));
       }
     };
 
     loadFruitProperties();
   }, []);
-  
 
   // Update category items when fruit changes
-  useEffect(() => {    
+  useEffect(() => {
     if (!state.formData.fruit) {
-      console.log("[useAddStock] No fruit selected, clearing categories");
-      setState(prev => ({
+      setState((prev) => ({
         ...prev,
         categoryItems: [],
-        formData: { ...prev.formData, category: null }
+        formData: { ...prev.formData, category: null },
       }));
       return;
     }
 
     const filtered = rows.filter((r) => r.name === state.formData.fruit);
-    console.log("[useAddStock] Filtered results for fruit:", state.formData.fruit, "found:", filtered.length, filtered);
-    
-    const categoryItems = filtered.map((r) => ({ label: r.variety, value: r.variety }));
-    console.log("[useAddStock] Generated categories:", categoryItems);
+    const categoryItems = filtered.map((r) => ({
+      label: r.variety,
+      value: r.variety,
+    }));
 
-    setState(prev => ({
+    setState((prev) => ({
       ...prev,
       categoryItems,
-      formData: { ...prev.formData, category: null }
+      formData: { ...prev.formData, category: null },
     }));
   }, [state.formData.fruit, rows]);
 
   const updateField = (field: keyof AddStockFormData, value: any) => {
-    setState(prev => ({
+    setState((prev) => ({
       ...prev,
       formData: { ...prev.formData, [field]: value },
-      errors: { ...prev.errors, [field]: "" } // Clear error when field changes
+      errors: { ...prev.errors, [field]: "" },
     }));
   };
 
+  // --- UPDATED: Multi-Image Picker ---
+  const pickImage = async () => {
+    // 1. Check Permissions
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission Denied", "We need access to your gallery.");
+      return;
+    }
+
+    // 2. Launch Picker
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: "images", // Fixed deprecated Enum
+      allowsMultipleSelection: true, // Allow multiple
+      selectionLimit: 10, // Max 10 at a time
+      quality: 0.5, // Compression
+    });
+
+    if (!result.canceled) {
+      // 3. Append new images to existing list (limit total to 10)
+      const newUris = result.assets.map((asset) => asset.uri);
+      const combinedImages = [...state.formData.images, ...newUris].slice(
+        0,
+        10
+      );
+
+      updateField("images", combinedImages);
+    }
+  };
+
+  // --- NEW: Remove Image ---
+  const removeImage = (indexToRemove: number) => {
+    const updatedImages = state.formData.images.filter(
+      (_, index) => index !== indexToRemove
+    );
+    updateField("images", updatedImages);
+  };
+
   const setDatePickerVisible = (visible: boolean) => {
-    setState(prev => ({ ...prev, datePickerVisible: visible }));
+    setState((prev) => ({ ...prev, datePickerVisible: visible }));
   };
 
   const setDateValue = (date: Date | null) => {
-    setState(prev => ({ ...prev, dateValue: date }));
+    setState((prev) => ({ ...prev, dateValue: date }));
   };
 
   const isFutureDate = (dateStr: string) => {
@@ -196,98 +186,95 @@ export const useAddStock = () => {
   const validateForm = (): boolean => {
     const errors: Record<string, string> = {};
 
-    if (!state.formData.fruit) {
-      errors.fruit = "Please select a fruit";
+    if (!state.formData.fruit) errors.fruit = "Please select a fruit";
+    if (!state.formData.category) errors.category = "Please select a category";
+    if (!state.formData.quantity) errors.quantity = "Please enter quantity";
+    if (
+      !state.formData.estimatedDate ||
+      !isFutureDate(state.formData.estimatedDate)
+    ) {
+      errors.estimatedDate =
+        "Please select a future harvest date (tomorrow or later)";
     }
-    if (!state.formData.category) {
-      errors.category = "Please select a category";
-    }
-    if (!state.formData.quantity) {
-      errors.quantity = "Please enter quantity";
-    }
-    if (!state.formData.estimatedDate || !isFutureDate(state.formData.estimatedDate)) {
-      errors.estimatedDate = "Please select a future harvest date (tomorrow or later)";
-    }
+    // Image is optional, but if you want to enforce it uncomment below:
+    // if (state.formData.images.length === 0) errors.images = "Please add at least one photo";
 
-    setState(prev => ({ ...prev, errors }));
+    setState((prev) => ({ ...prev, errors }));
 
     if (Object.keys(errors).length > 0) {
       const firstError = Object.values(errors)[0];
-      Alert.alert("Error", firstError);
-      return false;
+      throw new Error(firstError);
     }
-
     return true;
   };
 
   const handleSubmit = async () => {
-    if (!validateForm()) return;
-
     try {
+      if (!validateForm()) return;
+
       const token = await AsyncStorage.getItem("token");
       if (!token) {
-        Alert.alert("Error", "Not authenticated");
-        return;
+        throw new Error("Not authenticated");
       }
 
-      const payload = {
-        fruit_type: state.formData.fruit,
-        variant: state.formData.category,
-        quantity: parseInt(state.formData.quantity, 10),
-        grade: state.formData.grade,
-        estimated_harvest_date: state.formData.estimatedDate,
-      };
+      // --- UPDATED: Construct FormData with Multiple Images ---
+      const formData = new FormData();
+      formData.append("fruit_type", state.formData.fruit!);
+      formData.append("variant", state.formData.category!);
+      formData.append("quantity", state.formData.quantity);
+      formData.append("grade", state.formData.grade);
+      formData.append("estimated_harvest_date", state.formData.estimatedDate);
+      formData.append("price_per_unit", "0");
+
+      // Loop through images and append them
+      state.formData.images.forEach((uri, index) => {
+        const fileType = uri.substring(uri.lastIndexOf(".") + 1);
+        formData.append("images", {
+          // Key must match backend: upload.array('images')
+          uri: uri,
+          name: `upload_${index}.${fileType}`,
+          type: `image/${fileType}`,
+        } as any);
+      });
 
       const res = await fetch(`${BACKEND_URL}/api/farmer/add-predict-stock`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
+          // Do NOT set Content-Type manually
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(payload),
+        body: formData,
       });
 
       const body = await res.json();
       if (!res.ok) {
         console.error("Submit error:", body);
-        Alert.alert("Error", body.message || "Failed to submit stock");
-        return;
+        throw new Error(body.message || "Failed to submit stock");
       }
-
-      Alert.alert("Success", "Stock submitted successfully");
-      router.back();
+      // Success - let the caller handle the success feedback
     } catch (err) {
       console.error(err);
-      Alert.alert("Error", "Could not submit stock");
+      throw err;
     }
   };
 
   const handleDateChange = (event: any, selectedDate?: Date) => {
     if (Platform.OS === "android") setDatePickerVisible(false);
-
     const current = selectedDate || state.dateValue || new Date();
     setDateValue(current);
     updateField("estimatedDate", current.toISOString().slice(0, 10));
   };
 
   return {
-    // State
     ...state,
-
-    // Actions
     updateField,
+    pickImage, // <--- Exported
+    removeImage, // <--- Exported
     setDatePickerVisible,
     setDateValue,
     handleSubmit,
     handleDateChange,
-
-    // Computed
-    isFormValid: Object.keys(state.errors).length === 0 &&
-                 state.formData.fruit &&
-                 state.formData.category &&
-                 state.formData.quantity &&
-                 state.formData.estimatedDate,
   };
-}
+};
 
 export default useAddStock;

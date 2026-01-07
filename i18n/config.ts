@@ -207,6 +207,7 @@ const translations = {
       selectDateRange: "Select a date from tomorrow up to 7 days",
       selectDate: "Select date",
       submitStock: "Submit Harvest",
+      submitting: "Submitting...",
     },
   },
   si: {
@@ -408,6 +409,7 @@ const translations = {
       selectDateRange: "හෙට සිට දින 7 දක්වා දිනක් තෝරන්න",
       selectDate: "දිනක් තෝරන්න",
       submitStock: "අස්වැන්න ඇතුළු කරන්න",
+      submitting: "ඉදිරිපත් කරමින් ඇත...",
     },
   },
 } as const;

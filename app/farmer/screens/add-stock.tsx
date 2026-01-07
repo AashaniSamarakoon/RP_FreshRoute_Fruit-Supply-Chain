@@ -1,9 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useRouter } from "expo-router";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Animated,
+  FlatList,
+  Image,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -15,19 +18,15 @@ import {
 } from "react-native";
 import RNPickerSelect from "react-native-picker-select";
 import Header from "../../../components/Header";
+import ErrorModal from "../../../components/modals/ErrorModal";
+import SuccessModal from "../../../components/modals/SuccessModal";
 import { useTranslationContext } from "../../../context/TranslationContext";
 import { useAddStock } from "../forms/useAddStock";
 
 const PRIMARY_GREEN = "#2E7D32";
 const LIGHT_GRAY = "#f5f5f5";
 
-interface FruitPropertyRow {
-  id: number;
-  fruit_name: string;
-  variant: string;
-  // other columns exist but not used here
-}
-
+// ... (SkeletonLoader kept exactly as is for brevity) ...
 const SkeletonLoader = () => {
   const fadeAnim = useRef(new Animated.Value(0.3)).current;
 
@@ -58,31 +57,24 @@ const SkeletonLoader = () => {
           contentContainerStyle={{ paddingBottom: 140 }}
         >
           <View style={styles.formCard}>
-            {/* Fruit type */}
             <Animated.View
               style={[styles.skeletonLabel, { opacity: fadeAnim }]}
             />
             <Animated.View
               style={[styles.skeletonInput, { opacity: fadeAnim }]}
             />
-
-            {/* Category */}
             <Animated.View
               style={[styles.skeletonLabel, { opacity: fadeAnim }]}
             />
             <Animated.View
               style={[styles.skeletonInput, { opacity: fadeAnim }]}
             />
-
-            {/* Quantity */}
             <Animated.View
               style={[styles.skeletonLabel, { opacity: fadeAnim }]}
             />
             <Animated.View
               style={[styles.skeletonInput, { opacity: fadeAnim }]}
             />
-
-            {/* Grade */}
             <Animated.View
               style={[styles.skeletonLabel, { opacity: fadeAnim }]}
             />
@@ -98,8 +90,6 @@ const SkeletonLoader = () => {
                 />
               ))}
             </View>
-
-            {/* Date */}
             <Animated.View
               style={[styles.skeletonLabel, { opacity: fadeAnim }]}
             />
@@ -108,8 +98,6 @@ const SkeletonLoader = () => {
             />
           </View>
         </ScrollView>
-
-        {/* Footer Skeleton */}
         <View style={styles.footer}>
           <Animated.View
             style={[styles.skeletonButton, { opacity: fadeAnim }]}
@@ -123,19 +111,47 @@ const SkeletonLoader = () => {
 export default function AddStock() {
   const router = useRouter();
   const { t } = useTranslationContext();
+  const [successModalVisible, setSuccessModalVisible] = useState(false);
+  const [errorModalVisible, setErrorModalVisible] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const {
     loading,
     formData,
     fruitItems,
     categoryItems,
     updateField,
+    pickImage,
+    removeImage,
     setDatePickerVisible,
     datePickerVisible,
     dateValue,
-    setDateValue,
     handleDateChange,
-    handleSubmit,
+    handleSubmit: originalHandleSubmit,
   } = useAddStock();
+
+  const handleNavigateToHome = () => {
+    // Try to go back if there's a previous screen, otherwise go to home
+    if (router.canGoBack()) {
+      router.back();
+    }
+  };
+
+  const handleSubmit = async () => {
+    setIsSubmitting(true);
+    try {
+      await originalHandleSubmit();
+      setSuccessModalVisible(true);
+    } catch (error) {
+      const msg =
+        error instanceof Error ? error.message : "Failed to submit stock";
+      setErrorMessage(msg);
+      setErrorModalVisible(true);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   if (loading) {
     return <SkeletonLoader />;
@@ -144,7 +160,7 @@ export default function AddStock() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
-        <Header title="Add Expected Stock" onBack={() => router.back()} />
+        <Header title="Add Expected Stock" onBack={handleNavigateToHome} />
 
         <ScrollView
           style={styles.container}
@@ -281,18 +297,92 @@ export default function AddStock() {
                 onChange={handleDateChange}
               />
             )}
+            {/* --- MULTIPLE IMAGE UPLOAD SECTION --- */}
+            <Text style={styles.label}>Upload Photos (Optional, Max 10)</Text>
+            <Text style={styles.helperText}>
+              Add visuals to prove quality. ({formData.images.length}/10)
+            </Text>
+
+            <View style={styles.imageRow}>
+              {/* 1. Add Button (Show only if < 10) */}
+              {formData.images.length < 10 && (
+                <TouchableOpacity
+                  style={styles.addImageBox}
+                  onPress={pickImage}
+                >
+                  <Ionicons name="camera-outline" size={32} color="#888" />
+                  <Text style={styles.addImageText}>Add</Text>
+                </TouchableOpacity>
+              )}
+
+              {/* 2. Horizontal List of Images */}
+              <FlatList
+                horizontal
+                data={formData.images}
+                keyExtractor={(_, index) => index.toString()}
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ paddingRight: 10 }}
+                renderItem={({ item, index }) => (
+                  <View style={styles.imagePreviewContainer}>
+                    <Image source={{ uri: item }} style={styles.previewImage} />
+                    <TouchableOpacity
+                      style={styles.removeButton}
+                      onPress={() => removeImage(index)}
+                    >
+                      <Ionicons name="close" size={12} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                )}
+              />
+            </View>
           </View>
         </ScrollView>
 
-        {/* Fixed footer submit */}
         <View style={styles.footer} pointerEvents="box-none">
           <TouchableOpacity
-            style={styles.submitButtonFixed}
+            style={[styles.submitButtonFixed, isSubmitting && { opacity: 0.7 }]}
             onPress={handleSubmit}
+            disabled={isSubmitting}
           >
-            <Text style={styles.submitText}>{t("form.submitStock")}</Text>
+            {isSubmitting ? (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <ActivityIndicator
+                  color="#fff"
+                  size="small"
+                  style={{ marginRight: 8 }}
+                />
+                <Text style={styles.submitText}>{t("form.submitting")}</Text>
+              </View>
+            ) : (
+              <Text style={styles.submitText}>{t("form.submitStock")}</Text>
+            )}
           </TouchableOpacity>
         </View>
+
+        <SuccessModal
+          visible={successModalVisible}
+          title="Stock Added Successfully"
+          message="Your fruit stock has been added and is now available on the market."
+          onClose={() => {
+            setSuccessModalVisible(false);
+            handleNavigateToHome();
+          }}
+          buttonText="OK"
+        />
+
+        <ErrorModal
+          visible={errorModalVisible}
+          title="Error"
+          message={errorMessage}
+          onClose={() => setErrorModalVisible(false)}
+          buttonText="Try Again"
+        />
       </View>
     </SafeAreaView>
   );
@@ -306,9 +396,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderRadius: 14,
     padding: 18,
-    // margin: 16,
   },
-  label: { fontSize: 14, color: "#333", marginBottom: 8, marginTop: 12 },
+  label: { fontSize: 14, color: "#333", marginBottom: 8, marginTop: 20 },
   helperText: {
     fontSize: 12,
     color: "#999",
@@ -332,6 +421,48 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 16,
+  },
+
+  // --- Image Upload Styles (Updated for Multi) ---
+  imageRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
+    height: 90, // Fixed height for horizontal list
+  },
+  addImageBox: {
+    width: 80,
+    height: 80,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderStyle: "dashed",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 10,
+    backgroundColor: "#f9f9f9",
+  },
+  addImageText: { fontSize: 12, color: "#888", marginTop: 4 },
+  imagePreviewContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 12,
+    marginRight: 10,
+    overflow: "hidden",
+    position: "relative",
+    backgroundColor: "#eee",
+  },
+  previewImage: { width: "100%", height: "100%", resizeMode: "cover" },
+  removeButton: {
+    position: "absolute",
+    top: 4,
+    right: 4,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
   },
 
   quantityContainer: {
@@ -406,7 +537,6 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 27,
     alignItems: "center",
-    // marginHorizontal: 16,
   },
   submitText: { color: "#fff", fontWeight: "800", fontSize: 18 },
 

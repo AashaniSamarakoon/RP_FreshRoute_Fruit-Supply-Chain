@@ -1,7 +1,10 @@
 import DashboardHeader from "@/components/DashboardHeader";
+import { BACKEND_URL } from "@/config";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -17,30 +20,98 @@ import Hero from "../components/Hero";
 import PriceComparisonChart from "../components/PriceComparisonChart";
 import Search from "../components/Search";
 
-
 // --- Main Component ---
 
 export default function BuyerDashboardScreen(): React.JSX.Element {
   const router = useRouter();
-  // Sample Data for Wholesale Deals
-  const deals: DealData[] = [
+  const [deals, setDeals] = useState<DealData[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch pending buyer proposals
+  useEffect(() => {
+    const fetchPendingDeals = async () => {
+      try {
+        setLoading(true);
+        const token = await AsyncStorage.getItem("token");
+
+        if (!token) {
+          console.warn("No auth token found");
+          setLoading(false);
+          return;
+        }
+
+        const response = await fetch(`${BACKEND_URL}/api/buyer/proposals`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch deals: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log("Buyer proposals data:", data);
+
+        // Filter for PENDING_BUYER status and transform to DealData
+        const pendingDeals = (data.proposals || [])
+          .filter((proposal: any) => proposal.status === "PENDING_BUYER")
+          .map((proposal: any) => ({
+            id: proposal.id,
+            title: `${proposal.order.fruit_type} ${
+              proposal.order.variant || ""
+            }`.trim(),
+            price: "", // No price in proposals
+            unit: "",
+            location: proposal.order.delivery_location || "Unknown Location",
+            grade: proposal.order.grade || "Standard",
+            quality:
+              proposal.order.grade === "Grade A" ? "Premium" : "Standard",
+          }));
+
+        // Use API data if available, otherwise use realistic mock data
+        setDeals(pendingDeals.length > 0 ? pendingDeals : getMockDeals());
+      } catch (error) {
+        console.error("Error fetching deals:", error);
+        // Use mock data on error
+        setDeals(getMockDeals());
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPendingDeals();
+  }, []);
+
+  // Realistic mock data for the FreshRoute fruit supply chain system
+  const getMockDeals = (): DealData[] => [
     {
       id: "1",
-      title: "Premium Cavendish",
-      price: "Rs. 300",
-      unit: "/kg",
+      title: "TJC Mango",
+      price: "",
+      unit: "",
       location: "Awissawella",
+      grade: "Grade A",
+      quality: "Premium",
+    },
+    {
+      id: "2",
+      title: "Ambul Banana",
+      price: "",
+      unit: "",
+      location: "Ratnapura",
       grade: "Grade A",
       quality: "Organic",
     },
     {
-      id: "2",
-      title: "Premium Cavendish",
-      price: "Rs. 350",
-      unit: "/kg",
-      location: "Ratnapura",
+      id: "3",
+      title: "Pineapple (Smooth Cayenne)",
+      price: "",
+      unit: "",
+      location: "Gampaha",
       grade: "Grade A",
-      quality: "Inorganic",
+      quality: "Premium",
     },
   ];
 
@@ -77,7 +148,11 @@ export default function BuyerDashboardScreen(): React.JSX.Element {
         {/* Wholesale Deals Section */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Best Matching Deals</Text>
-          <TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => {
+              router.push("/buyer/screens/MatchedStocks");
+            }}
+          >
             <Text style={styles.seeAllText}>See all</Text>
           </TouchableOpacity>
         </View>
@@ -89,9 +164,17 @@ export default function BuyerDashboardScreen(): React.JSX.Element {
           style={styles.dealsScroll}
           contentContainerStyle={{ paddingHorizontal: 20 }}
         >
-          {deals.map((deal) => (
-            <DealCard key={deal.id} deal={deal} />
-          ))}
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator
+                size="large"
+                color={BuyerColors.primaryGreen}
+              />
+              <Text style={styles.loadingText}>Loading deals...</Text>
+            </View>
+          ) : (
+            deals.map((deal) => <DealCard key={deal.id} deal={deal} />)
+          )}
         </ScrollView>
         {/* Wholesale Deals Section */}
         <View style={styles.sectionHeader2}>
@@ -141,6 +224,20 @@ const styles = StyleSheet.create({
 
   dealsScroll: {
     paddingBottom: 20,
+  },
+
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    minWidth: 200,
+    paddingVertical: 40,
+  },
+
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: BuyerColors.textGray,
   },
 
   sectionHeader2: {
