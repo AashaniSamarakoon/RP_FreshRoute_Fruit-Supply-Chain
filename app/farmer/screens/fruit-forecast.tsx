@@ -259,14 +259,14 @@ export default function FruitForecastScreen() {
                       const dayStr = String(day.day || `Day ${idx + 1}`).trim();
                       const first3 = dayStr.substring(0, 3);
                       const totalPoints = priceData.length;
-                      const chartWidth = screenWidth - 24 - 28 - 44;
+                      const chartWidth = screenWidth - 24 - 28 - 44 - 20;
                       const segmentWidth = chartWidth / (totalPoints - 1);
                       const xPos = 44 + idx * segmentWidth;
                       
                       return (
                         <View 
                           key={`xaxis-${idx}`} 
-                          style={[styles.xAxisLabel, { left: xPos - 25 }]}
+                          style={[styles.xAxisLabel, { left: Math.max(xPos - 22, 0), right: idx === totalPoints - 1 ? 16 : 'auto' }]}
                         >
                           <Text style={styles.xAxisLabelText}>{first3}</Text>
                         </View>
@@ -397,9 +397,12 @@ const styles = StyleSheet.create({
     marginHorizontal: 12,
     marginBottom: 28,
     marginTop: 16,
-    padding: 14,
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    paddingBottom: 12,
     backgroundColor: LIGHT_GRAY,
     borderRadius: 12,
+    overflow: 'hidden',
   },
   chartTitle: {
     fontSize: 15,
@@ -471,23 +474,23 @@ const styles = StyleSheet.create({
     position: "relative",
     width: "100%",
     height: 40,
-    marginTop: 12,
+    marginTop: 8,
     marginHorizontal: 16,
-    paddingRight: 20,
-    overflow: "visible",
+    paddingRight: 16,
+    overflow: "hidden",
   },
   xAxisLabel: {
     position: "absolute",
     alignItems: "center",
-    justifyContent: "flex-start",
-    width: 50,
+    justifyContent: "center",
+    width: 45,
     height: 40,
   },
   xAxisLabelText: {
-    fontSize: 12,
+    fontSize: 9,
     fontWeight: "600",
     color: PRIMARY_GREEN,
-    lineHeight: 16,
+    lineHeight: 12,
   },
   insightCard: {
     marginHorizontal: 16,

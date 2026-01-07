@@ -134,7 +134,7 @@ export default function AccuracyInsightsScreen() {
               <Text style={styles.accuracyDescription}>
                 Based on price predictions across all fruits
               </Text>
-              <Text style={styles.accuracySubtext}>Last 30 days analysis</Text>
+              <Text style={styles.accuracySubtext}>Last 7 days analysis</Text>
             </View>
           )}
 
