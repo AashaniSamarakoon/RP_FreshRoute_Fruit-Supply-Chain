@@ -39,14 +39,14 @@ interface FruitForecast {
 export default function ForecastScreen() {
   const router = useRouter();
   const { t } = useTranslation();
-  const [selectedTab, setSelectedTab] = useState<"Demand" | "Price">("Demand");
+  const [selectedFruitIdx, setSelectedFruitIdx] = useState(0);
   const [forecastData, setForecastData] = useState<FruitForecast[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<string>("");
 
   useEffect(() => {
     loadForecasts();
-  }, [selectedTab]);
+  }, []);
 
   const loadForecasts = async () => {
     console.log("[FORECAST] Loading forecast data...");
@@ -66,7 +66,7 @@ export default function ForecastScreen() {
         { name: "Pineapple", emoji: "🍍" },
       ];
 
-      const target = selectedTab === "Price" ? "price" : "demand";
+      const target = "demand"; // Always fetch demand forecast
       const results = await Promise.all(
         fruitsToFetch.map(async (fruit) => {
           try {
@@ -124,28 +124,27 @@ export default function ForecastScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Tab switcher */}
-        <View style={styles.tabContainer}>
-          <TouchableOpacity
-            style={[styles.tab, selectedTab === "Demand" && styles.tabActive]}
-            onPress={() => setSelectedTab("Demand")}
-          >
-            <Text
-              style={[styles.tabText, selectedTab === "Demand" && styles.tabTextActive]}
+        {/* Fruit Navigation Tabs */}
+        <View style={styles.fruitTabsContainer}>
+          {forecastData.map((fruit, idx) => (
+            <TouchableOpacity
+              key={idx}
+              onPress={() => setSelectedFruitIdx(idx)}
+              style={[
+                styles.fruitTab,
+                selectedFruitIdx === idx && styles.fruitTabActive,
+              ]}
             >
-              {t("forecast.tabDemand")}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, selectedTab === "Price" && styles.tabActive]}
-            onPress={() => setSelectedTab("Price")}
-          >
-            <Text
-              style={[styles.tabText, selectedTab === "Price" && styles.tabTextActive]}
-            >
-              {t("forecast.tabPrice")}
-            </Text>
-          </TouchableOpacity>
+              <Text
+                style={[
+                  styles.fruitTabText,
+                  selectedFruitIdx === idx && styles.fruitTabTextActive,
+                ]}
+              >
+                {fruit.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
         {/* Content */}
@@ -168,30 +167,30 @@ export default function ForecastScreen() {
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{ paddingBottom: 20 }}
           >
-            {forecastData.map((fruit, index) => (
-              <View key={index} style={styles.fruitCard}>
+            {forecastData[selectedFruitIdx] && (
+              <View style={styles.fruitCard}>
                 <View style={styles.fruitHeader}>
                   <View style={styles.fruitIcon}>
-                    <Text style={styles.fruitEmoji}>{fruit.emoji}</Text>
+                    <Text style={styles.fruitEmoji}>{forecastData[selectedFruitIdx].emoji}</Text>
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.fruitLabel}>{t("forecast.fruitLabel")}</Text>
-                    <Text style={styles.fruitName}>{fruit.name}</Text>
+                    <Text style={styles.fruitName}>{forecastData[selectedFruitIdx].name}</Text>
                   </View>
                   <TouchableOpacity
-                    onPress={() => router.push(`../screens/fruit-forecast?fruit=${fruit.name}`)}
+                    onPress={() => router.push(`../screens/fruit-forecast?fruit=${forecastData[selectedFruitIdx].name}`)}
                   >
                     <Ionicons name="chevron-forward" size={20} color="#999" />
                   </TouchableOpacity>
                 </View>
 
-                {fruit.days.length === 0 ? (
+                {forecastData[selectedFruitIdx].days.length === 0 ? (
                   <View style={styles.noDataRow}>
                     <Ionicons name="cloud-offline" size={18} color="#999" />
-                    <Text style={styles.noDataText}>No forecast data for {fruit.name}</Text>
+                    <Text style={styles.noDataText}>No forecast data for {forecastData[selectedFruitIdx].name}</Text>
                   </View>
                 ) : (
-                  fruit.days.map((day, dayIndex) => (
+                  forecastData[selectedFruitIdx].days.map((day, dayIndex) => (
                     <View key={dayIndex} style={styles.dayRow}>
                       <View style={styles.dayLeft}>
                         <View
@@ -251,7 +250,7 @@ export default function ForecastScreen() {
                   ))
                 )}
               </View>
-            ))}
+            )}
 
             <Text style={styles.lastUpdated}>
               {lastUpdated ? new Date(lastUpdated).toLocaleString() : ""}
@@ -277,8 +276,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingTop: 40,
-    paddingBottom: 16,
+    paddingTop: 45,
+    paddingBottom: 20,
     borderBottomWidth: 1,
     borderBottomColor: "#f0f0f0",
   },
@@ -293,7 +292,7 @@ const styles = StyleSheet.create({
     marginHorizontal: -8,
   },
   headerTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: "600",
     color: "#000",
   },
@@ -364,8 +363,8 @@ const styles = StyleSheet.create({
   },
   fruitCard: {
     marginHorizontal: 16,
-    marginBottom: 16,
-    padding: 12,
+    marginVertical: 12,
+    padding: 16,
     backgroundColor: "#fff",
     borderRadius: 12,
     borderWidth: 1,
@@ -374,27 +373,27 @@ const styles = StyleSheet.create({
   fruitHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 12,
-    gap: 10,
+    marginBottom: 14,
+    gap: 12,
   },
   fruitIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: LIGHT_GRAY,
     justifyContent: "center",
     alignItems: "center",
   },
   fruitEmoji: {
-    fontSize: 20,
+    fontSize: 18,
   },
   fruitLabel: {
-    fontSize: 11,
+    fontSize: 8,
     color: "#999",
-    marginBottom: 2,
+    marginBottom: 0,
   },
   fruitName: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "700",
     color: "#000",
   },
@@ -403,6 +402,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingVertical: 10,
+    paddingHorizontal: 8,
     borderBottomWidth: 1,
     borderBottomColor: "#f5f5f5",
   },
@@ -410,44 +410,74 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     flex: 1,
-    gap: 10,
+    gap: 12,
   },
   trendIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     justifyContent: "center",
     alignItems: "center",
   },
   dayName: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "600",
     color: "#000",
     marginBottom: 2,
   },
   trendText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "500",
   },
   dayValue: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "700",
     color: "#000",
   },
   noDataRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    paddingVertical: 10,
+    gap: 6,
+    paddingVertical: 6,
   },
   noDataText: {
-    fontSize: 13,
+    fontSize: 12,
     color: "#666",
   },
   lastUpdated: {
-    fontSize: 11,
+    fontSize: 10,
     color: "#999",
     textAlign: "center",
-    marginTop: 8,
+    marginTop: 4,
+  },
+  fruitTabsContainer: {
+    flexDirection: "row",
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 20,
+    gap: 12,
+    paddingVertical: 8,
+  },
+  fruitTab: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: "#e8e8e8",
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fruitTabActive: {
+    backgroundColor: PRIMARY_GREEN,
+  },
+  fruitTabText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#555",
+    textAlign: "center",
+  },
+  fruitTabTextActive: {
+    color: "#fff",
+    fontWeight: "700",
   },
 });

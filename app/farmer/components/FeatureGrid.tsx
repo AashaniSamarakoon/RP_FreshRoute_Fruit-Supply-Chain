@@ -167,7 +167,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   gridTitle: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700",
     color: "#000",
     textAlign: "center",
@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
     color: "#fff",
   },
   gridSubtitle: {
-    fontSize: 11,
+    fontSize: 10,
     color: "#999",
     textAlign: "center",
   },

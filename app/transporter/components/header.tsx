@@ -1,55 +1,68 @@
-import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+// components/Header.tsx
+import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
 import {
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
-} from 'react-native';
-import { BACKEND_URL } from '../../../config';
-import { useTranslationContext } from '../../../context/TranslationContext';
+} from "react-native";
+import { BACKEND_URL } from "../../../config"; // Adjust path if needed
+// Assuming you have this context, otherwise you can remove the hook and hardcode text
+import { useTranslationContext } from "../../../context/TranslationContext";
 
 const PRIMARY_GREEN = "#2f855a";
 const LIGHT_GRAY = "#f5f5f5";
 
 interface HeaderProps {
-  userName: string;
   onSearch?: (text: string) => void;
 }
 
-export default function Header({
-  userName,
-  onSearch
-}: HeaderProps) {
+export default function Header({ onSearch }: HeaderProps) {
   const router = useRouter();
+  // If you don't have translation context set up for transporter yet,
+  // you can remove t/locale logic and just use English strings.
   const { t, locale, setLocale } = useTranslationContext();
+
   const [unreadCount, setUnreadCount] = useState(0);
+  const [userName, setUserName] = useState("Transporter");
 
   useEffect(() => {
-    const loadUnreadCount = async () => {
+    const loadData = async () => {
       try {
         const token = await AsyncStorage.getItem("token");
+        const userStr = await AsyncStorage.getItem("user");
+
+        // 1. Get Name from Local Storage
+        if (userStr) {
+          const user = JSON.parse(userStr);
+          setUserName(user.name || "Transporter");
+        }
+
         if (!token) return;
 
-        const res = await fetch(`${BACKEND_URL}/api/farmer/notifications`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        
+        // 2. Get Notifications (Switched to transporter endpoint)
+        const res = await fetch(
+          `${BACKEND_URL}/api/transporter/notifications`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+
         if (res.ok) {
           const data = await res.json();
           setUnreadCount(data.unreadCount || 0);
         }
       } catch (err) {
-        console.error("[Header] Failed to load unread count", err);
+        console.error("[Header] Failed to load header data", err);
       }
     };
 
-    loadUnreadCount();
-    // Refresh every 30 seconds
-    const interval = setInterval(loadUnreadCount, 30000);
+    loadData();
+    const interval = setInterval(loadData, 30000); // Refresh every 30s
     return () => clearInterval(interval);
   }, []);
 
@@ -59,11 +72,16 @@ export default function Header({
       <View style={styles.header}>
         <View>
           <Text style={styles.logo}>🍃 FreshRoute</Text>
-          <Text style={styles.greeting}>{t("farmer.greeting", { name: userName })}</Text>
+          <Text style={styles.greeting}>
+            {/* Fallback to English if translation key missing */}
+            {t
+              ? t("farmer.greeting", { name: userName })
+              : `Hello, ${userName}`}
+          </Text>
         </View>
         <View style={styles.headerIcons}>
-          <TouchableOpacity 
-            onPress={() => router.push("/farmer/screens/notifications")}
+          <TouchableOpacity
+            onPress={() => router.push("/transporter/notifications" as any)} // Adjust route as needed
             style={styles.notificationButton}
           >
             <Ionicons name="notifications-outline" size={24} color="#000" />
@@ -73,19 +91,17 @@ export default function Header({
               </View>
             )}
           </TouchableOpacity>
+
           <TouchableOpacity
             style={[styles.langToggle, { marginLeft: 12 }]}
             onPress={() => {
-              console.log('[Header.Button] Current locale value:', locale);
-              console.log('[Header.Button] Locale type:', typeof locale);
-              console.log('[Header.Button] Locale === "en"?', locale === "en");
-              console.log('[Header.Button] Locale === "si"?', locale === "si");
-              const nextLocale = locale === "en" ? ("si" as const) : ("en" as const);
-              console.log('[Header.Button] Calling setLocale with:', nextLocale);
+              const nextLocale = locale === "en" ? "si" : "en";
               setLocale(nextLocale);
             }}
           >
-            <Text style={styles.langToggleText}>{locale === "en" ? "සි" : "EN"}</Text>
+            <Text style={styles.langToggleText}>
+              {locale === "en" ? "සි" : "EN"}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -95,7 +111,7 @@ export default function Header({
         <Ionicons name="search" size={18} color="#999" />
         <TextInput
           style={styles.searchInput}
-          placeholder={t("farmer.searchPlaceholder")}
+          placeholder="Search jobs..."
           placeholderTextColor="#999"
           onChangeText={onSearch}
         />
@@ -107,39 +123,38 @@ export default function Header({
 const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 16,
-    paddingTop: 50,
-    paddingBottom: 24,
+    paddingTop: 50, // Safe area padding
+    paddingBottom: 20,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
-    position: "relative",
-    zIndex: 10,
   },
   logo: {
     fontSize: 18,
     fontWeight: "bold",
+    color: PRIMARY_GREEN,
   },
   greeting: {
     fontSize: 20,
     fontWeight: "700",
     marginTop: 4,
     color: "#000",
+    textTransform: "capitalize",
   },
   headerIcons: {
     flexDirection: "row",
     alignItems: "center",
   },
   notificationButton: {
-    position: 'relative',
+    position: "relative",
+    padding: 4,
   },
   badge: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    backgroundColor: '#fff',
+    position: "absolute",
+    top: 0,
+    right: 0,
+    backgroundColor: "#fff",
     borderRadius: 8,
     padding: 2,
   },
@@ -147,7 +162,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#ef4444',
+    backgroundColor: "#ef4444",
   },
   langToggle: {
     borderWidth: 1,
@@ -164,14 +179,13 @@ const styles = StyleSheet.create({
   },
   searchContainer: {
     marginHorizontal: 16,
-    marginTop: 8,
-    marginBottom: 16,
+    marginBottom: 10, // Reduced margin
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: LIGHT_GRAY,
     borderRadius: 8,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 10,
   },
   searchInput: {
     flex: 1,

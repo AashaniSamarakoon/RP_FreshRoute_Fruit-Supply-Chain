@@ -81,6 +81,5 @@ export function useTranslationContext() {
   if (!context) {
     throw new Error('useTranslationContext must be used within TranslationProvider');
   }
-  console.log('[useTranslationContext] Current locale:', context.locale);
   return context;
 }
