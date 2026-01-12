@@ -90,18 +90,10 @@ export default function FeatureGrid() {
           onPress={() => handlePress(item)}
         >
           <View style={styles.iconCircle}>
-            <Ionicons
-              name={item.icon as any}
-              size={24}
-              color={PRIMARY_GREEN}
-            />
+            <Ionicons name={item.icon as any} size={24} color={PRIMARY_GREEN} />
           </View>
-          <Text style={styles.gridTitle}>
-            {item.title}
-          </Text>
-          <Text style={styles.gridSubtitle}>
-            {item.subtitle}
-          </Text>
+          <Text style={styles.gridTitle}>{item.title}</Text>
+          <Text style={styles.gridSubtitle}>{item.subtitle}</Text>
         </TouchableOpacity>
       ))}
     </View>
