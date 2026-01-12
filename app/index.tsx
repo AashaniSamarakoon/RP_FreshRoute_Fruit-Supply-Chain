@@ -1,8 +1,8 @@
 // app/index.tsx
-import React, { useEffect, useState } from "react";
-import { ActivityIndicator, View, StyleSheet } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
 
 type Role = "farmer" | "transporter" | "buyer";
 
@@ -20,7 +20,7 @@ export default function Index() {
         }
         const user = JSON.parse(userJson) as { role: Role };
         const route = getDashboardRoute(user.role);
-        router.replace(route);
+        router.replace(route as any);
       } catch (e) {
         router.replace("/login");
       } finally {
