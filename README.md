@@ -130,12 +130,14 @@ Before setting up the project, ensure you have the following installed:
 ## Installation
 
 1. **Clone the repository**:
+
    ```bash
    git clone https://github.com/your-username/freshroute-mobile.git
    cd freshroute-mobile
    ```
 
 2. **Install dependencies**:
+
    ```bash
    npm install
    # or
@@ -145,12 +147,14 @@ Before setting up the project, ensure you have the following installed:
 3. **Set up environment variables**:
 
    Create a `.env` file in the root directory and add your Supabase credentials:
+
    ```env
    EXPO_PUBLIC_SUPABASE_URL=your_supabase_project_url
    EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
    ```
 
    Update `config.js` with your backend URL:
+
    ```javascript
    export const BACKEND_URL = "http://your-local-backend-ip:4000";
    ```
@@ -165,6 +169,7 @@ Before setting up the project, ensure you have the following installed:
 ### Development Mode
 
 1. **Start the Expo development server**:
+
    ```bash
    npm start
    # or
@@ -172,6 +177,7 @@ Before setting up the project, ensure you have the following installed:
    ```
 
 2. **Run on specific platform**:
+
    - **Android**: `npm run android` or `expo run:android`
    - **iOS**: `npm run ios` or `expo run:ios` (macOS only)
    - **Web**: `npm run web` or `expo start --web`
@@ -181,11 +187,13 @@ Before setting up the project, ensure you have the following installed:
 ### Building for Production
 
 1. **Build for Android**:
+
    ```bash
    expo build:android
    ```
 
 2. **Build for iOS**:
+
    ```bash
    expo build:ios
    ```
@@ -211,11 +219,13 @@ Before setting up the project, ensure you have the following installed:
 ## Testing
 
 Run the linter to check code quality:
+
 ```bash
 npm run lint
 ```
 
 For unit testing (if implemented):
+
 ```bash
 npm test
 ```
@@ -247,6 +257,7 @@ npm test
 ### Reset Project
 
 If you encounter persistent issues, reset the project:
+
 ```bash
 npm run reset-project
 ```
