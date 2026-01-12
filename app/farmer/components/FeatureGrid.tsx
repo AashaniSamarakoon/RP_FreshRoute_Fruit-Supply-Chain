@@ -86,37 +86,20 @@ export default function FeatureGrid() {
       {gridItems.map((item) => (
         <TouchableOpacity
           key={item.id}
-          style={[styles.gridCard, item.id === "prediction" && styles.darkCard]}
+          style={styles.gridCard}
           onPress={() => handlePress(item)}
         >
-          <View
-            style={[
-              styles.iconCircle,
-              item.id === "prediction"
-                ? styles.darkCardIconCircle
-                : { backgroundColor: LIGHT_GREEN },
-            ]}
-          >
+          <View style={styles.iconCircle}>
             <Ionicons
               name={item.icon as any}
               size={24}
-              color={item.id === "prediction" ? "#fff" : PRIMARY_GREEN}
+              color={PRIMARY_GREEN}
             />
           </View>
-          <Text
-            style={[
-              styles.gridTitle,
-              item.id === "prediction" && styles.darkCardText,
-            ]}
-          >
+          <Text style={styles.gridTitle}>
             {item.title}
           </Text>
-          <Text
-            style={[
-              styles.gridSubtitle,
-              item.id === "prediction" && styles.darkCardSubtitle,
-            ]}
-          >
+          <Text style={styles.gridSubtitle}>
             {item.subtitle}
           </Text>
         </TouchableOpacity>
@@ -146,9 +129,6 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-  darkCard: {
-    backgroundColor: PRIMARY_GREEN,
-  },
   iconCircle: {
     width: 50,
     height: 50,
@@ -156,15 +136,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 8,
-  },
-  darkCardIconCircle: {
-    backgroundColor: "#ffffff3a",
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 8,
+    backgroundColor: LIGHT_GREEN,
   },
   gridTitle: {
     fontSize: 11,
@@ -173,15 +145,9 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 4,
   },
-  darkCardText: {
-    color: "#fff",
-  },
   gridSubtitle: {
     fontSize: 10,
     color: "#999",
     textAlign: "center",
-  },
-  darkCardSubtitle: {
-    color: "#ccc",
   },
 });
