@@ -27,93 +27,84 @@ export default function BuyerDashboardScreen(): React.JSX.Element {
   const [deals, setDeals] = useState<DealData[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Fetch pending buyer proposals
+  // Fetch matching deals for the buyer
   useEffect(() => {
-    const fetchPendingDeals = async () => {
+    const fetchMatchingDeals = async () => {
       try {
         setLoading(true);
         const token = await AsyncStorage.getItem("token");
+        const userStr = await AsyncStorage.getItem("user");
 
-        if (!token) {
-          console.warn("No auth token found");
+        if (!token || !userStr) {
+          console.warn("No auth token or user data found");
           setLoading(false);
+          setDeals([]); // No deals if not authenticated
           return;
         }
 
-        const response = await fetch(`${BACKEND_URL}/api/buyer/proposals`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
+        const user = JSON.parse(userStr);
+        const buyerId = user.id;
+
+        if (!buyerId) {
+          console.warn("No buyer ID found");
+          setLoading(false);
+          setDeals([]);
+          return;
+        }
+
+        const response = await fetch(
+          `${BACKEND_URL}/api/buyer/matching/buyer/${buyerId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
           },
-        });
+        );
 
         if (!response.ok) {
-          throw new Error(`Failed to fetch deals: ${response.status}`);
+          throw new Error(`Failed to fetch matching deals: ${response.status}`);
         }
 
         const data = await response.json();
-        console.log("Buyer proposals data:", data);
+        console.log("Matching deals data:", data);
 
-        // Filter for PENDING_BUYER status and transform to DealData
-        const pendingDeals = (data.proposals || [])
-          .filter((proposal: any) => proposal.status === "PENDING_BUYER")
-          .map((proposal: any) => ({
+        // Transform API response to DealData format
+        const matchingDeals = (data.proposals || data || []).map(
+          (proposal: any) => ({
             id: proposal.id,
-            title: `${proposal.order.fruit_type} ${
-              proposal.order.variant || ""
-            }`.trim(),
-            price: "", // No price in proposals
-            unit: "",
-            location: proposal.order.delivery_location || "Unknown Location",
-            grade: proposal.order.grade || "Standard",
+            title:
+              `${proposal.order?.fruit_type || proposal.fruit_type || ""} ${
+                proposal.order?.variant || proposal.variant || ""
+              }`.trim(),
+            price: proposal.price_per_kg || proposal.price || "",
+            unit: proposal.price_per_kg ? "kg" : "",
+            location:
+              proposal.order?.delivery_location ||
+              proposal.delivery_location ||
+              proposal.location ||
+              "Unknown Location",
+            grade: proposal.order?.grade || proposal.grade || "Standard",
             quality:
-              proposal.order.grade === "Grade A" ? "Premium" : "Standard",
-          }));
+              (proposal.order?.grade || proposal.grade) === "Grade A"
+                ? "Premium"
+                : "Standard",
+          }),
+        );
 
-        // Use API data if available, otherwise use realistic mock data
-        setDeals(pendingDeals.length > 0 ? pendingDeals : getMockDeals());
+        // Only set deals if there are matching deals, otherwise empty array
+        setDeals(matchingDeals.length > 0 ? matchingDeals : []);
       } catch (error) {
-        console.error("Error fetching deals:", error);
-        // Use mock data on error
-        setDeals(getMockDeals());
+        console.error("Error fetching matching deals:", error);
+        // Set empty array on error - don't show section
+        setDeals([]);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchPendingDeals();
+    fetchMatchingDeals();
   }, []);
-
-  // Realistic mock data for the FreshRoute fruit supply chain system
-  const getMockDeals = (): DealData[] => [
-    {
-      id: "1",
-      title: "TJC Mango",
-      price: "",
-      unit: "",
-      location: "Awissawella",
-      grade: "Grade A",
-      quality: "Premium",
-    },
-    {
-      id: "2",
-      title: "Ambul Banana",
-      price: "",
-      unit: "",
-      location: "Ratnapura",
-      grade: "Grade A",
-      quality: "Organic",
-    },
-    {
-      id: "3",
-      title: "Pineapple (Smooth Cayenne)",
-      price: "",
-      unit: "",
-      location: "Gampaha",
-      grade: "Grade A",
-      quality: "Premium",
-    },
-  ];
 
   return (
     <SafeAreaView style={styles.container}>
@@ -145,37 +136,41 @@ export default function BuyerDashboardScreen(): React.JSX.Element {
           <Text style={styles.quickAction}>View</Text>
         </TouchableOpacity> */}
 
-        {/* Wholesale Deals Section */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Best Matching Deals</Text>
-          <TouchableOpacity
-            onPress={() => {
-              router.push("/buyer/screens/MatchedStocks");
-            }}
-          >
-            <Text style={styles.seeAllText}>See all</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Horizontal Scroll for Deals */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.dealsScroll}
-          contentContainerStyle={{ paddingHorizontal: 20 }}
-        >
-          {loading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator
-                size="large"
-                color={BuyerColors.primaryGreen}
-              />
-              <Text style={styles.loadingText}>Loading deals...</Text>
+        {/* Best Matching Deals Section - Only show if there are deals */}
+        {loading || deals.length > 0 ? (
+          <>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Best Matching Deals</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  router.push("/buyer/screens/MatchedStocks");
+                }}
+              >
+                <Text style={styles.seeAllText}>See all</Text>
+              </TouchableOpacity>
             </View>
-          ) : (
-            deals.map((deal) => <DealCard key={deal.id} deal={deal} />)
-          )}
-        </ScrollView>
+
+            {/* Horizontal Scroll for Deals */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.dealsScroll}
+              contentContainerStyle={{ paddingHorizontal: 20 }}
+            >
+              {loading ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator
+                    size="large"
+                    color={BuyerColors.primaryGreen}
+                  />
+                  <Text style={styles.loadingText}>Loading deals...</Text>
+                </View>
+              ) : (
+                deals.map((deal) => <DealCard key={deal.id} deal={deal} />)
+              )}
+            </ScrollView>
+          </>
+        ) : null}
         {/* Wholesale Deals Section */}
         <View style={styles.sectionHeader2}>
           <Text style={styles.sectionTitle}>Price Comparison</Text>

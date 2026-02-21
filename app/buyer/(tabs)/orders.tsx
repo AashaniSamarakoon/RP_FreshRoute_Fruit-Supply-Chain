@@ -1,115 +1,181 @@
-import { useFocusEffect } from "expo-router";
-import { CheckCircle, Clock, XCircle } from "lucide-react-native";
+import { BACKEND_URL } from "@/config";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useFocusEffect, useRouter } from "expo-router";
 import React, { useState } from "react";
-import { FlatList, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  SectionList,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "../../../components/Header";
 import { BuyerColors } from "../../../constants/theme";
 
-interface Order {
+// supabase queries removed; backend will handle fetching orders
+
+interface PlacedOrder {
   id: string;
-  farmerName: string;
-  product: string;
-  quantity: string;
-  unit: string;
-  amount: string;
-  status: "waiting" | "confirmed" | "rejected";
-  createdAt: string;
+  buyer_id: string;
+  fruit_type: string;
+  variant: string;
+  quantity: number;
+  grade: "A" | "B" | "C";
+  required_date: string;
+  delivery_location: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  created_at: string;
+  totalPrice: string | null;
+  updated_at: string;
+  status: string;
+  payment_status: string;
+  selected_farmer_id: string | null;
+  harvest_id: string | null;
+  blockchain_status: string | null;
+  quality_confirmed_at: string | null;
+  delivered_at: string | null;
+  delivery_notes: string | null;
 }
 
 export default function BuyerOrders() {
-  const [orders, setOrders] = useState<Order[]>([]);
+  const router = useRouter();
+  const [orders, setOrders] = useState<PlacedOrder[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Load orders from AsyncStorage or state management
+  // Categorize orders into sections
+  const categorizeOrders = (orders: PlacedOrder[]) => {
+    const awaitingPayment = orders.filter(
+      (order) => order.status === "AWAITING_PAYMENT",
+    );
+
+    const active = orders.filter(
+      (order) =>
+        order.status === "OPEN" ||
+        order.status === "MATCHED" ||
+        order.status === "PENDING_BUYER" ||
+        order.status === "PENDING_FARMER" ||
+        order.status === "PAID_PENDING_DELIVERY" ||
+        order.status === "IN_TRANSIT",
+    );
+
+    const past = orders.filter(
+      (order) =>
+        order.status === "DELIVERED" ||
+        order.status === "COMPLETED" ||
+        order.status === "CANCELLED",
+    );
+
+    const sections = [];
+
+    if (awaitingPayment.length > 0) {
+      sections.push({ title: "Awaiting Payments", data: awaitingPayment });
+    }
+
+    if (active.length > 0) {
+      sections.push({ title: "Active Orders", data: active });
+    }
+
+    if (past.length > 0) {
+      sections.push({ title: "Past Orders", data: past });
+    }
+
+    return sections;
+  };
+
+  // Load orders from Supabase
   useFocusEffect(
     React.useCallback(() => {
-      // Load orders - for now using stored state
-      const storedOrders = global.buyerOrders || [];
-      setOrders(storedOrders);
-    }, [])
+      fetchOrders();
+    }, []),
   );
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "waiting":
-        return "#FFA500";
-      case "confirmed":
-        return BuyerColors.primaryGreen;
-      case "rejected":
-        return "#d32f2f";
-      default:
-        return "#666";
+  const fetchOrders = async () => {
+    try {
+      setLoading(true);
+
+      // hitting backend route that handles buyer lookup via token
+      const token = await AsyncStorage.getItem("token");
+      const res = await fetch(`${BACKEND_URL}/api/buyer/place-order`, {
+        headers: token
+          ? {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            }
+          : { "Content-Type": "application/json" },
+      });
+      if (!res.ok) {
+        // maybe unauthorized or server error
+        setOrders([]);
+        return;
+      }
+
+      const body = await res.json();
+      console.log("orders response body", body);
+      // backend may return totalPrice or total_price, normalize and compute if missing
+      const ordersList: PlacedOrder[] = (body.orders || []).map((o: any) => {
+        // simply propagate backend-provided totalPrice (or total_price) without calculation
+        const totalRaw = o.totalPrice ?? o.total_price ?? null;
+        return {
+          ...o,
+          totalPrice: totalRaw != null ? String(totalRaw) : null,
+        };
+      });
+      setOrders(ordersList);
+    } catch (error) {
+      // Silent error handling
+      setOrders([]);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "waiting":
-        return <Clock size={20} color={getStatusColor(status)} />;
-      case "confirmed":
-        return <CheckCircle size={20} color={getStatusColor(status)} />;
-      case "rejected":
-        return <XCircle size={20} color={getStatusColor(status)} />;
-      default:
-        return <Clock size={20} color="#666" />;
-    }
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
   };
 
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case "waiting":
-        return "Waiting for Confirmation";
-      case "confirmed":
-        return "Confirmed";
-      case "rejected":
-        return "Rejected";
-      default:
-        return "Pending";
-    }
-  };
+  const renderSectionHeader = ({ section }: { section: { title: string } }) => (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionTitle}>{section.title}</Text>
+    </View>
+  );
 
-  const renderOrderCard = ({ item }: { item: Order }) => (
-    <View style={styles.orderCard}>
+  const renderOrderCard = ({ item }: { item: PlacedOrder }) => (
+    <TouchableOpacity
+      style={styles.orderCard}
+      activeOpacity={0.7}
+      onPress={() =>
+        router.push({
+          pathname: "/buyer/screens/OrderDetailScreen" as any,
+          params: { orderId: item.id },
+        })
+      }
+    >
       <View style={styles.orderHeader}>
         <View style={styles.orderInfo}>
-          <Text style={styles.farmerName}>{item.farmerName}</Text>
-          <Text style={styles.orderId}>Order #{item.id}</Text>
-        </View>
-        <View
-          style={[
-            styles.statusBadge,
-            { backgroundColor: getStatusColor(item.status) },
-          ]}
-        >
-          {getStatusIcon(item.status)}
-        </View>
-      </View>
-
-      <View style={styles.orderDetails}>
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Product</Text>
-          <Text style={styles.detailValue}>{item.product}</Text>
-        </View>
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Quantity</Text>
-          <Text style={styles.detailValue}>
-            {item.quantity} {item.unit}
+          <Text style={styles.productName}>
+            {item.fruit_type} - {item.variant}
+          </Text>
+          <Text style={styles.orderId}>Order #{item.id.substring(0, 8)}</Text>
+          <Text style={styles.orderDate}>
+            Placed: {formatDate(item.created_at)}
           </Text>
         </View>
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Amount</Text>
-          <Text style={styles.detailValue}>{item.amount}</Text>
-        </View>
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Status</Text>
-          <Text
-            style={[styles.detailValue, { color: getStatusColor(item.status) }]}
-          >
-            {getStatusText(item.status)}
+        <View style={styles.priceContainer}>
+          <Text style={styles.priceLabel}>Total</Text>
+          <Text style={styles.priceValue}>
+            {item.totalPrice ? `Rs. ${item.totalPrice}` : "N/A"}
           </Text>
         </View>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 
   return (
@@ -117,12 +183,14 @@ export default function BuyerOrders() {
       <Header
         title="Orders"
         showNotification={true}
-        onNotificationPress={() => {
-          // Handle notification press
-          console.log("Notifications pressed");
-        }}
+        onNotificationPress={() => {}}
       />
-      {orders.length === 0 ? (
+      {loading ? (
+        <View style={styles.emptyState}>
+          <ActivityIndicator size="large" color={BuyerColors.primaryGreen} />
+          <Text style={styles.loadingText}>Loading orders...</Text>
+        </View>
+      ) : orders.length === 0 ? (
         <View style={styles.emptyState}>
           <Text style={styles.title}>My Orders</Text>
           <Text style={styles.subtitle}>
@@ -130,12 +198,14 @@ export default function BuyerOrders() {
           </Text>
         </View>
       ) : (
-        <FlatList
-          data={orders}
+        <SectionList
+          sections={categorizeOrders(orders)}
           renderItem={renderOrderCard}
+          renderSectionHeader={renderSectionHeader}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
+          stickySectionHeadersEnabled={false}
         />
       )}
     </SafeAreaView>
@@ -152,10 +222,31 @@ const styles = StyleSheet.create({
     padding: 20,
   },
 
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: "#666",
+  },
+
   listContent: {
     padding: 16,
     paddingBottom: 20,
-    gap: 12,
+  },
+
+  sectionHeader: {
+    backgroundColor: "#fff",
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: BuyerColors.textBlack,
+    textTransform: "capitalize",
+    letterSpacing: 0.5,
   },
 
   title: {
@@ -177,6 +268,7 @@ const styles = StyleSheet.create({
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
+    marginBottom: 20,
     shadowRadius: 6,
   },
 
@@ -184,17 +276,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    marginBottom: 12,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F5F5F5",
   },
 
   orderInfo: {
     flex: 1,
   },
 
-  farmerName: {
+  productName: {
     fontSize: 16,
     fontWeight: "700",
     color: "#1a1a1a",
@@ -204,40 +292,29 @@ const styles = StyleSheet.create({
   orderId: {
     fontSize: 12,
     color: "#666",
+    marginBottom: 2,
   },
 
-  statusBadge: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+  orderDate: {
+    fontSize: 11,
+    color: "#999",
+  },
+
+  priceContainer: {
+    alignItems: "flex-end",
     justifyContent: "center",
-    alignItems: "center",
     marginLeft: 8,
   },
 
-  orderDetails: {
-    backgroundColor: "#FAFAFA",
-    borderRadius: 12,
-    padding: 12,
+  priceLabel: {
+    fontSize: 11,
+    color: "#999",
+    marginBottom: 2,
   },
 
-  detailRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F0F0F0",
-  },
-
-  detailLabel: {
-    fontSize: 13,
-    color: "#666",
-    fontWeight: "500",
-  },
-
-  detailValue: {
-    fontSize: 13,
+  priceValue: {
+    fontSize: 18,
     fontWeight: "700",
-    color: "#333",
+    color: BuyerColors.primaryGreen,
   },
 });
