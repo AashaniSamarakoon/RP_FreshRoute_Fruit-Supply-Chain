@@ -1,3 +1,4 @@
+import api from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -11,7 +12,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { BACKEND_URL } from "../../../config";
 import { useTranslation } from "../../../hooks/farmer/useTranslation";
 
 const PRIMARY_GREEN = "#2E7D32";
@@ -57,14 +57,12 @@ export default function AccuracyInsightsScreen() {
       }
 
       // Fetch overall accuracy insights with per-fruit breakdown
-      const insightsRes = await fetch(`${BACKEND_URL}/api/farmer/accuracy/insights`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const insightsData = await insightsRes.json();
-      console.log("[ACCURACY] Insights response:", insightsRes.status, insightsData);
-
-      if (!insightsRes.ok) {
-        console.log("[ACCURACY] Error fetching insights:", insightsData.message);
+      let insightsData: any;
+      try {
+        insightsData = await api.get(`/api/farmer/accuracy/insights`);
+        console.log("[ACCURACY] Insights response:", insightsData);
+      } catch (err: any) {
+        console.log("[ACCURACY] Error fetching insights:", err);
         setData(null);
         setFruitDetails([]);
         setLoading(false);
@@ -72,7 +70,10 @@ export default function AccuracyInsightsScreen() {
       }
 
       // Extract per-fruit accuracies from the insights response
-      const perFruitList = insightsData.perFruitAccuracyList || insightsData.individualAccuracies || [];
+      const perFruitList =
+        insightsData.perFruitAccuracyList ||
+        insightsData.individualAccuracies ||
+        [];
       console.log("[ACCURACY] Per-fruit accuracy list:", perFruitList);
 
       // Map per-fruit data to FruitAccuracy format
@@ -85,7 +86,8 @@ export default function AccuracyInsightsScreen() {
       }));
 
       setData({
-        overallAccuracy: insightsData.overallAccuracy || insightsData.overall || 0,
+        overallAccuracy:
+          insightsData.overallAccuracy || insightsData.overall || 0,
         fruitBreakdown: insightsData.perFruitBreakdown || [],
       });
       setFruitDetails(mappedFruits);
@@ -126,7 +128,9 @@ export default function AccuracyInsightsScreen() {
               <View style={styles.circularProgressContainer}>
                 <View style={styles.circularProgress}>
                   <Text style={styles.accuracyPercent}>
-                    {data?.overallAccuracy !== null ? `${data?.overallAccuracy.toFixed(1)}%` : "--"}
+                    {data?.overallAccuracy !== null
+                      ? `${data?.overallAccuracy.toFixed(1)}%`
+                      : "--"}
                   </Text>
                   <Text style={styles.accuracyLabel}>Accuracy</Text>
                 </View>
@@ -151,7 +155,10 @@ export default function AccuracyInsightsScreen() {
               <View style={styles.emptyContainer}>
                 <Ionicons name="cloud-offline" size={48} color="#ccc" />
                 <Text style={styles.emptyText}>No accuracy data available</Text>
-                <TouchableOpacity style={styles.retryButton} onPress={loadAccuracyData}>
+                <TouchableOpacity
+                  style={styles.retryButton}
+                  onPress={loadAccuracyData}
+                >
                   <Text style={styles.retryText}>Retry</Text>
                 </TouchableOpacity>
               </View>
@@ -160,7 +167,9 @@ export default function AccuracyInsightsScreen() {
                 {fruitDetails.map((metric, idx) => (
                   <View key={idx} style={styles.metricCard}>
                     <View style={styles.metricHeader}>
-                      <Text style={styles.metricValue}>{metric.accuracy.toFixed(1)}%</Text>
+                      <Text style={styles.metricValue}>
+                        {metric.accuracy.toFixed(1)}%
+                      </Text>
                       <View
                         style={[
                           styles.trendIcon,
@@ -169,8 +178,8 @@ export default function AccuracyInsightsScreen() {
                               metric.trend === "up"
                                 ? "#dcfce7"
                                 : metric.trend === "down"
-                                ? "#fee2e2"
-                                : LIGHT_BLUE,
+                                  ? "#fee2e2"
+                                  : LIGHT_BLUE,
                           },
                         ]}
                       >
@@ -179,16 +188,16 @@ export default function AccuracyInsightsScreen() {
                             metric.trend === "up"
                               ? "trending-up"
                               : metric.trend === "down"
-                              ? "trending-down"
-                              : "remove"
+                                ? "trending-down"
+                                : "remove"
                           }
                           size={14}
                           color={
                             metric.trend === "up"
                               ? "#16a34a"
                               : metric.trend === "down"
-                              ? "#dc2626"
-                              : "#1e40af"
+                                ? "#dc2626"
+                                : "#1e40af"
                           }
                         />
                       </View>
@@ -209,8 +218,8 @@ export default function AccuracyInsightsScreen() {
               <View style={styles.insightContent}>
                 <Text style={styles.insightTitle}>Prediction Tips</Text>
                 <Text style={styles.insightText}>
-                  {fruitDetails.length > 0 && data 
-                    ? `Your highest accuracy is ${Math.max(...fruitDetails.map(f => f.accuracy)).toFixed(1)}% with consistent predictions.`
+                  {fruitDetails.length > 0 && data
+                    ? `Your highest accuracy is ${Math.max(...fruitDetails.map((f) => f.accuracy)).toFixed(1)}% with consistent predictions.`
                     : "Keep tracking prices to improve accuracy insights."}
                 </Text>
               </View>

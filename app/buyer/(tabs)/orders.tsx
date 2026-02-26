@@ -1,5 +1,4 @@
-import { BACKEND_URL } from "@/config";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import api from "@/services/api";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
@@ -97,22 +96,13 @@ export default function BuyerOrders() {
       setLoading(true);
 
       // hitting backend route that handles buyer lookup via token
-      const token = await AsyncStorage.getItem("token");
-      const res = await fetch(`${BACKEND_URL}/api/buyer/place-order`, {
-        headers: token
-          ? {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            }
-          : { "Content-Type": "application/json" },
-      });
-      if (!res.ok) {
-        // maybe unauthorized or server error
+      let body: any;
+      try {
+        body = await api.get(`/api/buyer/place-order`);
+      } catch (err) {
         setOrders([]);
         return;
       }
-
-      const body = await res.json();
       console.log("orders response body", body);
       // backend may return totalPrice or total_price, normalize and compute if missing
       const ordersList: PlacedOrder[] = (body.orders || []).map((o: any) => {

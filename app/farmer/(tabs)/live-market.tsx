@@ -1,5 +1,6 @@
+import api from "@/services/api";
+import { supabase } from "@/utils/supabaseClient";
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
@@ -15,7 +16,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { BACKEND_URL } from "../../../config";
 import { useTranslationContext } from "../../../context/TranslationContext";
 
 const PRIMARY_GREEN = "#2E7D32";
@@ -60,7 +60,9 @@ interface FruitPrice {
 export default function LiveMarketScreen() {
   const router = useRouter();
   const { t } = useTranslationContext();
-  const [selectedTab, setSelectedTab] = useState<"All" | "Dambulla" | "Manning Market" | "Meegoda" | "Pettah">("All");
+  const [selectedTab, setSelectedTab] = useState<
+    "All" | "Dambulla" | "Manning Market" | "Meegoda" | "Pettah"
+  >("All");
   const [sortBy, setSortBy] = useState<"Price" | "Demand">("Price");
   const [order, setOrder] = useState<"High" | "Low">("High");
   const [fruits, setFruits] = useState<FruitPrice[]>([]);
@@ -74,19 +76,29 @@ export default function LiveMarketScreen() {
   }, [selectedTab, selectedDate]);
 
   const formatFruitData = (rawFruit: any): FruitPrice => {
-    const fruitName = rawFruit.fruitCategory || rawFruit.fruit || rawFruit.name || "Unknown";
+    const fruitName =
+      rawFruit.fruitCategory || rawFruit.fruit || rawFruit.name || "Unknown";
     const fruitKey = fruitName.toLowerCase();
-    const demandStatus = (rawFruit.demand || rawFruit.status || "Medium").toLowerCase();
+    const demandStatus = (
+      rawFruit.demand ||
+      rawFruit.status ||
+      "Medium"
+    ).toLowerCase();
     const parsePriceValue = (value: any) => {
       if (value === undefined || value === null) return undefined;
       const numeric = Number(String(value).replace(/[^0-9.-]/g, ""));
       return Number.isFinite(numeric) ? numeric : undefined;
     };
 
-    const extractRangeFromString = (value: any): { min?: number; max?: number } => {
+    const extractRangeFromString = (
+      value: any,
+    ): { min?: number; max?: number } => {
       if (!value) return {};
       const text = String(value);
-      const parts = text.split(/-|to|–/).map(part => parsePriceValue(part)).filter(v => v !== undefined);
+      const parts = text
+        .split(/-|to|–/)
+        .map((part) => parsePriceValue(part))
+        .filter((v) => v !== undefined);
       if (parts.length >= 2) {
         return { min: parts[0], max: parts[1] };
       }
@@ -96,38 +108,53 @@ export default function LiveMarketScreen() {
       return {};
     };
 
-    const priceRangeText = rawFruit.priceRange || rawFruit.price_range || rawFruit.price;
+    const priceRangeText =
+      rawFruit.priceRange || rawFruit.price_range || rawFruit.price;
     const rangeFromText = extractRangeFromString(priceRangeText);
     const priceFromString = parsePriceValue(rawFruit.price);
-    const avgPrice = parsePriceValue(rawFruit.avgPrice ?? rawFruit.averagePrice);
+    const avgPrice = parsePriceValue(
+      rawFruit.avgPrice ?? rawFruit.averagePrice,
+    );
 
-    const minPrice = rawFruit.min_price
-      ?? rawFruit.minPrice
-      ?? rawFruit.price_min
-      ?? rangeFromText.min
-      ?? priceFromString
-      ?? avgPrice
-      ?? rawFruit.amount;
+    const minPrice =
+      rawFruit.min_price ??
+      rawFruit.minPrice ??
+      rawFruit.price_min ??
+      rangeFromText.min ??
+      priceFromString ??
+      avgPrice ??
+      rawFruit.amount;
 
-    const maxPrice = rawFruit.max_price
-      ?? rawFruit.maxPrice
-      ?? rawFruit.price_max
-      ?? rangeFromText.max
-      ?? priceFromString
-      ?? avgPrice
-      ?? rawFruit.amount;
+    const maxPrice =
+      rawFruit.max_price ??
+      rawFruit.maxPrice ??
+      rawFruit.price_max ??
+      rangeFromText.max ??
+      priceFromString ??
+      avgPrice ??
+      rawFruit.amount;
 
     const currency = rawFruit.currency || "LKR";
-    const unitRaw = (rawFruit.unit || rawFruit.unitName || "kg").toString().trim();
+    const unitRaw = (rawFruit.unit || rawFruit.unitName || "kg")
+      .toString()
+      .trim();
     const unit = unitRaw.startsWith("/") ? unitRaw : `/ ${unitRaw}`;
 
     const formatCurrency = (value?: number) => {
-      if (value === undefined || value === null || Number.isNaN(Number(value))) return "0";
-      return Number(value).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+      if (value === undefined || value === null || Number.isNaN(Number(value)))
+        return "0";
+      return Number(value).toLocaleString(undefined, {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+      });
     };
 
-    const minNum = Number.isFinite(Number(minPrice)) ? Number(minPrice) : undefined;
-    const maxNum = Number.isFinite(Number(maxPrice)) ? Number(maxPrice) : undefined;
+    const minNum = Number.isFinite(Number(minPrice))
+      ? Number(minPrice)
+      : undefined;
+    const maxNum = Number.isFinite(Number(maxPrice))
+      ? Number(maxPrice)
+      : undefined;
     const prefix = currency === "LKR" ? "Rs." : currency;
 
     const normalizeRange = (range: any): string | undefined => {
@@ -148,17 +175,21 @@ export default function LiveMarketScreen() {
       return undefined;
     };
 
-    const apiRange = normalizeRange(rawFruit.priceRange || rawFruit.price_range);
-    const computedRange = (minNum !== undefined && maxNum !== undefined)
-      ? (minNum === maxNum
+    const apiRange = normalizeRange(
+      rawFruit.priceRange || rawFruit.price_range,
+    );
+    const computedRange =
+      minNum !== undefined && maxNum !== undefined
+        ? minNum === maxNum
           ? `${prefix} ${formatCurrency(minNum)}`
-          : `${prefix} ${formatCurrency(minNum)} - ${formatCurrency(maxNum)}`)
-      : (minNum !== undefined
+          : `${prefix} ${formatCurrency(minNum)} - ${formatCurrency(maxNum)}`
+        : minNum !== undefined
           ? `${prefix} ${formatCurrency(minNum)}`
-          : undefined);
+          : undefined;
 
-    const priceRange = apiRange || computedRange || priceRangeText || `${prefix} 0`;
-    
+    const priceRange =
+      apiRange || computedRange || priceRangeText || `${prefix} 0`;
+
     return {
       ...rawFruit,
       name: fruitName,
@@ -169,60 +200,54 @@ export default function LiveMarketScreen() {
       currency,
       priceRange,
       unit,
-      status: (demandStatus.charAt(0).toUpperCase() + demandStatus.slice(1)) as "High" | "Medium" | "Low",
-      statusColor: 
-        demandStatus === "high" 
+      status: (demandStatus.charAt(0).toUpperCase() + demandStatus.slice(1)) as
+        | "High"
+        | "Medium"
+        | "Low",
+      statusColor:
+        demandStatus === "high"
           ? LIGHT_GREEN
           : demandStatus === "medium"
-          ? "#fef3c7"
-          : "#fee2e2",
+            ? "#fef3c7"
+            : "#fee2e2",
     };
   };
 
   const loadLiveMarketPrices = async () => {
-    console.log("[LIVE-MARKET] Loading prices for date:", selectedDate.toISOString().split('T')[0]);
+    console.log(
+      "[LIVE-MARKET] Loading prices for date:",
+      selectedDate.toISOString().split("T")[0],
+    );
     setLoading(true);
     try {
-      const token = await AsyncStorage.getItem("token");
-      if (!token) {
-        console.log("[LIVE-MARKET] No token found");
-        setFruits([]);
-        setLoading(false);
-        return;
-      }
+      // log session metadata for troubleshooting
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      console.log(
+        "[LIVE-MARKET] session metadata",
+        session?.user?.user_metadata,
+      );
 
       // Format date as YYYY-MM-DD for filtering
-      const dateStr = selectedDate.toISOString().split('T')[0];
+      const dateStr = selectedDate.toISOString().split("T")[0];
       console.log("[LIVE-MARKET] Selected date for filtering:", dateStr);
 
-      // Build URL based on selected tab (not including date in API call)
-      let url = `${BACKEND_URL}/api/farmer/live-market`;
+      // Build path including optional location query
+      let path = "/api/farmer/live-market";
       if (selectedTab !== "All") {
-        url += `?location=${encodeURIComponent(selectedTab)}`;
-      }
-      
-      console.log("[LIVE-MARKET] Fetching:", url);
-      
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      console.log("[LIVE-MARKET] Response status:", res.status);
-      
-      if (!res.ok) {
-        console.log("[LIVE-MARKET] Error response, status:", res.status);
-        Alert.alert("Error", `Failed to load prices (${res.status})`);
-        setFruits([]);
-        setLoading(false);
-        return;
+        path += `?location=${encodeURIComponent(selectedTab)}`;
       }
 
-      const data = await res.json();
+      console.log("[LIVE-MARKET] calling api.get", path);
+      const data = await api.get(path);
       console.log("[LIVE-MARKET] Response data:", data);
 
       // Format the fruit data - show all records regardless of date
-      const formattedFruits = (data.fruits || data.data || data || []).map(formatFruitData);
-      
+      const formattedFruits = (data.fruits || data.data || data || []).map(
+        formatFruitData,
+      );
+
       setFruits(formattedFruits);
       setLastUpdated(data.lastUpdated || new Date().toISOString());
       console.log("[LIVE-MARKET] Loaded", formattedFruits.length, "fruits");
@@ -237,7 +262,7 @@ export default function LiveMarketScreen() {
   };
 
   const handleDateChange = (event: any, date?: Date) => {
-    if (Platform.OS === 'android') {
+    if (Platform.OS === "android") {
       setShowDatePicker(false);
     }
     if (date) {
@@ -251,10 +276,15 @@ export default function LiveMarketScreen() {
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <TouchableOpacity onPress={() => router.back()} style={styles.headerButton}>
+            <TouchableOpacity
+              onPress={() => router.back()}
+              style={styles.headerButton}
+            >
               <Ionicons name="chevron-back" size={24} color={PRIMARY_GREEN} />
             </TouchableOpacity>
-            <Text style={styles.headerTitle}>{t("liveMarket.headerTitle")}</Text>
+            <Text style={styles.headerTitle}>
+              {t("liveMarket.headerTitle")}
+            </Text>
           </View>
           <TouchableOpacity style={styles.headerButton}>
             <Ionicons name="search" size={24} color={PRIMARY_GREEN} />
@@ -274,9 +304,15 @@ export default function LiveMarketScreen() {
               <Text style={styles.ctaPillText}>{t("liveMarket.ctaPill")}</Text>
             </View>
             <Text style={styles.ctaTitle}>{t("liveMarket.ctaTitle")}</Text>
-            <Text style={styles.ctaSubtitle}>{t("liveMarket.ctaSubtitle")}</Text>
+            <Text style={styles.ctaSubtitle}>
+              {t("liveMarket.ctaSubtitle")}
+            </Text>
           </View>
-          <Ionicons name="arrow-forward-circle" size={30} color={PRIMARY_GREEN} />
+          <Ionicons
+            name="arrow-forward-circle"
+            size={30}
+            color={PRIMARY_GREEN}
+          />
         </TouchableOpacity>
 
         {/* Date Picker Button */}
@@ -286,10 +322,10 @@ export default function LiveMarketScreen() {
         >
           <Ionicons name="calendar" size={20} color={PRIMARY_GREEN} />
           <Text style={styles.datePickerText}>
-            {selectedDate.toLocaleDateString('en-US', {
-              year: 'numeric',
-              month: 'short',
-              day: 'numeric'
+            {selectedDate.toLocaleDateString("en-US", {
+              year: "numeric",
+              month: "short",
+              day: "numeric",
             })}
           </Text>
         </TouchableOpacity>
@@ -328,7 +364,10 @@ export default function LiveMarketScreen() {
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.tab, selectedTab === "Manning Market" && styles.tabActive]}
+            style={[
+              styles.tab,
+              selectedTab === "Manning Market" && styles.tabActive,
+            ]}
             onPress={() => setSelectedTab("Manning Market")}
           >
             <Text
@@ -370,24 +409,30 @@ export default function LiveMarketScreen() {
 
         {/* Sort Options */}
         <View style={styles.sortContainer}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.sortButton}
             onPress={() => setSortBy(sortBy === "Price" ? "Demand" : "Price")}
           >
             <Text style={styles.sortText}>
               {t("liveMarket.sortBy", {
-                value: sortBy === "Price" ? t("liveMarket.sortOptions.price") : t("liveMarket.sortOptions.demand"),
+                value:
+                  sortBy === "Price"
+                    ? t("liveMarket.sortOptions.price")
+                    : t("liveMarket.sortOptions.demand"),
               })}
             </Text>
             <Ionicons name="chevron-down" size={16} color="#666" />
           </TouchableOpacity>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.sortButton}
             onPress={() => setOrder(order === "High" ? "Low" : "High")}
           >
             <Text style={styles.sortText}>
               {t("liveMarket.demandOrder", {
-                value: order === "High" ? t("liveMarket.order.high") : t("liveMarket.order.low"),
+                value:
+                  order === "High"
+                    ? t("liveMarket.order.high")
+                    : t("liveMarket.order.low"),
               })}
             </Text>
             <Ionicons name="chevron-down" size={16} color="#666" />
@@ -408,8 +453,13 @@ export default function LiveMarketScreen() {
         ) : fruits.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Ionicons name="file-tray-outline" size={64} color="#ccc" />
-            <Text style={styles.emptyText}>No prices available for {selectedTab}</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={loadLiveMarketPrices}>
+            <Text style={styles.emptyText}>
+              No prices available for {selectedTab}
+            </Text>
+            <TouchableOpacity
+              style={styles.retryButton}
+              onPress={loadLiveMarketPrices}
+            >
               <Text style={styles.retryText}>Retry</Text>
             </TouchableOpacity>
           </View>
@@ -419,59 +469,61 @@ export default function LiveMarketScreen() {
             showsVerticalScrollIndicator={false}
           >
             {fruits.map((fruit, index) => (
-            <TouchableOpacity
-              key={index}
-              style={styles.fruitCard}
-              onPress={() => {}}
-            >
-              <View style={styles.fruitLeft}>
-                <View style={styles.fruitImageContainer}>
-                  {typeof fruit.image === 'string' && fruit.image.length <= 4 && /\p{Emoji}/u.test(fruit.image) ? (
-                    <Text style={styles.fruitImageEmoji}>{fruit.image}</Text>
-                  ) : (
-                    <Image
-                      source={{ uri: fruit.image }}
-                      style={styles.fruitImage}
-                    />
-                  )}
+              <TouchableOpacity
+                key={index}
+                style={styles.fruitCard}
+                onPress={() => {}}
+              >
+                <View style={styles.fruitLeft}>
+                  <View style={styles.fruitImageContainer}>
+                    {typeof fruit.image === "string" &&
+                    fruit.image.length <= 4 &&
+                    /\p{Emoji}/u.test(fruit.image) ? (
+                      <Text style={styles.fruitImageEmoji}>{fruit.image}</Text>
+                    ) : (
+                      <Image
+                        source={{ uri: fruit.image }}
+                        style={styles.fruitImage}
+                      />
+                    )}
+                  </View>
+                  <View style={styles.fruitInfo}>
+                    <Text style={styles.fruitName}>{fruit.name}</Text>
+                    <Text style={styles.fruitPrice}>
+                      {fruit.priceRange} {fruit.unit}
+                    </Text>
+                  </View>
                 </View>
-                <View style={styles.fruitInfo}>
-                  <Text style={styles.fruitName}>{fruit.name}</Text>
-                  <Text style={styles.fruitPrice}>
-                    {fruit.priceRange} {fruit.unit}
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.fruitRight}>
-                <View
-                  style={[
-                    styles.statusBadge,
-                    { backgroundColor: fruit.statusColor },
-                  ]}
-                >
-                  <Text
+                <View style={styles.fruitRight}>
+                  <View
                     style={[
-                      styles.statusText,
-                      {
-                        color:
-                          fruit.status === "High"
-                            ? PRIMARY_GREEN
-                            : fruit.status === "Medium"
-                            ? "#d97706"
-                            : RED,
-                      },
+                      styles.statusBadge,
+                      { backgroundColor: fruit.statusColor },
                     ]}
                   >
-                    {fruit.status}
-                  </Text>
+                    <Text
+                      style={[
+                        styles.statusText,
+                        {
+                          color:
+                            fruit.status === "High"
+                              ? PRIMARY_GREEN
+                              : fruit.status === "Medium"
+                                ? "#d97706"
+                                : RED,
+                        },
+                      ]}
+                    >
+                      {fruit.status}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#ccc" />
                 </View>
-                <Ionicons name="chevron-forward" size={20} color="#ccc" />
-              </View>
-            </TouchableOpacity>
-          ))}
+              </TouchableOpacity>
+            ))}
 
-          <View style={{ height: 30 }} />
-        </ScrollView>
+            <View style={{ height: 30 }} />
+          </ScrollView>
         )}
       </View>
 
@@ -480,7 +532,7 @@ export default function LiveMarketScreen() {
         <DateTimePicker
           value={selectedDate}
           mode="date"
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          display={Platform.OS === "ios" ? "spinner" : "default"}
           onChange={handleDateChange}
         />
       )}
@@ -577,8 +629,8 @@ const styles = StyleSheet.create({
     color: PRIMARY_GREEN,
   },
   datePickerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
     paddingHorizontal: 14,
     paddingVertical: 10,
@@ -586,14 +638,14 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 8,
     borderRadius: 12,
-    backgroundColor: '#f8f8f8',
+    backgroundColor: "#f8f8f8",
     borderWidth: 1,
-    borderColor: '#e8e8e8',
+    borderColor: "#e8e8e8",
   },
   datePickerText: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
+    fontWeight: "600",
+    color: "#333",
   },
   tabScrollView: {
     maxHeight: 60,

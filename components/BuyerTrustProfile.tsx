@@ -1,8 +1,8 @@
 import Header from "@/components/Header";
 import DigitalPassportModal from "@/components/modals/DigitalPassportModal";
 import TransactionReceiptModal from "@/components/modals/TransactionReceiptModal";
-import { BACKEND_URL } from "@/config";
 import { BuyerColors } from "@/constants/theme";
+import api from "@/services/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { ArrowRight, MapPin, ShieldCheck, Wallet } from "lucide-react-native";
@@ -109,21 +109,7 @@ export default function BuyerTrustProfile({
           return;
         }
 
-        const response = await fetch(
-          `${BACKEND_URL}/api/trust/buyer-profile/${buyerId}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-          }
-        );
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch buyer profile: ${response.status}`);
-        }
-
-        const data = await response.json();
+        const data = await api.get(`/api/trust/buyer-profile/${buyerId}`);
         console.log("Buyer profile data:", data);
 
         const profileData = data.buyer || data;
@@ -162,10 +148,9 @@ export default function BuyerTrustProfile({
     setModalVisible(true);
 
     try {
-      const response = await fetch(
-        `${BACKEND_URL}/api/trust/test-identity/${buyerId || "buyer_123"}`
+      const data = await api.get(
+        `/api/trust/test-identity/${buyerId || "buyer_123"}`,
       );
-      const data = await response.json();
 
       if (data.success) {
         setPassportData(data.digitalPassport);

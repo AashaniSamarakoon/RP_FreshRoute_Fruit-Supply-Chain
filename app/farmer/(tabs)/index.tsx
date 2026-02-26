@@ -1,13 +1,8 @@
+import api from "@/services/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
-import {
-  Alert,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-} from "react-native";
-import { BACKEND_URL } from "../../../config";
+import { Alert, SafeAreaView, ScrollView, StyleSheet } from "react-native";
 import { useTranslationContext } from "../../../context/TranslationContext";
 import { FeatureGrid, FruitDemandCards, Header } from "../components";
 
@@ -40,25 +35,25 @@ export default function FarmerDashboard() {
         }
 
         const token = await AsyncStorage.getItem("token");
-        console.log("[DASHBOARD] Token from storage:", token?.substring(0, 20) + "...");
+        console.log(
+          "[DASHBOARD] Token from storage:",
+          token?.substring(0, 20) + "...",
+        );
         if (!token) {
           console.log("[DASHBOARD] No token found, skipping API call");
           return;
         }
 
-        console.log("[DASHBOARD] Fetching:", `${BACKEND_URL}/api/farmer/dashboard`);
-        const res = await fetch(`${BACKEND_URL}/api/farmer/dashboard`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        console.log("[DASHBOARD] Response status:", res.status);
-
-        const body = await res.json();
-        console.log("[DASHBOARD] Response body:", body);
-        if (!res.ok) {
-          console.log("[DASHBOARD] Error response:", body.message);
+        console.log("[DASHBOARD] Calling dashboard API");
+        let body: any;
+        try {
+          body = await api.get(`/api/farmer/dashboard`);
+          console.log("[DASHBOARD] Response body:", body);
+        } catch (err: any) {
+          console.log("[DASHBOARD] Error response:", err.message);
           return Alert.alert(
             t("common.error"),
-            body.message || t("farmer.errors.failed")
+            err.message || t("farmer.errors.failed"),
           );
         }
         console.log("[DASHBOARD] Data loaded successfully");
@@ -66,7 +61,10 @@ export default function FarmerDashboard() {
       } catch (err) {
         console.error("[DASHBOARD] Error:", err);
         const errorMsg = err instanceof Error ? err.message : String(err);
-        Alert.alert(t("common.error"), t("farmer.errors.generic") + ": " + errorMsg);
+        Alert.alert(
+          t("common.error"),
+          t("farmer.errors.generic") + ": " + errorMsg,
+        );
       }
     };
     load();
@@ -87,13 +85,10 @@ export default function FarmerDashboard() {
   return (
     <SafeAreaView style={styles.safeArea}>
       {/* Header Component with Search Bar */}
-      <Header
-        userName={userName}
-        onSearch={handleSearch}
-      />
+      <Header userName={userName} onSearch={handleSearch} />
 
-      <ScrollView 
-        style={styles.container} 
+      <ScrollView
+        style={styles.container}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >

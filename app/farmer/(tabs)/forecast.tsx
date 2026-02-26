@@ -1,3 +1,4 @@
+import api from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -11,7 +12,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { BACKEND_URL } from "../../../config";
 import { useTranslation } from "../../../hooks/farmer/useTranslation";
 
 const PRIMARY_GREEN = "#2E7D32";
@@ -70,15 +70,13 @@ export default function ForecastScreen() {
       const results = await Promise.all(
         fruitsToFetch.map(async (fruit) => {
           try {
-            const url = `${BACKEND_URL}/api/farmer/forecast/7day?fruit=${encodeURIComponent(fruit.name)}&target=${encodeURIComponent(target)}`;
-            console.log("[FORECAST] Fetching", url);
-            const res = await fetch(url, {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            const data = await res.json();
-
-            if (!res.ok) {
-              console.log("[FORECAST] Error for", fruit.name, data.message);
+            const path = `/api/forecast/7day?fruit=${encodeURIComponent(fruit.name)}&target=${encodeURIComponent(target)}`;
+            console.log("[FORECAST] Fetching", path);
+            let data: any;
+            try {
+              data = await api.get(path);
+            } catch (err) {
+              console.log("[FORECAST] Error for", fruit.name, err);
               return { ...fruit, days: [] } as FruitForecast;
             }
 
@@ -95,7 +93,7 @@ export default function ForecastScreen() {
             console.error("[FORECAST] Failed for", fruit.name, err);
             return { ...fruit, days: [] } as FruitForecast;
           }
-        })
+        }),
       );
 
       setForecastData(results);
@@ -114,13 +112,20 @@ export default function ForecastScreen() {
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <TouchableOpacity onPress={() => router.back()} style={styles.headerButton}>
+            <TouchableOpacity
+              onPress={() => router.back()}
+              style={styles.headerButton}
+            >
               <Ionicons name="chevron-back" size={24} color={PRIMARY_GREEN} />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>{t("forecast.headerTitle")}</Text>
           </View>
           <TouchableOpacity style={styles.headerButton}>
-            <Ionicons name="notifications-outline" size={22} color={PRIMARY_GREEN} />
+            <Ionicons
+              name="notifications-outline"
+              size={22}
+              color={PRIMARY_GREEN}
+            />
           </TouchableOpacity>
         </View>
 
@@ -157,7 +162,10 @@ export default function ForecastScreen() {
           <View style={styles.emptyContainer}>
             <Ionicons name="file-tray-outline" size={64} color="#ccc" />
             <Text style={styles.emptyText}>No forecast data available</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={loadForecasts}>
+            <TouchableOpacity
+              style={styles.retryButton}
+              onPress={loadForecasts}
+            >
               <Text style={styles.retryText}>Retry</Text>
             </TouchableOpacity>
           </View>
@@ -171,14 +179,24 @@ export default function ForecastScreen() {
               <View style={styles.fruitCard}>
                 <View style={styles.fruitHeader}>
                   <View style={styles.fruitIcon}>
-                    <Text style={styles.fruitEmoji}>{forecastData[selectedFruitIdx].emoji}</Text>
+                    <Text style={styles.fruitEmoji}>
+                      {forecastData[selectedFruitIdx].emoji}
+                    </Text>
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.fruitLabel}>{t("forecast.fruitLabel")}</Text>
-                    <Text style={styles.fruitName}>{forecastData[selectedFruitIdx].name}</Text>
+                    <Text style={styles.fruitLabel}>
+                      {t("forecast.fruitLabel")}
+                    </Text>
+                    <Text style={styles.fruitName}>
+                      {forecastData[selectedFruitIdx].name}
+                    </Text>
                   </View>
                   <TouchableOpacity
-                    onPress={() => router.push(`../screens/fruit-forecast?fruit=${forecastData[selectedFruitIdx].name}`)}
+                    onPress={() =>
+                      router.push(
+                        `../screens/fruit-forecast?fruit=${forecastData[selectedFruitIdx].name}`,
+                      )
+                    }
                   >
                     <Ionicons name="chevron-forward" size={20} color="#999" />
                   </TouchableOpacity>
@@ -187,7 +205,9 @@ export default function ForecastScreen() {
                 {forecastData[selectedFruitIdx].days.length === 0 ? (
                   <View style={styles.noDataRow}>
                     <Ionicons name="cloud-offline" size={18} color="#999" />
-                    <Text style={styles.noDataText}>No forecast data for {forecastData[selectedFruitIdx].name}</Text>
+                    <Text style={styles.noDataText}>
+                      No forecast data for {forecastData[selectedFruitIdx].name}
+                    </Text>
                   </View>
                 ) : (
                   forecastData[selectedFruitIdx].days.map((day, dayIndex) => (
@@ -201,8 +221,8 @@ export default function ForecastScreen() {
                                 day.trend === "up"
                                   ? LIGHT_GREEN
                                   : day.trend === "down"
-                                  ? LIGHT_RED
-                                  : LIGHT_GRAY,
+                                    ? LIGHT_RED
+                                    : LIGHT_GRAY,
                             },
                           ]}
                         >
@@ -211,16 +231,16 @@ export default function ForecastScreen() {
                               day.trend === "up"
                                 ? "arrow-up"
                                 : day.trend === "down"
-                                ? "arrow-down"
-                                : "remove"
+                                  ? "arrow-down"
+                                  : "remove"
                             }
                             size={16}
                             color={
                               day.trend === "up"
                                 ? PRIMARY_GREEN
                                 : day.trend === "down"
-                                ? RED
-                                : "#999"
+                                  ? RED
+                                  : "#999"
                             }
                           />
                         </View>
@@ -234,8 +254,8 @@ export default function ForecastScreen() {
                                   day.trend === "up"
                                     ? PRIMARY_GREEN
                                     : day.trend === "down"
-                                    ? RED
-                                    : "#999",
+                                      ? RED
+                                      : "#999",
                               },
                             ]}
                           >

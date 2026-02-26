@@ -1,8 +1,8 @@
+import api from "@/services/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Alert, Platform } from "react-native";
-import { BACKEND_URL } from "../../../config";
 
 interface FruitPropertyRow {
   id: number;
@@ -64,7 +64,7 @@ export const useOrderForm = () => {
       try {
         const token = await AsyncStorage.getItem("token");
         if (!token) {
-          setState(prev => ({ ...prev, loading: false }));
+          setState((prev) => ({ ...prev, loading: false }));
           return;
         }
 
@@ -73,37 +73,34 @@ export const useOrderForm = () => {
           controller.abort();
         }, 10000); // 10-second timeout
 
-        const res = await fetch(`${BACKEND_URL}/api/fruit-properties`, {
-          headers: { Authorization: `Bearer ${token}` },
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        const text = await res.text();
-        let raw: any = text;
+        let raw: any;
         try {
-          raw = text ? JSON.parse(text) : text;
-          console.log("[useOrderForm] Parsed response:", raw);
-        } catch (parseErr) {
-          console.log("[useOrderForm] Parse error:", parseErr);
-          // fall back to raw text
-        }
-
-        if (!res.ok) {
-          console.log("[useOrderForm] Response not ok, status:", res.status);
-          setState(prev => ({ ...prev, loading: false }));
+          console.log("[useOrderForm] requesting /api/fruit-properties");
+          raw = await api.get(`/api/fruit-properties`);
+          console.log("[useOrderForm] raw response:", raw);
+        } catch (err: any) {
+          console.log("[useOrderForm] Failed to fetch fruit properties", err);
+          // if the error message looks like a JSON string, log it separately
+          try {
+            const parsed = JSON.parse(err.message);
+            console.log("[useOrderForm] error body:", parsed);
+          } catch {}
+          setState((prev) => ({ ...prev, loading: false }));
           return;
         }
+        // `api.get` already returns a parsed JSON object, so no need to parse again
+        // (the old code checked `res.ok` here, but `res` no longer exists;
+        // fetchWithAuth throws on non-OK status so the catch block above
+        // handles errors.)
 
         const data: FruitPropertyRow[] = Array.isArray(raw)
           ? raw
-          : raw?.fruits ?? raw?.data ?? raw?.items ?? [];
+          : (raw?.fruits ?? raw?.data ?? raw?.items ?? []);
 
         console.log("[useOrderForm] Extracted data array:", data);
         if (!Array.isArray(data)) {
           console.log("[useOrderForm] Data not array, showing form anyway");
-          setState(prev => ({ ...prev, loading: false }));
+          setState((prev) => ({ ...prev, loading: false }));
           return;
         }
 
@@ -116,18 +113,22 @@ export const useOrderForm = () => {
         const fruitItems = unique.map((name) => ({ label: name, value: name }));
 
         console.log("[useOrderForm] Setting fruitItems and loading false");
-        setState(prev => ({
+        setState((prev) => ({
           ...prev,
           fruitItems,
-          loading: false
+          loading: false,
         }));
-        console.log("[useOrderForm] loadFruitProperties completed successfully");
+        console.log(
+          "[useOrderForm] loadFruitProperties completed successfully",
+        );
       } catch (e) {
         // Silently suppress errors and show form anyway
         if (e instanceof Error && e.name !== "AbortError") {
-          console.log("[useOrderForm] Error loading fruit properties, showing form");
+          console.log(
+            "[useOrderForm] Error loading fruit properties, showing form",
+          );
         }
-        setState(prev => ({ ...prev, loading: false }));
+        setState((prev) => ({ ...prev, loading: false }));
       }
     };
 
@@ -137,38 +138,41 @@ export const useOrderForm = () => {
   // Update category items when fruit changes
   useEffect(() => {
     if (!state.formData.fruit) {
-      setState(prev => ({
+      setState((prev) => ({
         ...prev,
         categoryItems: [],
-        formData: { ...prev.formData, category: null }
+        formData: { ...prev.formData, category: null },
       }));
       return;
     }
 
     const filtered = rows.filter((r) => r.name === state.formData.fruit);
-    const categoryItems = filtered.map((r) => ({ label: r.variety, value: r.variety }));
+    const categoryItems = filtered.map((r) => ({
+      label: r.variety,
+      value: r.variety,
+    }));
 
-    setState(prev => ({
+    setState((prev) => ({
       ...prev,
       categoryItems,
-      formData: { ...prev.formData, category: null }
+      formData: { ...prev.formData, category: null },
     }));
   }, [state.formData.fruit, rows]);
 
   const updateField = (field: keyof OrderFormData, value: any) => {
-    setState(prev => ({
+    setState((prev) => ({
       ...prev,
       formData: { ...prev.formData, [field]: value },
-      errors: { ...prev.errors, [field]: "" } // Clear error when field changes
+      errors: { ...prev.errors, [field]: "" }, // Clear error when field changes
     }));
   };
 
   const setDatePickerVisible = (visible: boolean) => {
-    setState(prev => ({ ...prev, datePickerVisible: visible }));
+    setState((prev) => ({ ...prev, datePickerVisible: visible }));
   };
 
   const setDateValue = (date: Date | null) => {
-    setState(prev => ({ ...prev, dateValue: date }));
+    setState((prev) => ({ ...prev, dateValue: date }));
   };
 
   const isFutureDate = (dateStr: string) => {
@@ -192,11 +196,15 @@ export const useOrderForm = () => {
     if (!state.formData.quantity) {
       errors.quantity = "Please enter quantity";
     }
-    if (!state.formData.estimatedDate || !isFutureDate(state.formData.estimatedDate)) {
-      errors.estimatedDate = "Please select a future harvest date (tomorrow or later)";
+    if (
+      !state.formData.estimatedDate ||
+      !isFutureDate(state.formData.estimatedDate)
+    ) {
+      errors.estimatedDate =
+        "Please select a future harvest date (tomorrow or later)";
     }
 
-    setState(prev => ({ ...prev, errors }));
+    setState((prev) => ({ ...prev, errors }));
 
     if (Object.keys(errors).length > 0) {
       const firstError = Object.values(errors)[0];
@@ -227,21 +235,16 @@ export const useOrderForm = () => {
         longitude: state.formData.longitude,
         required_date: state.formData.estimatedDate,
         delivery_location: state.formData.deliveryLocation,
-        target_price: state.formData.targetPrice ? parseFloat(state.formData.targetPrice) : null,
+        target_price: state.formData.targetPrice
+          ? parseFloat(state.formData.targetPrice)
+          : null,
       };
-      const res = await fetch(`${BACKEND_URL}/api/buyer/place-order`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const body = await res.json();
-      console.log("Place order response:", body);
-      if (!res.ok) {
-        console.error("Submit error:", body);
+      let body: any;
+      try {
+        body = await api.post(`/api/buyer/place-order`, payload);
+        console.log("Place order response:", body);
+      } catch (err) {
+        console.error("Submit error:", err);
         return {
           success: false,
           farmersFound: false,
@@ -288,10 +291,11 @@ export const useOrderForm = () => {
     handleDateChange,
 
     // Computed
-    isFormValid: Object.keys(state.errors).length === 0 &&
-                 state.formData.fruit &&
-                 state.formData.category &&
-                 state.formData.quantity &&
-                 state.formData.estimatedDate,
+    isFormValid:
+      Object.keys(state.errors).length === 0 &&
+      state.formData.fruit &&
+      state.formData.category &&
+      state.formData.quantity &&
+      state.formData.estimatedDate,
   };
 };

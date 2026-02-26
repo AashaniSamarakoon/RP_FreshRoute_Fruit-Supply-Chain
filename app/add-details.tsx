@@ -1,3 +1,4 @@
+import api from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -15,8 +16,12 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import RNPickerSelect from "react-native-picker-select";
-import { BACKEND_URL } from "../config";
+import RNPickerSelect, { PickerSelectProps } from "react-native-picker-select";
+
+// some TS configurations can misinterpret the default export as a module namespace,
+// leading to errors like "JSX element class does not support attributes".  Cast
+// to a known React component type so the compiler recognizes its props.
+const PickerSelect = RNPickerSelect as React.ComponentType<PickerSelectProps>;
 
 const PRIMARY_GREEN = "#2E7D32";
 const LIGHT_GRAY = "#f5f5f5";
@@ -44,7 +49,7 @@ const SkeletonLoader = () => {
           duration: 800,
           useNativeDriver: true,
         }),
-      ])
+      ]),
     );
     pulse.start();
     return () => pulse.stop();
@@ -159,31 +164,18 @@ export default function AddStock() {
           return;
         }
 
-        const res = await fetch(`${BACKEND_URL}/api/fruit-properties`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        // Read text and attempt to parse JSON
-        const text = await res.text();
-        let raw: any = text;
+        let raw: any;
         try {
-          raw = text ? JSON.parse(text) : text;
-        } catch (parseErr) {
-          // fall back to raw text
-        }
-
-        if (!res.ok) {
-          Alert.alert(
-            "Error",
-            `Failed to load fruit properties (${res.status})`
-          );
+          raw = await api.get(`/api/fruit-properties`);
+        } catch (err) {
+          Alert.alert("Error", `Failed to load fruit properties`);
           setLoading(false);
           return;
         }
 
         const data: FruitPropertyRow[] = Array.isArray(raw)
           ? raw
-          : raw?.fruits ?? raw?.data ?? raw?.items ?? [];
+          : (raw?.fruits ?? raw?.data ?? raw?.items ?? []);
 
         if (!Array.isArray(data)) {
           Alert.alert("Error", "Unexpected data format from server");
@@ -199,7 +191,7 @@ export default function AddStock() {
       } catch (e) {
         console.error(
           "[AddStock] exception while loading fruit properties:",
-          e
+          e,
         );
         Alert.alert("Error", "Could not load fruit properties");
       } finally {
@@ -219,7 +211,7 @@ export default function AddStock() {
     // filter rows for selected fruit_name and map variants -> variant string
     const filtered = rows.filter((r) => r.fruit_name === fruit);
     setCategoryItems(
-      filtered.map((r) => ({ label: r.variant, value: r.variant }))
+      filtered.map((r) => ({ label: r.variant, value: r.variant })),
     );
     setCategory(null);
   }, [fruit, rows]);
@@ -241,7 +233,7 @@ export default function AddStock() {
     if (!estimatedDate || !isFutureDate(estimatedDate)) {
       return Alert.alert(
         "Error",
-        "Please select a future estimated harvest date (tomorrow or later)"
+        "Please select a future estimated harvest date (tomorrow or later)",
       );
     }
     try {
@@ -264,22 +256,14 @@ export default function AddStock() {
         "[AddStock] submitting stock, Authorization: Bearer",
         masked,
         "payload:",
-        payload
+        payload,
       );
 
-      const res = await fetch(`${BACKEND_URL}/api/farmer/add-predict-stock`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const body = await res.json();
-      if (!res.ok) {
-        console.error("Submit error:", body);
-        return Alert.alert("Error", body.message || "Failed to submit stock");
+      try {
+        const body = await api.post(`/api/farmer/add-predict-stock`, payload);
+      } catch (err: any) {
+        console.error("Submit error:", err);
+        return Alert.alert("Error", err.message || "Failed to submit stock");
       }
 
       Alert.alert("Success", "Stock submitted successfully");
@@ -312,7 +296,7 @@ export default function AddStock() {
         >
           <View style={styles.formCard}>
             <Text style={styles.label}>Fruit type</Text>
-            <RNPickerSelect
+            <PickerSelect
               onValueChange={(val) => setFruit(val)}
               value={fruit}
               placeholder={{ label: "Select fruit", value: null }}
@@ -326,7 +310,7 @@ export default function AddStock() {
             />
 
             <Text style={styles.label}>Category (variant)</Text>
-            <RNPickerSelect
+            <PickerSelect
               onValueChange={(val) => setCategory(val)}
               value={category}
               placeholder={{ label: "Select category", value: null }}

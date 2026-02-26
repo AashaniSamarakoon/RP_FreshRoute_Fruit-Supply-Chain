@@ -1,3 +1,4 @@
+import api from "@/services/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import {
@@ -24,7 +25,6 @@ import {
 import Header from "../../../components/Header";
 import ErrorModal from "../../../components/modals/ErrorModal";
 import SuccessModal from "../../../components/modals/SuccessModal";
-import { BACKEND_URL } from "../../../config";
 import { BuyerColors } from "../../../constants/theme";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -59,13 +59,13 @@ export default function MatchedStocksScreen() {
   const [selectedStock, setSelectedStock] = useState<MatchedStock | null>(null);
   const [errorModalVisible, setErrorModalVisible] = useState(false);
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(
-    typeof paramOrderId === "string" ? paramOrderId : null
+    typeof paramOrderId === "string" ? paramOrderId : null,
   );
   const [loadingOrder, setLoadingOrder] = useState(false);
 
   // Add this state for tracking approval loading
   const [approvingProposals, setApprovingProposals] = useState<Set<string>>(
-    new Set()
+    new Set(),
   );
 
   // Image modal state
@@ -92,25 +92,18 @@ export default function MatchedStocksScreen() {
         return;
       }
 
-      const response = await fetch(`${BACKEND_URL}/api/buyer/place-order`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch orders: ${response.status}`);
+      let data: any;
+      try {
+        data = await api.get(`/api/buyer/place-order`);
+        console.log("Orders response:", data);
+      } catch (err) {
+        throw err;
       }
-
-      const data = await response.json();
-      console.log("Orders response:", data);
 
       // Find the first OPEN order
       if (data.orders && data.orders.length > 0) {
         const openOrder = data.orders.find(
-          (order: any) => order.status === "OPEN"
+          (order: any) => order.status === "OPEN",
         );
         if (openOrder) {
           setCurrentOrderId(openOrder.id);
@@ -135,7 +128,7 @@ export default function MatchedStocksScreen() {
   useFocusEffect(
     useCallback(() => {
       fetchOpenOrders();
-    }, [fetchOpenOrders])
+    }, [fetchOpenOrders]),
   );
 
   useEffect(() => {
@@ -158,19 +151,15 @@ export default function MatchedStocksScreen() {
           return;
         }
 
-        const apiUrl = `${BACKEND_URL}/api/buyer/matching/${currentOrderId}`;
+        const apiUrl = `/api/buyer/matching/${currentOrderId}`;
         console.log("Fetching from:", apiUrl);
 
-        const res = await fetch(apiUrl, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        const data = await res.json();
-        console.log("API response:", res.status, data);
-
-        if (!res.ok) {
-          const errorMsg =
-            data?.message || `Failed to load matched stocks (${res.status})`;
+        let data: any;
+        try {
+          data = await api.get(apiUrl);
+          console.log("API response:", data);
+        } catch (err: any) {
+          const errorMsg = err.message || "Failed to load matched stocks";
           setError(errorMsg);
           setLoading(false);
           return;
@@ -214,14 +203,14 @@ export default function MatchedStocksScreen() {
                   "stockId:",
                   stockId,
                   "farmerId:",
-                  farmerId
+                  farmerId,
                 );
                 return null;
               }
 
               const quantity = parseInt(
                 item.quantity_proposed ?? stock?.quantity ?? 0,
-                10
+                10,
               );
               const distance = parseFloat(farmer?.latitude ?? 0);
 
@@ -305,7 +294,7 @@ export default function MatchedStocksScreen() {
 
   const handleScroll = (event: any) => {
     const slideIndex = Math.round(
-      event.nativeEvent.contentOffset.x / SCREEN_WIDTH
+      event.nativeEvent.contentOffset.x / SCREEN_WIDTH,
     );
     setCurrentImageIndex(slideIndex);
   };
@@ -321,30 +310,20 @@ export default function MatchedStocksScreen() {
         return;
       }
 
-      const response = await fetch(
-        `${BACKEND_URL}/api/buyer/matching/approve/${item.id}`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.error || data.message || "Failed to approve proposal"
+      try {
+        const data = await api.post(
+          `/api/buyer/matching/approve/${item.id}`,
+          {},
         );
+      } catch (err: any) {
+        throw err;
       }
 
       // Update local state to reflect the status change
       setStocks((prevStocks) =>
         prevStocks.map((stock) =>
-          stock.id === item.id ? { ...stock, status: "PENDING_FARMER" } : stock
-        )
+          stock.id === item.id ? { ...stock, status: "PENDING_FARMER" } : stock,
+        ),
       );
 
       // Show success message
@@ -353,7 +332,7 @@ export default function MatchedStocksScreen() {
     } catch (err) {
       console.error("Error approving proposal:", err);
       setError(
-        err instanceof Error ? err.message : "Failed to approve proposal"
+        err instanceof Error ? err.message : "Failed to approve proposal",
       );
       setErrorModalVisible(true);
     } finally {
@@ -472,7 +451,7 @@ export default function MatchedStocksScreen() {
                   {
                     month: "short",
                     day: "numeric",
-                  }
+                  },
                 )}
               </Text>
             </View>
@@ -515,12 +494,12 @@ export default function MatchedStocksScreen() {
             {item.status === "PENDING_BUYER"
               ? "Approve Deal"
               : item.status === "PENDING_FARMER"
-              ? "Pending farmer confirmation"
-              : item.status === "ACCEPTED"
-              ? "Accepted"
-              : item.status === "REJECTED"
-              ? "Rejected"
-              : "Select"}
+                ? "Pending farmer confirmation"
+                : item.status === "ACCEPTED"
+                  ? "Accepted"
+                  : item.status === "REJECTED"
+                    ? "Rejected"
+                    : "Select"}
           </Text>
         )}
       </TouchableOpacity>

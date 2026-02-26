@@ -1,3 +1,4 @@
+import api from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -12,7 +13,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { BACKEND_URL } from "../../../config";
 import { useTranslation } from "../../../hooks/farmer/useTranslation";
 
 const PRIMARY_GREEN = "#2E7D32";
@@ -31,7 +31,9 @@ interface FeedbackItem {
 export default function FeedbackScreen() {
   const router = useRouter();
   const { t } = useTranslation();
-  const [selectedTab, setSelectedTab] = useState<"Recent" | "Top" | "My Feedback">("Recent");
+  const [selectedTab, setSelectedTab] = useState<
+    "Recent" | "Top" | "My Feedback"
+  >("Recent");
   const [feedbackText, setFeedbackText] = useState("");
   const [feedbacks, setFeedbacks] = useState<FeedbackItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,17 +55,7 @@ export default function FeedbackScreen() {
       }
 
       const sort = selectedTab === "Top" ? "top" : "recent";
-      const res = await fetch(`${BACKEND_URL}/api/farmer/feedback?sort=${sort}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        console.log("[FEEDBACK] Error:", data.message);
-        setFeedbacks([]);
-        return;
-      }
-
+      const data = await api.get(`/api/farmer/feedback?sort=${sort}`);
       setFeedbacks(data.feedback || []);
     } catch (err) {
       console.error("[FEEDBACK] Unexpected error", err);
@@ -86,20 +78,9 @@ export default function FeedbackScreen() {
         return;
       }
 
-      const res = await fetch(`${BACKEND_URL}/api/farmer/feedback`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ body: feedbackText.trim() }),
+      const data = await api.post(`/api/farmer/feedback`, {
+        body: feedbackText.trim(),
       });
-
-      const data = await res.json();
-      if (!res.ok) {
-        console.log("[FEEDBACK] Submit error:", data.message);
-        return;
-      }
 
       setFeedbackText("");
       setFeedbacks((prev) => [data.feedback, ...prev]);
@@ -145,8 +126,14 @@ export default function FeedbackScreen() {
               value={feedbackText}
               onChangeText={setFeedbackText}
             />
-            <TouchableOpacity style={styles.submitButton} onPress={submitFeedback} disabled={submitting}>
-              <Text style={styles.submitButtonText}>{submitting ? "..." : t("feedback.submit")}</Text>
+            <TouchableOpacity
+              style={styles.submitButton}
+              onPress={submitFeedback}
+              disabled={submitting}
+            >
+              <Text style={styles.submitButtonText}>
+                {submitting ? "..." : t("feedback.submit")}
+              </Text>
             </TouchableOpacity>
           </View>
 
@@ -179,7 +166,10 @@ export default function FeedbackScreen() {
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.tab, selectedTab === "My Feedback" && styles.tabActive]}
+              style={[
+                styles.tab,
+                selectedTab === "My Feedback" && styles.tabActive,
+              ]}
               onPress={() => setSelectedTab("My Feedback")}
             >
               <Text
@@ -203,7 +193,10 @@ export default function FeedbackScreen() {
             <View style={styles.emptyContainer}>
               <Ionicons name="chatbubbles-outline" size={48} color="#ccc" />
               <Text style={styles.emptyText}>No feedback yet</Text>
-              <TouchableOpacity style={styles.retryButton} onPress={loadFeedbacks}>
+              <TouchableOpacity
+                style={styles.retryButton}
+                onPress={loadFeedbacks}
+              >
                 <Text style={styles.retryText}>Retry</Text>
               </TouchableOpacity>
             </View>
@@ -217,14 +210,22 @@ export default function FeedbackScreen() {
                         <Text style={styles.avatarText}>👤</Text>
                       </View>
                       <View>
-                        <Text style={styles.authorName}>{feedback.user_id || "Farmer"}</Text>
+                        <Text style={styles.authorName}>
+                          {feedback.user_id || "Farmer"}
+                        </Text>
                         <Text style={styles.timeAgo}>
-                          {feedback.created_at ? new Date(feedback.created_at).toLocaleString() : t("feedback.time.justNow")}
+                          {feedback.created_at
+                            ? new Date(feedback.created_at).toLocaleString()
+                            : t("feedback.time.justNow")}
                         </Text>
                       </View>
                     </View>
                     <TouchableOpacity>
-                      <Ionicons name="ellipsis-vertical" size={16} color="#ccc" />
+                      <Ionicons
+                        name="ellipsis-vertical"
+                        size={16}
+                        color="#ccc"
+                      />
                     </TouchableOpacity>
                   </View>
 
@@ -232,11 +233,21 @@ export default function FeedbackScreen() {
 
                   <View style={styles.feedbackActions}>
                     <TouchableOpacity style={styles.actionButton}>
-                      <Ionicons name="thumbs-up-outline" size={16} color={PRIMARY_GREEN} />
-                      <Text style={styles.actionCount}>{feedback.rating ?? 0}</Text>
+                      <Ionicons
+                        name="thumbs-up-outline"
+                        size={16}
+                        color={PRIMARY_GREEN}
+                      />
+                      <Text style={styles.actionCount}>
+                        {feedback.rating ?? 0}
+                      </Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.actionButton}>
-                      <Ionicons name="chatbubble-outline" size={16} color="#ccc" />
+                      <Ionicons
+                        name="chatbubble-outline"
+                        size={16}
+                        color="#ccc"
+                      />
                     </TouchableOpacity>
                   </View>
                 </View>

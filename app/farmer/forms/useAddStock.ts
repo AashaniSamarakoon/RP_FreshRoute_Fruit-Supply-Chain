@@ -1,9 +1,9 @@
+import api from "@/services/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Alert, Platform } from "react-native";
-import { BACKEND_URL } from "../../../config";
 
 interface FruitPropertyRow {
   id: number;
@@ -63,20 +63,17 @@ export const useAddStock = () => {
           return;
         }
 
-        const res = await fetch(`${BACKEND_URL}/api/fruit-properties`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (!res.ok) {
+        let raw: any;
+        try {
+          raw = await api.get(`/api/fruit-properties`);
+        } catch (err) {
           Alert.alert("Error", `Failed to load fruit properties`);
           setState((prev) => ({ ...prev, loading: false }));
           return;
         }
-
-        const raw = await res.json();
         const data: FruitPropertyRow[] = Array.isArray(raw)
           ? raw
-          : raw?.fruits ?? raw?.data ?? [];
+          : (raw?.fruits ?? raw?.data ?? []);
 
         setRows(data);
         const unique = Array.from(new Set(data.map((r) => r.name)));
@@ -151,7 +148,7 @@ export const useAddStock = () => {
       const newUris = result.assets.map((asset) => asset.uri);
       const combinedImages = [...state.formData.images, ...newUris].slice(
         0,
-        10
+        10,
       );
 
       updateField("images", combinedImages);
@@ -161,7 +158,7 @@ export const useAddStock = () => {
   // --- NEW: Remove Image ---
   const removeImage = (indexToRemove: number) => {
     const updatedImages = state.formData.images.filter(
-      (_, index) => index !== indexToRemove
+      (_, index) => index !== indexToRemove,
     );
     updateField("images", updatedImages);
   };
@@ -237,20 +234,11 @@ export const useAddStock = () => {
         } as any);
       });
 
-      const res = await fetch(`${BACKEND_URL}/api/farmer/add-predict-stock`, {
-        method: "POST",
-        headers: {
-          // Do NOT set Content-Type manually
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
-      });
-
-      const body = await res.json();
-      if (!res.ok) {
-        console.error("Submit error:", body);
-        throw new Error(body.message || "Failed to submit stock");
-      }
+      const body = await api.postForm(
+        `/api/farmer/add-predict-stock`,
+        formData,
+      );
+      // api helper throws on non-ok responses
       // Success - let the caller handle the success feedback
     } catch (err) {
       console.error(err);

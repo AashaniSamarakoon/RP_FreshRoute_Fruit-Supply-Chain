@@ -1,8 +1,8 @@
 import Header from "@/components/Header";
 import ErrorModal from "@/components/modals/ErrorModal";
 import SuccessModal from "@/components/modals/SuccessModal";
-import { BACKEND_URL } from "@/config";
 import { BuyerColors } from "@/constants/theme";
+import api from "@/services/api";
 import { formatCurrency } from "@/utils/formatters";
 import { supabase } from "@/utils/supabaseClient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -105,7 +105,7 @@ export default function PaymentSlipUploadScreen() {
     if (!cameraPermission.granted || !mediaPermission.granted) {
       Alert.alert(
         "Permission Required",
-        "Camera and photo library access is needed to upload payment slips."
+        "Camera and photo library access is needed to upload payment slips.",
       );
     }
   }, []);
@@ -157,7 +157,7 @@ export default function PaymentSlipUploadScreen() {
         if (fileSize > MAX_FILE_SIZE) {
           Alert.alert(
             "File Too Large",
-            "Please select an image smaller than 5MB"
+            "Please select an image smaller than 5MB",
           );
           return;
         }
@@ -201,7 +201,7 @@ export default function PaymentSlipUploadScreen() {
 
       return formData;
     },
-    [params.orderId]
+    [params.orderId],
   );
 
   // Get success message based on verification status
@@ -222,7 +222,7 @@ export default function PaymentSlipUploadScreen() {
         "Your payment slip has been uploaded successfully and is being processed."
       );
     },
-    []
+    [],
   );
 
   // Upload payment slip
@@ -235,7 +235,7 @@ export default function PaymentSlipUploadScreen() {
     setUploading(true);
     setUploadProgress(0);
 
-    let progressInterval: NodeJS.Timeout | null = null;
+    let progressInterval: ReturnType<typeof setInterval> | null = null;
 
     try {
       const token = await getAuthToken();
@@ -244,42 +244,32 @@ export default function PaymentSlipUploadScreen() {
       // Start progress animation
       progressInterval = setInterval(() => {
         setUploadProgress((prev) =>
-          prev >= MAX_PROGRESS ? MAX_PROGRESS : prev + 10
+          prev >= MAX_PROGRESS ? MAX_PROGRESS : prev + 10,
         );
       }, UPLOAD_PROGRESS_INTERVAL);
 
-      // Create and upload form data
+      // Create and upload form data via shared helper
       const formData = createFormData(imageUri);
-      const response = await fetch(
-        `${BACKEND_URL}/api/buyer/payment-slip/upload`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-          body: formData,
+      let result: UploadResult | null = null;
+      try {
+        result = await api.postForm("/api/buyer/payment-slip/upload", formData);
+      } finally {
+        if (progressInterval) clearInterval(progressInterval);
+      }
+
+      if (result) {
+        setUploadProgress(100);
+        setVerificationStatus(result.verificationStatus);
+
+        if (result.verificationStatus === "REJECTED") {
+          throw new Error(getSuccessMessage("REJECTED", result.message));
         }
-      );
 
-      if (progressInterval) clearInterval(progressInterval);
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to upload payment slip");
+        setSuccessMessage(
+          getSuccessMessage(result.verificationStatus, result.message),
+        );
+        setSuccessModalVisible(true);
       }
-
-      const result: UploadResult = await response.json();
-      setUploadProgress(100);
-      setVerificationStatus(result.verificationStatus);
-
-      if (result.verificationStatus === "REJECTED") {
-        throw new Error(getSuccessMessage("REJECTED", result.message));
-      }
-
-      setSuccessMessage(
-        getSuccessMessage(result.verificationStatus, result.message)
-      );
-      setSuccessModalVisible(true);
     } catch (error: any) {
       console.error("[PaymentUpload] Upload error:", error);
       setErrorMessage(error.message || "Failed to upload payment slip");
@@ -315,7 +305,7 @@ export default function PaymentSlipUploadScreen() {
       verificationStatus === "AUTO_APPROVED"
         ? "✅ Payment Verified!"
         : "📤 Payment Slip Uploaded",
-    [verificationStatus]
+    [verificationStatus],
   );
 
   const showUploadButton = Boolean(imageUri);
@@ -355,7 +345,10 @@ export default function PaymentSlipUploadScreen() {
 
           {/* Image Picker Buttons */}
           {showImagePicker && (
-            <ImagePickerButtons onTakePhoto={takePhoto} onPickImage={pickImage} />
+            <ImagePickerButtons
+              onTakePhoto={takePhoto}
+              onPickImage={pickImage}
+            />
           )}
 
           <View style={styles.bottomPadding} />
@@ -400,7 +393,7 @@ function InstructionsList() {
       "Amount, date, reference number (order id) clearly visible",
       "Formats: JPG, PNG (Max 5MB)",
     ],
-    []
+    [],
   );
 
   return (

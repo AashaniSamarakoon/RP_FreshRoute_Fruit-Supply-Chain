@@ -1,3 +1,4 @@
+import api from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -44,37 +45,37 @@ interface Activity {
 
 const mockFruits: Fruit[] = [
   {
-    id: 'mango',
-    name: 'Mango',
-    imageUri: '🥭',
+    id: "mango",
+    name: "Mango",
+    imageUri: "🥭",
   },
   {
-    id: 'banana',
-    name: 'Banana',
-    imageUri: '🍌',
+    id: "banana",
+    name: "Banana",
+    imageUri: "🍌",
   },
   {
-    id: 'pineapple',
-    name: 'Pineapple',
-    imageUri: '🍍',
+    id: "pineapple",
+    name: "Pineapple",
+    imageUri: "🍍",
   },
 ];
 
 const mockActivities: Activity[] = [
   {
-    id: '1',
+    id: "1",
     title: "Delivered 120kg ripe pineapples",
     date: "Jan 02, 2026",
     amount: "LKR 360.00",
   },
   {
-    id: '2',
+    id: "2",
     title: "Packed 40 boxes of golden pineapple",
     date: "Jan 04, 2026",
     amount: "LKR 210.00",
   },
   {
-    id: '3',
+    id: "3",
     title: "Received advance for next pineapple lot",
     date: "Jan 06, 2026",
     amount: "LKR 150.00",
@@ -115,12 +116,7 @@ export default function ProfileScreen() {
 
   const fetchOrderStats = async () => {
     try {
-      const BACKEND_URL = require("../../../config").BACKEND_URL;
-      const token = await AsyncStorage.getItem("token");
-      
-      const response = await fetch(`${BACKEND_URL}/api/farmer/orders/stats`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const data = await api.get(`/api/farmer/orders/stats`);
 
       if (response.ok) {
         const data = await response.json();
@@ -151,7 +147,7 @@ export default function ProfileScreen() {
   useFocusEffect(
     useCallback(() => {
       loadUser();
-    }, [loadUser])
+    }, [loadUser]),
   );
 
   const logout = async () => {
@@ -165,12 +161,18 @@ export default function ProfileScreen() {
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <TouchableOpacity onPress={() => router.back()} style={styles.headerButton}>
+            <TouchableOpacity
+              onPress={() => router.back()}
+              style={styles.headerButton}
+            >
               <Ionicons name="chevron-back" size={24} color={PRIMARY_GREEN} />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>{t("profile.headerTitle")}</Text>
           </View>
-          <TouchableOpacity onPress={() => router.push("/farmer/screens/edit-profile")} style={styles.headerButton}>
+          <TouchableOpacity
+            onPress={() => router.push("/farmer/screens/edit-profile")}
+            style={styles.headerButton}
+          >
             <Ionicons name="create-outline" size={24} color={PRIMARY_GREEN} />
           </TouchableOpacity>
         </View>
@@ -182,8 +184,14 @@ export default function ProfileScreen() {
           {/* Profile Header Component */}
           <ProfileHeader
             userName={profileData?.name || user?.name || "Chaminda Wathuhewa"}
-            farmName={profileData?.farmName || user?.farmName || "Pineaplle Farm"}
-            memberSince={profileData?.memberSince || user?.memberSince || "Member since Jan 2026"}
+            farmName={
+              profileData?.farmName || user?.farmName || "Pineaplle Farm"
+            }
+            memberSince={
+              profileData?.memberSince ||
+              user?.memberSince ||
+              "Member since Jan 2026"
+            }
             avatarUri={profileData?.avatarUri}
           />
 
@@ -194,7 +202,11 @@ export default function ProfileScreen() {
             {/* Completed Orders Card */}
             <View style={styles.overviewCard}>
               <View style={styles.cardIconContainer}>
-                <Ionicons name="checkmark-circle" size={28} color={PRIMARY_GREEN} />
+                <Ionicons
+                  name="checkmark-circle"
+                  size={28}
+                  color={PRIMARY_GREEN}
+                />
               </View>
               <Text style={styles.cardValue}>{orderStats.completedCount}</Text>
               <Text style={styles.cardLabel}>Completed Orders</Text>
@@ -205,7 +217,9 @@ export default function ProfileScreen() {
               <View style={styles.cardIconContainer}>
                 <Ionicons name="calendar" size={28} color={PRIMARY_GREEN} />
               </View>
-              <Text style={styles.cardValue} numberOfLines={1}>{orderStats.lastCompletedDate}</Text>
+              <Text style={styles.cardValue} numberOfLines={1}>
+                {orderStats.lastCompletedDate}
+              </Text>
               <Text style={styles.cardLabel}>Last Order</Text>
             </View>
 
@@ -214,7 +228,9 @@ export default function ProfileScreen() {
               <View style={styles.cardIconContainer}>
                 <Ionicons name="hourglass" size={28} color={PRIMARY_GREEN} />
               </View>
-              <Text style={styles.cardValue} numberOfLines={1}>{orderStats.nextOrderDate}</Text>
+              <Text style={styles.cardValue} numberOfLines={1}>
+                {orderStats.nextOrderDate}
+              </Text>
               <Text style={styles.cardLabel}>Next Order</Text>
             </View>
           </View>
@@ -222,16 +238,23 @@ export default function ProfileScreen() {
           <FarmLocationMap
             latitude={6.9271}
             longitude={79.8612}
-            address={profileData?.location || "125 Greenfield Lane, Orchard Valley, CA 98765"}
-            farmName={profileData?.farmName || user?.farmName || "Dumas Family Farm"}
+            address={
+              profileData?.location ||
+              "125 Greenfield Lane, Orchard Valley, CA 98765"
+            }
+            farmName={
+              profileData?.farmName || user?.farmName || "Dumas Family Farm"
+            }
           />
 
-          <GrowingFruits 
+          <GrowingFruits
             fruits={
-              profileData?.selectedFruits 
-                ? mockFruits.filter(fruit => profileData.selectedFruits.includes(fruit.id))
+              profileData?.selectedFruits
+                ? mockFruits.filter((fruit) =>
+                    profileData.selectedFruits.includes(fruit.id),
+                  )
                 : mockFruits
-            } 
+            }
           />
 
           <RecentActivity activities={mockActivities} />

@@ -15,10 +15,12 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import RNPickerSelect from "react-native-picker-select";
+import RNPickerSelect, { PickerSelectProps } from "react-native-picker-select";
 import Header from "../../../components/Header";
 import SuccessModal from "../../../components/modals/SuccessModal";
 import { useOrderForm } from "../forms/useOrderForm";
+
+const PickerSelect = RNPickerSelect as React.ComponentType<PickerSelectProps>;
 
 const PRIMARY_GREEN = "#2E7D32";
 const LIGHT_GRAY = "#f5f5f5";
@@ -39,7 +41,7 @@ const SkeletonLoader = () => {
           duration: 800,
           useNativeDriver: true,
         }),
-      ])
+      ]),
     );
     pulse.start();
     return () => pulse.stop();
@@ -205,7 +207,7 @@ export default function AddStock() {
             >
               <View style={styles.formCard}>
                 <Text style={styles.label}>Fruit type</Text>
-                <RNPickerSelect
+                <PickerSelect
                   onValueChange={(val) => updateField("fruit", val)}
                   value={formData.fruit}
                   placeholder={{ label: "Select fruit", value: null }}
@@ -219,7 +221,7 @@ export default function AddStock() {
                 />
 
                 <Text style={styles.label}>Category (variant)</Text>
-                <RNPickerSelect
+                <PickerSelect
                   onValueChange={(val) => updateField("category", val)}
                   value={formData.category}
                   placeholder={{ label: "Select category", value: null }}

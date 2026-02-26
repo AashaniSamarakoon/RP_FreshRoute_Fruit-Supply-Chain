@@ -1,9 +1,8 @@
 import Header from "@/components/Header";
-import { BACKEND_URL } from "@/config";
 import { BuyerColors } from "@/constants/theme";
+import api from "@/services/api";
 import { FarmerInfo, PlacedOrder, TransporterInfo } from "@/types";
 import { formatCurrency, formatDate, formatTime } from "@/utils/formatters";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { MapPin } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
@@ -58,26 +57,15 @@ export default function OrderDetailScreen() {
 
       if (!params.orderId) throw new Error("No orderId provided");
 
-      const token = await AsyncStorage.getItem("token");
-
-      const res = await fetch(
-        `${BACKEND_URL}/api/buyer/place-order/details/${params.orderId}`,
-        {
-          headers: token
-            ? {
-                Authorization: `Bearer ${token}`,
-                "Content-Type": "application/json",
-              }
-            : { "Content-Type": "application/json" },
-        },
-      );
-
-      if (!res.ok) {
-        throw new Error(`Failed to fetch order details: ${res.status}`);
+      let data: any;
+      try {
+        data = await api.get(
+          `/api/buyer/place-order/details/${params.orderId}`,
+        );
+        console.log("order detail response", data);
+      } catch (err) {
+        throw err;
       }
-
-      const data = await res.json();
-      console.log("order detail response", data);
 
       // Expecting backend to return an object with `order` (and optional related data)
       // unwrap prices located at root of response

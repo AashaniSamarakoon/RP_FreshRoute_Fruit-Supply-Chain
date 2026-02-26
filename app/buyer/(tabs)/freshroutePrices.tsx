@@ -1,3 +1,5 @@
+import api from "@/services/api";
+import { supabase } from "@/utils/supabaseClient";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -14,7 +16,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "../../../components/Header";
 import ErrorModal from "../../../components/modals/ErrorModal";
 import SuccessModal from "../../../components/modals/SuccessModal";
-import { BACKEND_URL } from "../../../config";
 import { BuyerColors } from "../../../constants/theme";
 
 const PRIMARY_GREEN = BuyerColors.primaryGreen || "#2E7D32";
@@ -60,7 +61,7 @@ export default function FreshroutePricesForBuyer() {
   const [loading, setLoading] = useState(true);
   const [fruits, setFruits] = useState<FruitEntry[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>(
-    new Date().toISOString().split("T")[0]
+    new Date().toISOString().split("T")[0],
   );
   const [selectedFruitIdx, setSelectedFruitIdx] = useState(0);
   const [errorModal, setErrorModal] = useState({
@@ -81,6 +82,15 @@ export default function FreshroutePricesForBuyer() {
   const loadPrices = async () => {
     setLoading(true);
     try {
+      // log the current session so we can troubleshoot role issues
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      console.log(
+        "[FreshroutePrices] session metadata",
+        session?.user?.user_metadata,
+      );
+
       const token = await AsyncStorage.getItem("token");
       if (!token) {
         setErrorModal({
@@ -92,48 +102,11 @@ export default function FreshroutePricesForBuyer() {
         return;
       }
 
-      const candidateUrls = [
-        `${BACKEND_URL}/api/buyer/prices/freshroute?date=${selectedDate}`,
-        `${BACKEND_URL}/api/farmer/prices/freshroute?date=${selectedDate}`,
-      ];
-
-      let data: any = null;
-      let ok = false;
-      let lastErrorMsg = "";
-
-      for (const url of candidateUrls) {
-        const res = await fetch(url, {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        });
-        const body = await res.json().catch(() => null);
-        if (res.ok) {
-          data = body;
-          ok = true;
-          break;
-        }
-        lastErrorMsg =
-          body?.message || body?.error || `Request failed (${res.status})`;
-        // If forbidden, try next URL
-        if (res.status === 403) {
-          continue;
-        } else {
-          break;
-        }
-      }
-
-      if (!ok) {
-        setErrorModal({
-          visible: true,
-          title: "Error",
-          message: lastErrorMsg || "Failed to load FreshRoute prices",
-        });
-        setLoading(false);
-        return;
-      }
+      // we only use the canonical endpoint. earlier code tried fallbacks,
+      // but the backend has settled on this single path.
+      const path = `/api/prices/freshroute?date=${selectedDate}`;
+      const data = await api.get(path);
+      console.log("[FreshroutePrices] fetched", path);
 
       const mapFromFruits = (fruitsArr: any[]): FruitEntry[] =>
         fruitsArr.map((fruit: any) => {
@@ -143,7 +116,7 @@ export default function FreshroutePricesForBuyer() {
             (g: any) => ({
               grade: g.grade,
               price: g.price || 0,
-            })
+            }),
           );
 
           return {
@@ -191,7 +164,12 @@ export default function FreshroutePricesForBuyer() {
       setFruits(mapped);
       setSelectedFruitIdx(0);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      let msg = err instanceof Error ? err.message : String(err);
+      // if we see a role-related response, make it more user friendly
+      if (/role/i.test(msg)) {
+        msg =
+          "Your account does not have buyer permissions. Please log in with a buyer profile or contact support.";
+      }
       setErrorModal({
         visible: true,
         title: "Error",

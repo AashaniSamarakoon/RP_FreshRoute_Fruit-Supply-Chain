@@ -1,5 +1,5 @@
 import DashboardHeader from "@/components/DashboardHeader";
-import { BACKEND_URL } from "@/config";
+import api from "@/services/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
@@ -18,6 +18,7 @@ import { DealData } from "../../../types";
 import DealCard from "../components/DealCard";
 import Hero from "../components/Hero";
 import PriceComparisonChart from "../components/PriceComparisonChart";
+import PricePredictionChart from "../components/PricePredictionChart";
 import Search from "../components/Search";
 
 // --- Main Component ---
@@ -25,7 +26,9 @@ import Search from "../components/Search";
 export default function BuyerDashboardScreen(): React.JSX.Element {
   const router = useRouter();
   const [deals, setDeals] = useState<DealData[]>([]);
-  const [loading, setLoading] = useState(true);
+  // start as false so we don't show spinner on first render when there
+  // aren't any deals yet. section only appears once we actually have deals.
+  const [loading, setLoading] = useState(false);
 
   // Fetch matching deals for the buyer
   useEffect(() => {
@@ -43,6 +46,11 @@ export default function BuyerDashboardScreen(): React.JSX.Element {
         }
 
         const user = JSON.parse(userStr);
+        // the API used to expect the "idx" primary key from the
+        // purchases table, which meant we had to look up the buyer row
+        // first. the backend has since been changed to query by
+        // `user_id` (the UUID contained in the Supabase session), so we
+        // can pass the user.id directly.
         const buyerId = user.id;
 
         if (!buyerId) {
@@ -52,21 +60,14 @@ export default function BuyerDashboardScreen(): React.JSX.Element {
           return;
         }
 
-        const response = await fetch(
-          `${BACKEND_URL}/api/buyer/matching/buyer/${buyerId}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-          },
-        );
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch matching deals: ${response.status}`);
+        let data: any;
+        try {
+          // note: `/api/buyer/matching/buyer/:id` now treats `id` as a
+          // user UUID rather than the buyer table's numeric idx.
+          data = await api.get(`/api/buyer/matching/buyer/${buyerId}`);
+        } catch (err) {
+          throw err;
         }
-
-        const data = await response.json();
         console.log("Matching deals data:", data);
 
         // Transform API response to DealData format
@@ -136,8 +137,10 @@ export default function BuyerDashboardScreen(): React.JSX.Element {
           <Text style={styles.quickAction}>View</Text>
         </TouchableOpacity> */}
 
-        {/* Best Matching Deals Section - Only show if there are deals */}
-        {loading || deals.length > 0 ? (
+        {/* Best Matching Deals Section - Only render when we actually have deals.
+            the spinner lives inside the section and will only appear if deals
+            length is positive while loading. */}
+        {deals.length > 0 && (
           <>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Best Matching Deals</Text>
@@ -170,14 +173,20 @@ export default function BuyerDashboardScreen(): React.JSX.Element {
               )}
             </ScrollView>
           </>
-        ) : null}
+        )}
         {/* Wholesale Deals Section */}
         <View style={styles.sectionHeader2}>
-          <Text style={styles.sectionTitle}>Price Comparison</Text>
+          <Text style={styles.sectionTitle}>Price History Comparison</Text>
         </View>
 
         {/* Price Comparison Chart */}
         <PriceComparisonChart />
+
+        {/* 7‑Day Prediction Chart */}
+        <View style={styles.sectionHeader2}>
+          <Text style={styles.sectionTitle}>7‑Day Price Prediction</Text>
+        </View>
+        <PricePredictionChart />
       </ScrollView>
     </SafeAreaView>
   );
@@ -240,7 +249,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     marginHorizontal: 20,
-    // marginTop: 32,
+    marginTop: 32,
     marginBottom: 16,
   },
   quickCard: {

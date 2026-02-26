@@ -1,4 +1,4 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import api from "@/services/api";
 import { useRouter } from "expo-router";
 import {
   CheckCircle,
@@ -19,7 +19,6 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { BACKEND_URL } from "../../../config";
 
 const PRIMARY_GREEN = "#2E7D32";
 const LIGHT_GREEN = "#e8f4f0";
@@ -57,7 +56,7 @@ export default function OrdersTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [processingProposals, setProcessingProposals] = useState<Set<string>>(
-    new Set()
+    new Set(),
   );
 
   const fetchPendingProposals = useCallback(async () => {
@@ -65,25 +64,12 @@ export default function OrdersTab() {
       setLoading(true);
       setError(null);
 
-      const token = await AsyncStorage.getItem("token");
-      if (!token) {
-        setError("Authentication failed. Please log in again.");
-        return;
+      try {
+        const data = await api.get(`/api/farmer/proposals`);
+        setProposals(data.proposals || []);
+      } catch (err: any) {
+        throw err;
       }
-
-      const response = await fetch(`${BACKEND_URL}/api/farmer/proposals`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || "Failed to fetch proposals");
-      }
-
-      setProposals(data.proposals || []);
     } catch (err) {
       console.error("Error fetching proposals:", err);
       setError(err instanceof Error ? err.message : "Failed to load proposals");
@@ -100,28 +86,13 @@ export default function OrdersTab() {
     try {
       setProcessingProposals((prev) => new Set(prev).add(proposalId));
 
-      const token = await AsyncStorage.getItem("token");
-      if (!token) {
-        Alert.alert("Error", "Authentication failed. Please log in again.");
-        return;
-      }
-
-      const response = await fetch(
-        `${BACKEND_URL}/api/farmer/proposals/${proposalId}/accept`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({}),
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || "Failed to accept proposal");
+      try {
+        const data = await api.post(
+          `/api/farmer/proposals/${proposalId}/accept`,
+          {},
+        );
+      } catch (err) {
+        throw err;
       }
 
       // Update local state
@@ -129,8 +100,8 @@ export default function OrdersTab() {
         prev.map((proposal) =>
           proposal.id === proposalId
             ? { ...proposal, status: "ACCEPTED" }
-            : proposal
-        )
+            : proposal,
+        ),
       );
 
       Alert.alert("Success", "Proposal accepted successfully!");
@@ -138,7 +109,7 @@ export default function OrdersTab() {
       console.error("Error accepting proposal:", err);
       Alert.alert(
         "Error",
-        err instanceof Error ? err.message : "Failed to accept proposal"
+        err instanceof Error ? err.message : "Failed to accept proposal",
       );
     } finally {
       setProcessingProposals((prev) => {
@@ -153,44 +124,26 @@ export default function OrdersTab() {
     try {
       setProcessingProposals((prev) => new Set(prev).add(proposalId));
 
-      const token = await AsyncStorage.getItem("token");
-      if (!token) {
-        Alert.alert("Error", "Authentication failed. Please log in again.");
-        return;
-      }
-
-      const response = await fetch(
-        `${BACKEND_URL}/api/farmer/proposals/${proposalId}/reject`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({}),
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || "Failed to reject proposal");
+      try {
+        await api.post(`/api/farmer/proposals/${proposalId}/reject`, {});
+      } catch (err: any) {
+        throw err;
       }
 
       // Remove from local state (rejected proposals are no longer pending)
       setProposals((prev) =>
-        prev.filter((proposal) => proposal.id !== proposalId)
+        prev.filter((proposal) => proposal.id !== proposalId),
       );
 
       Alert.alert(
         "Success",
-        "Proposal rejected. Buyer can select another farmer."
+        "Proposal rejected. Buyer can select another farmer.",
       );
     } catch (err) {
       console.error("Error rejecting proposal:", err);
       Alert.alert(
         "Error",
-        err instanceof Error ? err.message : "Failed to reject proposal"
+        err instanceof Error ? err.message : "Failed to reject proposal",
       );
     } finally {
       setProcessingProposals((prev) => {
@@ -216,10 +169,10 @@ export default function OrdersTab() {
   };
 
   const pendingProposals = proposals.filter(
-    (proposal) => proposal.status === "PENDING_FARMER"
+    (proposal) => proposal.status === "PENDING_FARMER",
   );
   const acceptedProposals = proposals.filter(
-    (proposal) => proposal.status === "ACCEPTED"
+    (proposal) => proposal.status === "ACCEPTED",
   );
 
   const OrderCard = ({ order }: { order: Proposal }) => (

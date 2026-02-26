@@ -1,8 +1,8 @@
 import Header from "@/components/Header";
 import DigitalPassportModal from "@/components/modals/DigitalPassportModal";
 import TransactionReceiptModal from "@/components/modals/TransactionReceiptModal";
-import { BACKEND_URL } from "@/config";
 import { BuyerColors } from "@/constants/theme";
+import api from "@/services/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { ArrowRight, MapPin, ShieldCheck, Wallet } from "lucide-react-native";
@@ -122,25 +122,13 @@ export default function TrustProfileComponent({
         }
 
         // Use trust profile endpoint which is accessible by any authenticated user
-        const endpoint =
+        const path =
           userType === "buyer"
-            ? `${BACKEND_URL}/api/trust/farmer-profile/${userId}`
-            : `${BACKEND_URL}/api/trust/buyer-profile/${userId}`;
+            ? `/api/trust/farmer-profile/${userId}`
+            : `/api/trust/buyer-profile/${userId}`;
 
-        console.log("Fetching profile from:", endpoint);
-
-        const response = await fetch(endpoint, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch profile: ${response.status}`);
-        }
-
-        const data = await response.json();
+        console.log("Fetching profile from:", path);
+        const data = await api.get(path);
         console.log("Profile data:", data);
 
         // Transform the API response to match our ProfileData structure
@@ -182,10 +170,9 @@ export default function TrustProfileComponent({
 
     try {
       // const API_URL = "http://192.168.1.4:4000";
-      const response = await fetch(
-        `${BACKEND_URL}/api/trust/test-identity/${userId || "user_123"}`
+      const data = await api.get(
+        `/api/trust/test-identity/${userId || "user_123"}`,
       );
-      const data = await response.json();
 
       if (data.success) {
         setPassportData(data.digitalPassport);

@@ -1,22 +1,21 @@
-import React, { useState, useEffect, useRef } from "react";
+import { MaterialIcons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Audio } from "expo-av";
+import { CameraType, CameraView, useCameraPermissions } from "expo-camera";
+import * as Haptics from "expo-haptics";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { useEffect, useRef, useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
+  ActivityIndicator,
   Alert,
+  Animated,
   Image,
   ScrollView,
-  ActivityIndicator,
-  Animated,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { CameraView, CameraType, useCameraPermissions } from "expo-camera";
-import { useRouter, useLocalSearchParams } from "expo-router";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { MaterialIcons } from "@expo/vector-icons";
-import { Audio } from "expo-av";
-import * as Haptics from "expo-haptics";
-import { BACKEND_URL } from "../../config";
 
 const TOTAL_IMAGES = 5;
 
@@ -83,7 +82,7 @@ export default function ComplaintCamera() {
             duration: 0,
             useNativeDriver: true,
           }),
-        ])
+        ]),
       ).start();
     } else {
       scanAnimation.setValue(0);
@@ -123,7 +122,7 @@ export default function ComplaintCamera() {
     if (capturedImages.length !== TOTAL_IMAGES) {
       Alert.alert(
         "Incomplete",
-        `Please capture all ${TOTAL_IMAGES} images before verifying.`
+        `Please capture all ${TOTAL_IMAGES} images before verifying.`,
       );
       return;
     }
@@ -209,7 +208,9 @@ export default function ComplaintCamera() {
   if (!permission.granted) {
     return (
       <View style={styles.centerContainer}>
-        <Text style={styles.message}>We need your permission to use the camera</Text>
+        <Text style={styles.message}>
+          We need your permission to use the camera
+        </Text>
         <TouchableOpacity style={styles.button} onPress={requestPermission}>
           <Text style={styles.buttonText}>Grant Permission</Text>
         </TouchableOpacity>
@@ -332,7 +333,8 @@ export default function ComplaintCamera() {
       >
         <View style={styles.progressContainer}>
           <Text style={styles.progressText}>
-            Capture {TOTAL_IMAGES} images - {capturedImages.length}/{TOTAL_IMAGES}
+            Capture {TOTAL_IMAGES} images - {capturedImages.length}/
+            {TOTAL_IMAGES}
           </Text>
         </View>
       </View>
@@ -352,7 +354,9 @@ export default function ComplaintCamera() {
               >
                 <Text style={styles.removeButtonText}>×</Text>
               </TouchableOpacity>
-              <Text style={styles.thumbnailLabel}>{index + 1}/{TOTAL_IMAGES}</Text>
+              <Text style={styles.thumbnailLabel}>
+                {index + 1}/{TOTAL_IMAGES}
+              </Text>
             </View>
           ))}
         </ScrollView>
@@ -361,7 +365,8 @@ export default function ComplaintCamera() {
           <TouchableOpacity
             style={[
               styles.captureButton,
-              capturedImages.length >= TOTAL_IMAGES && styles.captureButtonDisabled,
+              capturedImages.length >= TOTAL_IMAGES &&
+                styles.captureButtonDisabled,
             ]}
             onPress={takePicture}
             disabled={capturedImages.length >= TOTAL_IMAGES}
@@ -376,7 +381,8 @@ export default function ComplaintCamera() {
           <TouchableOpacity
             style={[
               styles.verifyButton,
-              capturedImages.length !== TOTAL_IMAGES && styles.verifyButtonDisabled,
+              capturedImages.length !== TOTAL_IMAGES &&
+                styles.verifyButtonDisabled,
             ]}
             onPress={handleVerify}
             disabled={capturedImages.length !== TOTAL_IMAGES}
@@ -425,7 +431,11 @@ export default function ComplaintCamera() {
                     },
                   ]}
                 >
-                  <MaterialIcons name="image-search" size={40} color="#2f855a" />
+                  <MaterialIcons
+                    name="image-search"
+                    size={40}
+                    color="#2f855a"
+                  />
                 </Animated.View>
               </View>
             </View>
@@ -746,4 +756,3 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 });
-
