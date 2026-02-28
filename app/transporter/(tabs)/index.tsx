@@ -72,7 +72,7 @@ export default function TransporterDashboard() {
     const filtered = jobs.filter(
       (job) =>
         job.route_name.toLowerCase().includes(lowerText) ||
-        job.status.toLowerCase().includes(lowerText)
+        job.status.toLowerCase().includes(lowerText),
     );
     setFilteredJobs(filtered);
   };
@@ -129,7 +129,6 @@ export default function TransporterDashboard() {
 
   return (
     <View style={styles.container}>
-      {/* New Header (No props needed for name) */}
       <Header onSearch={handleSearch} />
 
       <View style={styles.content}>
