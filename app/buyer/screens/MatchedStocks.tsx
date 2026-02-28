@@ -1,22 +1,39 @@
-import { useRouter } from "expo-router";
-import { ChevronRight, MapPin, ShieldCheck } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
+import api from "@/services/api";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import {
+  ChevronRight,
+  Image as ImageIcon,
+  MapPin,
+  ShieldCheck,
+  X,
+} from "lucide-react-native";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Dimensions,
   FlatList,
+  Image,
+  Modal,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
 import Header from "../../../components/Header";
+import ErrorModal from "../../../components/modals/ErrorModal";
 import SuccessModal from "../../../components/modals/SuccessModal";
 import { BuyerColors } from "../../../constants/theme";
 
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
+
 // ... [Keep your MatchedStock interface the same] ...
 interface MatchedStock {
-  id: string;
+  id: string; // This will be the proposal id (unique)
+  stockId: string; // The actual stock id
+  farmerId: string;
   farmerName: string;
   fruitType: string;
   category: string;
@@ -27,85 +44,318 @@ interface MatchedStock {
   farmLocation: string;
   distance: number;
   trustScore?: string;
+  estimatedHarvestDate?: string;
+  imageUrls: string[];
+  status: string; // Proposal status from backend
 }
 
 export default function MatchedStocksScreen() {
   const router = useRouter();
+  const { orderId: paramOrderId } = useLocalSearchParams();
   const [stocks, setStocks] = useState<MatchedStock[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [successModalVisible, setSuccessModalVisible] = useState(false);
   const [selectedStock, setSelectedStock] = useState<MatchedStock | null>(null);
+  const [errorModalVisible, setErrorModalVisible] = useState(false);
+  const [currentOrderId, setCurrentOrderId] = useState<string | null>(
+    typeof paramOrderId === "string" ? paramOrderId : null,
+  );
+  const [loadingOrder, setLoadingOrder] = useState(false);
 
-  // Updated Mock Data with Trust Scores
-  const mockMatchedStocks: MatchedStock[] = [
-    {
-      id: "1",
-      farmerName: "Lakshan Farms",
-      fruitType: "Banana",
-      category: "Premium Cavendish",
-      quantity: 900,
-      availableUnit: "kg",
-      grade: "A",
-      quality: "Organic",
-      farmLocation: "Awissawella",
-      distance: 2.3,
-      trustScore: "98% On-time Delivery",
-    },
-  ];
+  // Add this state for tracking approval loading
+  const [approvingProposals, setApprovingProposals] = useState<Set<string>>(
+    new Set(),
+  );
+
+  // Image modal state
+  const [imageModalVisible, setImageModalVisible] = useState(false);
+  const [currentImages, setCurrentImages] = useState<string[]>([]);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+
+  // Fetch open orders if no orderId was passed via params
+  const fetchOpenOrders = useCallback(async () => {
+    // If orderId already passed from params, skip fetching
+    if (typeof paramOrderId === "string" && paramOrderId) {
+      setCurrentOrderId(paramOrderId);
+      return;
+    }
+
+    try {
+      setLoadingOrder(true);
+      const token = await AsyncStorage.getItem("token");
+
+      if (!token) {
+        console.warn("No auth token found");
+        setError("Authentication failed. Please log in again.");
+        setLoading(false);
+        return;
+      }
+
+      let data: any;
+      try {
+        data = await api.get(`/api/buyer/place-order`);
+        console.log("Orders response:", data);
+      } catch (err) {
+        throw err;
+      }
+
+      // Find the first OPEN order
+      if (data.orders && data.orders.length > 0) {
+        const openOrder = data.orders.find(
+          (order: any) => order.status === "OPEN",
+        );
+        if (openOrder) {
+          setCurrentOrderId(openOrder.id);
+        } else {
+          // If no OPEN order, use the first one
+          setCurrentOrderId(data.orders[0].id);
+        }
+      } else {
+        setError("No orders found. Please place an order first.");
+        setLoading(false);
+      }
+    } catch (err) {
+      console.error("Error fetching orders:", err);
+      setError("Failed to load orders. Please try again.");
+      setLoading(false);
+    } finally {
+      setLoadingOrder(false);
+    }
+  }, [paramOrderId]);
+
+  // Fetch orders on mount/focus if needed
+  useFocusEffect(
+    useCallback(() => {
+      fetchOpenOrders();
+    }, [fetchOpenOrders]),
+  );
 
   useEffect(() => {
-    // ... [Keep your existing useEffect] ...
-    const timer = setTimeout(() => {
-      setStocks(mockMatchedStocks);
-      setLoading(false);
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, []);
+    console.log("MatchedStocks useEffect, currentOrderId:", currentOrderId);
+    const fetchMatchedStocks = async () => {
+      try {
+        setError(null);
+        setLoading(true);
 
-  const navigateToProfile = (farmerId: string) => {
-    // Navigate to the dynamic trust profile route
+        if (!currentOrderId || typeof currentOrderId !== "string") {
+          setError("Invalid order ID. Please go back and try again.");
+          setLoading(false);
+          return;
+        }
+
+        const token = await AsyncStorage.getItem("token");
+        if (!token) {
+          setError("Authentication failed. Please log in again.");
+          setLoading(false);
+          return;
+        }
+
+        const apiUrl = `/api/buyer/matching/${currentOrderId}`;
+        console.log("Fetching from:", apiUrl);
+
+        let data: any;
+        try {
+          data = await api.get(apiUrl);
+          console.log("API response:", data);
+        } catch (err: any) {
+          const errorMsg = err.message || "Failed to load matched stocks";
+          setError(errorMsg);
+          setLoading(false);
+          return;
+        }
+
+        let matches: any[] = [];
+        if (data?.proposals && Array.isArray(data.proposals)) {
+          matches = data.proposals;
+        } else if (Array.isArray(data)) {
+          matches = data;
+        } else {
+          setError("No matching stocks found for your order.");
+          setStocks([]);
+          setLoading(false);
+          return;
+        }
+
+        if (matches.length === 0) {
+          setError("No matching stocks found for your order.");
+          setStocks([]);
+          setLoading(false);
+          return;
+        }
+
+        try {
+          const transformedStocks = matches
+            .map((item: any) => {
+              // Extract stock data from the nested stock object
+              const stock = item.stock || {};
+              const farmer = stock.farmer || {};
+              const farmerUser = farmer.user || {};
+
+              const stockId = item.stock_id || stock?.id;
+              const farmerId = farmer?.id;
+              const proposalId = item.id; // Use proposal id as unique identifier
+
+              if (!stockId || !farmerId || !proposalId) {
+                console.warn(
+                  "Missing required ids. proposalId:",
+                  proposalId,
+                  "stockId:",
+                  stockId,
+                  "farmerId:",
+                  farmerId,
+                );
+                return null;
+              }
+
+              const quantity = parseInt(
+                item.quantity_proposed ?? stock?.quantity ?? 0,
+                10,
+              );
+              const distance = parseFloat(farmer?.latitude ?? 0);
+
+              console.log("Farmer data for location:", farmer);
+
+              return {
+                id: proposalId, // Use proposal id as the unique key
+                stockId: stockId,
+                farmerId: farmerId,
+                farmerName:
+                  farmerUser?.name || `Farmer ${farmerId?.slice(0, 8)}`,
+                fruitType: data?.order?.fruit_type || "Fruit",
+                category: data?.order?.variant || "Unknown",
+                quantity: isNaN(quantity) ? 0 : quantity,
+                availableUnit: "kg",
+                grade: stock?.grade || "A",
+                quality: stock?.quality || "Premium",
+                farmLocation:
+                  farmer?.location ||
+                  farmerUser?.location ||
+                  "Unknown Location",
+                distance: isNaN(distance) ? 0 : distance,
+                trustScore: farmer?.reputation
+                  ? `${farmer.reputation}/5`
+                  : "Not rated",
+                estimatedHarvestDate: stock?.estimated_harvest_date,
+                imageUrls: stock?.image_url || [],
+                status: item.status || "PENDING", // Add proposal status
+              };
+            })
+            .filter((item: any) => item !== null); // Remove null entries
+
+          console.log("Transformed stocks:", transformedStocks);
+          setStocks(transformedStocks);
+          setError(null);
+        } catch (transformError) {
+          console.error("Error transforming stock data:", transformError);
+          setError("Error processing matched stocks data.");
+          setStocks([]);
+        }
+
+        setLoading(false);
+      } catch (error) {
+        console.error("Error fetching matched stocks:", error);
+        const errorMsg =
+          error instanceof Error
+            ? error.message
+            : "Failed to load matched stocks. Please try again.";
+        setError(errorMsg);
+        setStocks([]);
+        setLoading(false);
+      }
+    };
+
+    if (currentOrderId && typeof currentOrderId === "string") {
+      fetchMatchedStocks();
+    }
+  }, [currentOrderId]);
+
+  const navigateToProfile = (item: MatchedStock) => {
+    // Navigate to the dynamic trust profile route with farmer data
     router.push({
       pathname: "/buyer/screens/trust-profile/[id]",
-      params: { id: farmerId },
+      params: {
+        id: item.farmerId,
+        farmerName: item.farmerName,
+        farmLocation: item.farmLocation,
+        trustScore: item.trustScore || "Not rated",
+        imageUrls: item.imageUrls?.join(",") || "",
+      },
     });
   };
 
-  const handleSelectAndConfirm = (item: MatchedStock) => {
-    // Create order notification for farmer
-    const orderNotification = {
-      id: Math.random().toString(36).substr(2, 9),
-      buyerName: "Fresh Mart",
-      productName: item.category,
-      quantity: item.quantity.toString(),
-      unit: item.availableUnit,
-      grade: item.grade,
-      amount: `Rs. ${(item.quantity * 250).toLocaleString()}`,
-      status: "pending" as const,
-    };
-
-    // Add to buyer's orders with "waiting" status
-    const buyerOrder = {
-      id: Math.random().toString(36).substr(2, 9),
-      farmerName: item.farmerName,
-      product: item.category,
-      quantity: item.quantity.toString(),
-      unit: item.availableUnit,
-      amount: `Rs. ${(item.quantity * 250).toLocaleString()}`,
-      status: "waiting" as const,
-      createdAt: new Date().toISOString().split("T")[0],
-    };
-
-    // Store order in global state (in real app use Context/Redux)
-    if (!global.buyerOrders) {
-      global.buyerOrders = [];
+  const openImageModal = (images: string[]) => {
+    if (images.length > 0) {
+      setCurrentImages(images);
+      setCurrentImageIndex(0);
+      setImageModalVisible(true);
     }
-    global.buyerOrders.unshift(buyerOrder);
+  };
 
-    // Send order to farmer (in real app via API)
-    console.log("Order sent to farmer:", orderNotification);
+  const handleScroll = (event: any) => {
+    const slideIndex = Math.round(
+      event.nativeEvent.contentOffset.x / SCREEN_WIDTH,
+    );
+    setCurrentImageIndex(slideIndex);
+  };
 
-    setSelectedStock(item);
-    setSuccessModalVisible(true);
+  // Update the handleSelectAndConfirm function to handle approval
+  const handleApproveProposal = async (item: MatchedStock) => {
+    try {
+      setApprovingProposals((prev) => new Set(prev).add(item.id));
+
+      const token = await AsyncStorage.getItem("token");
+      if (!token) {
+        setError("Authentication failed. Please log in again.");
+        return;
+      }
+
+      try {
+        const data = await api.post(
+          `/api/buyer/matching/approve/${item.id}`,
+          {},
+        );
+      } catch (err: any) {
+        throw err;
+      }
+
+      // Update local state to reflect the status change
+      setStocks((prevStocks) =>
+        prevStocks.map((stock) =>
+          stock.id === item.id ? { ...stock, status: "PENDING_FARMER" } : stock,
+        ),
+      );
+
+      // Show success message
+      setSuccessModalVisible(true);
+      setSelectedStock(item);
+    } catch (err) {
+      console.error("Error approving proposal:", err);
+      setError(
+        err instanceof Error ? err.message : "Failed to approve proposal",
+      );
+      setErrorModalVisible(true);
+    } finally {
+      setApprovingProposals((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(item.id);
+        return newSet;
+      });
+    }
+  };
+
+  // Update the button press handler
+  const handleButtonPress = (item: MatchedStock) => {
+    if (item.status === "PENDING_BUYER") {
+      handleApproveProposal(item);
+    } else if (
+      item.status === "PENDING_FARMER" ||
+      item.status === "ACCEPTED" ||
+      item.status === "REJECTED"
+    ) {
+      // Do nothing - button is disabled
+      return;
+    }
   };
 
   const renderStockCard = ({ item }: { item: MatchedStock }) => (
@@ -114,7 +364,7 @@ export default function MatchedStocksScreen() {
       <TouchableOpacity
         style={styles.cardHeader}
         activeOpacity={0.7}
-        onPress={() => navigateToProfile(item.id)}
+        onPress={() => navigateToProfile(item)}
       >
         <View style={styles.farmerInfo}>
           <View style={styles.nameRow}>
@@ -129,22 +379,41 @@ export default function MatchedStocksScreen() {
             <MapPin size={12} color={BuyerColors.textGray} />
             <Text style={styles.locationText}>{item.farmLocation}</Text>
           </View>
-
-          <Text style={styles.trustSummaryText}>
-            {item.trustScore || "High Reliability Score"} • Verified on Ledger
-          </Text>
         </View>
 
         <View style={styles.headerRight}>
           <View style={styles.distanceBadge}>
-            <Text style={styles.distanceText}>{item.distance} km</Text>
+            <Text style={styles.distanceText}>
+              {item.distance.toFixed(1)} km
+            </Text>
           </View>
           <ChevronRight size={16} color={BuyerColors.primaryGreen} />
         </View>
       </TouchableOpacity>
 
-      {/* Product Name */}
-      <Text style={styles.productName}>{item.category}</Text>
+      {/* Product Name with Image Preview */}
+      <View style={styles.productRow}>
+        <Text style={styles.productName}>
+          {item.fruitType} {item.category}
+        </Text>
+
+        {/* Image Preview Button */}
+        {item.imageUrls.length > 0 && (
+          <TouchableOpacity
+            style={styles.imagePreviewButton}
+            onPress={() => openImageModal(item.imageUrls)}
+          >
+            <Image
+              source={{ uri: item.imageUrls[0] }}
+              style={styles.thumbnailImage}
+            />
+            <View style={styles.imageCountBadge}>
+              <ImageIcon size={10} color="#fff" />
+              <Text style={styles.imageCountText}>{item.imageUrls.length}</Text>
+            </View>
+          </TouchableOpacity>
+        )}
+      </View>
 
       {/* Stock Details */}
       <View style={styles.stockDetails}>
@@ -171,21 +440,75 @@ export default function MatchedStocksScreen() {
           <Text style={styles.detailLabel}>Quality</Text>
           <Text style={styles.detailValue}>{item.quality}</Text>
         </View>
+        {item.estimatedHarvestDate && (
+          <>
+            <View style={styles.detailDivider} />
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>Harvest Date</Text>
+              <Text style={styles.detailValue}>
+                {new Date(item.estimatedHarvestDate).toLocaleDateString(
+                  "en-US",
+                  {
+                    month: "short",
+                    day: "numeric",
+                  },
+                )}
+              </Text>
+            </View>
+          </>
+        )}
       </View>
 
       {/* Action Button */}
       <TouchableOpacity
-        style={styles.selectButton}
-        onPress={() => handleSelectAndConfirm(item)}
+        style={[
+          styles.selectButton,
+          item.status === "PENDING_BUYER" && styles.approveButton,
+          (item.status === "PENDING_FARMER" ||
+            item.status === "ACCEPTED" ||
+            item.status === "REJECTED") &&
+            styles.disabledButton,
+          approvingProposals.has(item.id) && styles.approvingButton,
+        ]}
+        onPress={() => handleButtonPress(item)}
+        disabled={
+          item.status === "PENDING_FARMER" ||
+          item.status === "ACCEPTED" ||
+          item.status === "REJECTED" ||
+          approvingProposals.has(item.id)
+        }
       >
-        <Text style={styles.selectButtonText}>Select & Confirm</Text>
+        {approvingProposals.has(item.id) ? (
+          <ActivityIndicator size="small" color="#fff" />
+        ) : (
+          <Text
+            style={[
+              styles.selectButtonText,
+              item.status === "PENDING_BUYER" && styles.approveButtonText,
+              (item.status === "PENDING_FARMER" ||
+                item.status === "ACCEPTED" ||
+                item.status === "REJECTED") &&
+                styles.disabledButtonText,
+            ]}
+          >
+            {item.status === "PENDING_BUYER"
+              ? "Approve Deal"
+              : item.status === "PENDING_FARMER"
+                ? "Pending farmer confirmation"
+                : item.status === "ACCEPTED"
+                  ? "Accepted"
+                  : item.status === "REJECTED"
+                    ? "Rejected"
+                    : "Select"}
+          </Text>
+        )}
       </TouchableOpacity>
     </View>
   );
 
   return (
     <SafeAreaView style={styles.container}>
-      <Header title="Matched Stocks" onBack={() => router.back()} />
+      <Header title="Matched Deals" onBack={() => router.back()} />
       {/* ... [Keep the rest of your return logic] ... */}
       <View style={styles.headerInfo}>
         <Text style={styles.headerText}>
@@ -197,6 +520,15 @@ export default function MatchedStocksScreen() {
       {loading ? (
         <View style={styles.loaderContainer}>
           <ActivityIndicator size="large" color={BuyerColors.primaryGreen} />
+          <Text style={styles.loadingText}>Loading matched stocks...</Text>
+        </View>
+      ) : stocks.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyTitle}>No Deals Available</Text>
+          <Text style={styles.emptyMessage}>
+            No matching harvest found for your order. We will notify you when
+            best deals available.
+          </Text>
         </View>
       ) : (
         <FlatList
@@ -213,23 +545,98 @@ export default function MatchedStocksScreen() {
         visible={successModalVisible}
         onClose={() => {
           setSuccessModalVisible(false);
-          // Navigate to Orders tab
-          router.push("/buyer/(tabs)/orders");
+          setSelectedStock(null);
         }}
-        title="Order Sent"
+        title="Proposal Approved"
         message={
           selectedStock
-            ? `Your order for ${selectedStock.category} has been sent to ${selectedStock.farmerName}. They will review and confirm shortly.`
+            ? `Your proposal for ${selectedStock.category} from ${selectedStock.farmerName} has been approved. The farmer will review and confirm shortly.`
             : ""
         }
-        buttonText="Done"
+        buttonText="OK"
+        onButtonPress={() => {
+          // Set pending confirmation state when OK is clicked
+          setSuccessModalVisible(false);
+          setSelectedStock(null);
+        }}
       />
+
+      {/* Error Modal */}
+      <ErrorModal
+        visible={errorModalVisible}
+        onClose={() => {
+          setErrorModalVisible(false);
+          setError(null);
+        }}
+        title="Error"
+        message={error || "An unexpected error occurred"}
+      />
+
+      {/* Image Gallery Modal */}
+      <Modal
+        visible={imageModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setImageModalVisible(false)}
+      >
+        <View style={styles.imageModalContainer}>
+          {/* Close Button */}
+          <TouchableOpacity
+            style={styles.closeButton}
+            onPress={() => setImageModalVisible(false)}
+          >
+            <X size={24} color="#fff" />
+          </TouchableOpacity>
+
+          {/* Image Counter */}
+          <View style={styles.imageCounter}>
+            <Text style={styles.imageCounterText}>
+              {currentImageIndex + 1} / {currentImages.length}
+            </Text>
+          </View>
+
+          {/* Swipeable Images */}
+          <ScrollView
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
+            style={styles.imageScrollView}
+          >
+            {currentImages.map((imageUrl, index) => (
+              <View key={index} style={styles.imageSlide}>
+                <Image
+                  source={{ uri: imageUrl }}
+                  style={styles.fullImage}
+                  resizeMode="contain"
+                />
+              </View>
+            ))}
+          </ScrollView>
+
+          {/* Dots Indicator */}
+          {currentImages.length > 1 && (
+            <View style={styles.dotsContainer}>
+              {currentImages.map((_, index) => (
+                <View
+                  key={index}
+                  style={[
+                    styles.dot,
+                    index === currentImageIndex && styles.activeDot,
+                  ]}
+                />
+              ))}
+            </View>
+          )}
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#ffffffff", paddingTop: 20 },
+  container: { flex: 1, backgroundColor: "#ffffffff", paddingTop: 40 },
 
   headerInfo: {
     paddingHorizontal: 16,
@@ -256,6 +663,72 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    gap: 16,
+  },
+
+  loadingText: {
+    fontSize: 14,
+    color: BuyerColors.textGray,
+    marginTop: 12,
+  },
+
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+    gap: 16,
+  },
+
+  errorTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#d32f2f",
+    textAlign: "center",
+  },
+
+  errorMessage: {
+    fontSize: 14,
+    color: BuyerColors.textGray,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+    gap: 16,
+  },
+
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#666",
+    textAlign: "center",
+  },
+
+  emptyMessage: {
+    fontSize: 14,
+    color: BuyerColors.textGray,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+
+  retryButton: {
+    backgroundColor: BuyerColors.primaryGreen,
+    paddingVertical: 12,
+    paddingHorizontal: 32,
+    borderRadius: 20,
+    marginTop: 8,
+  },
+
+  retryButtonText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 15,
+    textAlign: "center",
   },
 
   listContent: {
@@ -359,11 +832,49 @@ const styles = StyleSheet.create({
     color: BuyerColors.primaryGreen,
   },
 
+  productRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+
   productName: {
     fontSize: 15,
     fontWeight: "700",
     color: "#1a1a1a",
-    marginBottom: 12,
+    flex: 1,
+  },
+
+  imagePreviewButton: {
+    position: "relative",
+    marginLeft: 12,
+  },
+
+  thumbnailImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 8,
+    backgroundColor: "#f0f0f0",
+  },
+
+  imageCountBadge: {
+    position: "absolute",
+    bottom: -4,
+    right: -4,
+    backgroundColor: BuyerColors.primaryGreen,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+    gap: 2,
+  },
+
+  imageCountText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#fff",
   },
 
   stockDetails: {
@@ -406,6 +917,30 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
+  harvestDateContainer: {
+    backgroundColor: "#F0F8F5",
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: BuyerColors.primaryGreen,
+  },
+
+  harvestDateLabel: {
+    fontSize: 11,
+    color: "#999",
+    fontWeight: "500",
+    marginBottom: 3,
+    textTransform: "uppercase",
+  },
+
+  harvestDateValue: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: BuyerColors.primaryGreen,
+  },
+
   selectButton: {
     backgroundColor: BuyerColors.primaryGreen,
     paddingVertical: 13,
@@ -422,5 +957,125 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "700",
     fontSize: 15,
+  },
+
+  pendingButton: {
+    backgroundColor: "#fef3c7", // Light yellow from badge
+  },
+
+  pendingButtonText: {
+    color: "#92400e", // Dark yellow/brown from badge
+  },
+
+  acceptedButton: {
+    backgroundColor: "#d1fae5", // Light green from badge
+  },
+
+  acceptedButtonText: {
+    color: "#065f46", // Dark green from badge
+  },
+
+  rejectedButton: {
+    backgroundColor: "#fee2e2", // Light red from badge
+  },
+
+  rejectedButtonText: {
+    color: "#991b1b", // Dark red from badge
+  },
+
+  approveButton: {
+    backgroundColor: BuyerColors.primaryGreen,
+  },
+
+  approveButtonText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 15,
+  },
+
+  approvingButton: {
+    backgroundColor: "#6b7280", // Gray for loading state
+  },
+
+  disabledButton: {
+    backgroundColor: "#f3f4f6", // Light gray
+  },
+
+  disabledButtonText: {
+    color: "#6b7280", // Dark gray
+  },
+
+  // Image Modal Styles
+  imageModalContainer: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.95)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  closeButton: {
+    position: "absolute",
+    top: 50,
+    right: 20,
+    zIndex: 10,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    padding: 10,
+    borderRadius: 20,
+  },
+
+  imageCounter: {
+    position: "absolute",
+    top: 55,
+    left: 20,
+    zIndex: 10,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+
+  imageCounterText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+
+  imageScrollView: {
+    flex: 1,
+  },
+
+  imageSlide: {
+    width: SCREEN_WIDTH,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  fullImage: {
+    width: SCREEN_WIDTH - 40,
+    height: SCREEN_WIDTH - 40,
+    borderRadius: 12,
+  },
+
+  dotsContainer: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    position: "absolute",
+    bottom: 60,
+    left: 0,
+    right: 0,
+    gap: 8,
+  },
+
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "rgba(255, 255, 255, 0.4)",
+  },
+
+  activeDot: {
+    backgroundColor: "#fff",
+    width: 24,
   },
 });

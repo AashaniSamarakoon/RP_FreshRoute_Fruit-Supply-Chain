@@ -1,14 +1,8 @@
-import { Ionicons } from '@expo/vector-icons';
-import { Href, useRouter } from 'expo-router';
-import React, { useMemo } from 'react';
-import {
-  Alert,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import { useTranslationContext } from '../../../context/TranslationContext';
+import { Ionicons } from "@expo/vector-icons";
+import { Href, useRouter } from "expo-router";
+import React, { useMemo } from "react";
+import { Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useTranslationContext } from "../../../context/TranslationContext";
 
 const PRIMARY_GREEN = "#2f855a";
 const LIGHT_GREEN = "#e8f4f0";
@@ -27,50 +21,55 @@ export default function FeatureGrid() {
   const router = useRouter();
   const { t, locale } = useTranslationContext();
 
-  const gridItems: GridItem[] = useMemo(() => [
-    {
-      id: 'forecast',
-      title: t("farmer.cards.forecastTitle"),
-      subtitle: t("farmer.cards.forecastSubtitle"),
-      icon: 'calendar',
-      route: '/farmer/forecast',
-    },
-    {
-      id: 'market',
-      title: t("farmer.cards.liveMarketTitle"),
-      subtitle: t("farmer.cards.liveMarketSubtitle"),
-      icon: 'trending-up',
-      route: '/farmer/live-market',
-    },
-    {
-      id: 'accuracy',
-      title: t("farmer.cards.accuracyTitle"),
-      subtitle: t("farmer.cards.accuracySubtitle"),
-      icon: 'checkmark-circle',
-      route: '/farmer/screens/accuracy-insights',
-    },
-    {
-      id: 'feedback',
-      title: t("farmer.cards.feedbackTitle"),
-      subtitle: t("farmer.cards.feedbackSubtitle"),
-      icon: 'chatbubble',
-      route: '/farmer/screens/feedback',
-    },
-    {
-      id: 'prediction',
-      title: t("farmer.cards.predictionTitle"),
-      subtitle: t("farmer.cards.predictionSubtitle"),
-      icon: 'analytics',
-      route: '/farmer/screens/add-stock',
-    },
-    {
-      id: 'daily-prices',
-      title: t("farmer.cards.dailyPriceTitle"),
-      subtitle: t("farmer.cards.dailyPriceSubtitle"),
-      icon: 'pricetag',
-      route: '/farmer/screens/daily-prices',
-    },
-  ], [locale, t]);
+  console.log("[FeatureGrid] Rendering with locale:", locale);
+
+  const gridItems: GridItem[] = useMemo(
+    () => [
+      {
+        id: "forecast",
+        title: t("farmer.cards.forecastTitle"),
+        subtitle: t("farmer.cards.forecastSubtitle"),
+        icon: "calendar",
+        route: "/farmer/forecast",
+      },
+      {
+        id: "market",
+        title: t("farmer.cards.liveMarketTitle"),
+        subtitle: t("farmer.cards.liveMarketSubtitle"),
+        icon: "trending-up",
+        route: "/farmer/live-market",
+      },
+      {
+        id: "accuracy",
+        title: t("farmer.cards.accuracyTitle"),
+        subtitle: t("farmer.cards.accuracySubtitle"),
+        icon: "checkmark-circle",
+        route: "/farmer/screens/accuracy-insights",
+      },
+      {
+        id: "feedback",
+        title: t("farmer.cards.feedbackTitle"),
+        subtitle: t("farmer.cards.feedbackSubtitle"),
+        icon: "chatbubble",
+        route: "/farmer/screens/feedback",
+      },
+      {
+        id: "prediction",
+        title: t("farmer.cards.predictionTitle"),
+        subtitle: t("farmer.cards.predictionSubtitle"),
+        icon: "add-circle",
+        route: "/farmer/screens/add-stock",
+      },
+      {
+        id: "daily-prices",
+        title: t("farmer.cards.dailyPriceTitle"),
+        subtitle: t("farmer.cards.dailyPriceSubtitle"),
+        icon: "pricetag",
+        route: "/farmer/screens/daily-prices",
+      },
+    ],
+    [locale, t]
+  );
 
   const handlePress = (item: GridItem) => {
     if (item.comingSoon) {
@@ -90,7 +89,7 @@ export default function FeatureGrid() {
           style={styles.gridCard}
           onPress={() => handlePress(item)}
         >
-          <View style={[styles.iconCircle, { backgroundColor: LIGHT_GREEN }]}>
+          <View style={styles.iconCircle}>
             <Ionicons name={item.icon as any} size={24} color={PRIMARY_GREEN} />
           </View>
           <Text style={styles.gridTitle}>{item.title}</Text>
@@ -111,31 +110,32 @@ const styles = StyleSheet.create({
   },
   gridCard: {
     width: "48%",
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 12,
     padding: 12,
     marginBottom: 12,
     alignItems: "center",
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 4,
     elevation: 2,
   },
   iconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 6,
+    marginBottom: 8,
+    backgroundColor: LIGHT_GREEN,
   },
   gridTitle: {
     fontSize: 11,
     fontWeight: "700",
     color: "#000",
     textAlign: "center",
-    marginBottom: 2,
+    marginBottom: 4,
   },
   gridSubtitle: {
     fontSize: 10,

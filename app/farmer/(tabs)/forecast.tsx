@@ -1,17 +1,17 @@
+import api from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { BACKEND_URL } from "../../../config";
 import { useTranslation } from "../../../hooks/farmer/useTranslation";
 
 const PRIMARY_GREEN = "#2E7D32";
@@ -70,15 +70,13 @@ export default function ForecastScreen() {
       const results = await Promise.all(
         fruitsToFetch.map(async (fruit) => {
           try {
-            const url = `${BACKEND_URL}/api/farmer/forecast/7day?fruit=${encodeURIComponent(fruit.name)}&target=${encodeURIComponent(target)}`;
-            console.log("[FORECAST] Fetching", url);
-            const res = await fetch(url, {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            const data = await res.json();
-
-            if (!res.ok) {
-              console.log("[FORECAST] Error for", fruit.name, data.message);
+            const path = `/api/forecast/7day?fruit=${encodeURIComponent(fruit.name)}&target=${encodeURIComponent(target)}`;
+            console.log("[FORECAST] Fetching", path);
+            let data: any;
+            try {
+              data = await api.get(path);
+            } catch (err) {
+              console.log("[FORECAST] Error for", fruit.name, err);
               return { ...fruit, days: [] } as FruitForecast;
             }
 
@@ -95,7 +93,7 @@ export default function ForecastScreen() {
             console.error("[FORECAST] Failed for", fruit.name, err);
             return { ...fruit, days: [] } as FruitForecast;
           }
-        })
+        }),
       );
 
       setForecastData(results);
@@ -114,13 +112,20 @@ export default function ForecastScreen() {
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <TouchableOpacity onPress={() => router.back()} style={styles.headerButton}>
+            <TouchableOpacity
+              onPress={() => router.back()}
+              style={styles.headerButton}
+            >
               <Ionicons name="chevron-back" size={24} color={PRIMARY_GREEN} />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>{t("forecast.headerTitle")}</Text>
           </View>
           <TouchableOpacity style={styles.headerButton}>
-            <Ionicons name="notifications-outline" size={22} color={PRIMARY_GREEN} />
+            <Ionicons
+              name="notifications-outline"
+              size={22}
+              color={PRIMARY_GREEN}
+            />
           </TouchableOpacity>
         </View>
 
@@ -157,7 +162,10 @@ export default function ForecastScreen() {
           <View style={styles.emptyContainer}>
             <Ionicons name="file-tray-outline" size={64} color="#ccc" />
             <Text style={styles.emptyText}>No forecast data available</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={loadForecasts}>
+            <TouchableOpacity
+              style={styles.retryButton}
+              onPress={loadForecasts}
+            >
               <Text style={styles.retryText}>Retry</Text>
             </TouchableOpacity>
           </View>
@@ -171,14 +179,24 @@ export default function ForecastScreen() {
               <View style={styles.fruitCard}>
                 <View style={styles.fruitHeader}>
                   <View style={styles.fruitIcon}>
-                    <Text style={styles.fruitEmoji}>{forecastData[selectedFruitIdx].emoji}</Text>
+                    <Text style={styles.fruitEmoji}>
+                      {forecastData[selectedFruitIdx].emoji}
+                    </Text>
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.fruitLabel}>{t("forecast.fruitLabel")}</Text>
-                    <Text style={styles.fruitName}>{forecastData[selectedFruitIdx].name}</Text>
+                    <Text style={styles.fruitLabel}>
+                      {t("forecast.fruitLabel")}
+                    </Text>
+                    <Text style={styles.fruitName}>
+                      {forecastData[selectedFruitIdx].name}
+                    </Text>
                   </View>
                   <TouchableOpacity
-                    onPress={() => router.push(`../screens/fruit-forecast?fruit=${forecastData[selectedFruitIdx].name}`)}
+                    onPress={() =>
+                      router.push(
+                        `../screens/fruit-forecast?fruit=${forecastData[selectedFruitIdx].name}`,
+                      )
+                    }
                   >
                     <Ionicons name="chevron-forward" size={20} color="#999" />
                   </TouchableOpacity>
@@ -187,7 +205,9 @@ export default function ForecastScreen() {
                 {forecastData[selectedFruitIdx].days.length === 0 ? (
                   <View style={styles.noDataRow}>
                     <Ionicons name="cloud-offline" size={18} color="#999" />
-                    <Text style={styles.noDataText}>No forecast data for {forecastData[selectedFruitIdx].name}</Text>
+                    <Text style={styles.noDataText}>
+                      No forecast data for {forecastData[selectedFruitIdx].name}
+                    </Text>
                   </View>
                 ) : (
                   forecastData[selectedFruitIdx].days.map((day, dayIndex) => (
@@ -201,8 +221,8 @@ export default function ForecastScreen() {
                                 day.trend === "up"
                                   ? LIGHT_GREEN
                                   : day.trend === "down"
-                                  ? LIGHT_RED
-                                  : LIGHT_GRAY,
+                                    ? LIGHT_RED
+                                    : LIGHT_GRAY,
                             },
                           ]}
                         >
@@ -211,16 +231,16 @@ export default function ForecastScreen() {
                               day.trend === "up"
                                 ? "arrow-up"
                                 : day.trend === "down"
-                                ? "arrow-down"
-                                : "remove"
+                                  ? "arrow-down"
+                                  : "remove"
                             }
                             size={16}
                             color={
                               day.trend === "up"
                                 ? PRIMARY_GREEN
                                 : day.trend === "down"
-                                ? RED
-                                : "#999"
+                                  ? RED
+                                  : "#999"
                             }
                           />
                         </View>
@@ -234,8 +254,8 @@ export default function ForecastScreen() {
                                   day.trend === "up"
                                     ? PRIMARY_GREEN
                                     : day.trend === "down"
-                                    ? RED
-                                    : "#999",
+                                      ? RED
+                                      : "#999",
                               },
                             ]}
                           >
@@ -276,8 +296,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingTop: 40,
-    paddingBottom: 16,
+    paddingTop: 45,
+    paddingBottom: 20,
     borderBottomWidth: 1,
     borderBottomColor: "#f0f0f0",
   },
@@ -292,7 +312,7 @@ const styles = StyleSheet.create({
     marginHorizontal: -8,
   },
   headerTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: "600",
     color: "#000",
   },
@@ -363,8 +383,8 @@ const styles = StyleSheet.create({
   },
   fruitCard: {
     marginHorizontal: 16,
-    marginVertical: 6,
-    padding: 13,
+    marginVertical: 12,
+    padding: 16,
     backgroundColor: "#fff",
     borderRadius: 12,
     borderWidth: 1,
@@ -373,27 +393,27 @@ const styles = StyleSheet.create({
   fruitHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 11,
-    gap: 10,
+    marginBottom: 14,
+    gap: 12,
   },
   fruitIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: LIGHT_GRAY,
     justifyContent: "center",
     alignItems: "center",
   },
   fruitEmoji: {
-    fontSize: 19,
+    fontSize: 18,
   },
   fruitLabel: {
-    fontSize: 10,
+    fontSize: 8,
     color: "#999",
-    marginBottom: 1,
+    marginBottom: 0,
   },
   fruitName: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "700",
     color: "#000",
   },
@@ -402,6 +422,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingVertical: 10,
+    paddingHorizontal: 8,
     borderBottomWidth: 1,
     borderBottomColor: "#f5f5f5",
   },
@@ -409,12 +430,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     flex: 1,
-    gap: 10,
+    gap: 12,
   },
   trendIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -429,38 +450,38 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   dayValue: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "700",
     color: "#000",
   },
   noDataRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    paddingVertical: 10,
+    gap: 6,
+    paddingVertical: 6,
   },
   noDataText: {
-    fontSize: 13,
+    fontSize: 12,
     color: "#666",
   },
   lastUpdated: {
-    fontSize: 11,
+    fontSize: 10,
     color: "#999",
     textAlign: "center",
-    marginTop: 8,
+    marginTop: 4,
   },
   fruitTabsContainer: {
     flexDirection: "row",
     marginHorizontal: 16,
-    marginTop: 12,
-    marginBottom: 16,
-    gap: 10,
-    paddingVertical: 4,
+    marginTop: 16,
+    marginBottom: 20,
+    gap: 12,
+    paddingVertical: 8,
   },
   fruitTab: {
     flex: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     backgroundColor: "#e8e8e8",
     borderRadius: 20,
     alignItems: "center",
@@ -470,7 +491,7 @@ const styles = StyleSheet.create({
     backgroundColor: PRIMARY_GREEN,
   },
   fruitTabText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "600",
     color: "#555",
     textAlign: "center",

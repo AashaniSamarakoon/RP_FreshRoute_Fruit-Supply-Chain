@@ -1,16 +1,16 @@
-import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import api from "@/services/api";
+import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
 import {
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
-} from 'react-native';
-import { BACKEND_URL } from '../../../config';
-import { useTranslationContext } from '../../../context/TranslationContext';
+} from "react-native";
+import { useTranslationContext } from "../../../context/TranslationContext";
 
 const PRIMARY_GREEN = "#2f855a";
 const LIGHT_GRAY = "#f5f5f5";
@@ -20,10 +20,7 @@ interface HeaderProps {
   onSearch?: (text: string) => void;
 }
 
-export default function Header({
-  userName,
-  onSearch
-}: HeaderProps) {
+export default function Header({ userName, onSearch }: HeaderProps) {
   const router = useRouter();
   const { t, locale, setLocale } = useTranslationContext();
   const [unreadCount, setUnreadCount] = useState(0);
@@ -34,13 +31,11 @@ export default function Header({
         const token = await AsyncStorage.getItem("token");
         if (!token) return;
 
-        const res = await fetch(`${BACKEND_URL}/api/farmer/notifications`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        
-        if (res.ok) {
-          const data = await res.json();
+        try {
+          const data = await api.get(`/api/farmer/notifications`);
           setUnreadCount(data.unreadCount || 0);
+        } catch (_err) {
+          // ignore
         }
       } catch (err) {
         console.error("[Header] Failed to load unread count", err);
@@ -59,10 +54,12 @@ export default function Header({
       <View style={styles.header}>
         <View>
           <Text style={styles.logo}>🍃 FreshRoute</Text>
-          <Text style={styles.greeting}>{t("farmer.greeting", { name: userName })}</Text>
+          <Text style={styles.greeting}>
+            {t("farmer.greeting", { name: userName })}
+          </Text>
         </View>
         <View style={styles.headerIcons}>
-          <TouchableOpacity 
+          <TouchableOpacity
             onPress={() => router.push("/farmer/screens/notifications")}
             style={styles.notificationButton}
           >
@@ -76,16 +73,22 @@ export default function Header({
           <TouchableOpacity
             style={[styles.langToggle, { marginLeft: 12 }]}
             onPress={() => {
-              console.log('[Header.Button] Current locale value:', locale);
-              console.log('[Header.Button] Locale type:', typeof locale);
+              console.log("[Header.Button] Current locale value:", locale);
+              console.log("[Header.Button] Locale type:", typeof locale);
               console.log('[Header.Button] Locale === "en"?', locale === "en");
               console.log('[Header.Button] Locale === "si"?', locale === "si");
-              const nextLocale = locale === "en" ? ("si" as const) : ("en" as const);
-              console.log('[Header.Button] Calling setLocale with:', nextLocale);
+              const nextLocale =
+                locale === "en" ? ("si" as const) : ("en" as const);
+              console.log(
+                "[Header.Button] Calling setLocale with:",
+                nextLocale,
+              );
               setLocale(nextLocale);
             }}
           >
-            <Text style={styles.langToggleText}>{locale === "en" ? "සි" : "EN"}</Text>
+            <Text style={styles.langToggleText}>
+              {locale === "en" ? "සි" : "EN"}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -133,13 +136,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   notificationButton: {
-    position: 'relative',
+    position: "relative",
   },
   badge: {
-    position: 'absolute',
+    position: "absolute",
     top: -2,
     right: -2,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 8,
     padding: 2,
   },
@@ -147,7 +150,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#ef4444',
+    backgroundColor: "#ef4444",
   },
   langToggle: {
     borderWidth: 1,
