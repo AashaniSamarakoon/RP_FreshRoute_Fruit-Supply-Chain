@@ -36,13 +36,19 @@ interface ChatThread {
 
 export default function Chat() {
   const router = useRouter();
-  const params = useLocalSearchParams();
+  const params = useLocalSearchParams<{
+    complaintId?: string;
+    orderId?: string;
+    buyerId?: string;
+  }>();
+  const orderId = (params.orderId as string) || "";
+  const buyerId = (params.buyerId as string) || "";
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [showSidePanel, setShowSidePanel] = useState(false);
   const [messageText, setMessageText] = useState("");
   const [currentChatId, setCurrentChatId] = useState<string | null>(
-    (params.complaintId as string) || null
+    (params.complaintId as string) || (orderId || null)
   );
   const [chats, setChats] = useState<ChatThread[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -74,12 +80,13 @@ export default function Chat() {
   }, [router]);
 
   useEffect(() => {
-    // Load mock chat threads
+    const complaintIdParam = params.complaintId as string;
+    const orderIdParam = params.orderId as string;
     const mockChats: ChatThread[] = [
       {
         id: "1",
-        complaintId: params.complaintId as string || "1",
-        complaintTitle: "Order ORD-001",
+        complaintId: complaintIdParam || orderIdParam || "1",
+        complaintTitle: orderIdParam ? `Order #${orderIdParam}` : "Order ORD-001",
         lastMessage: "Thank you for your complaint. We are looking into it.",
         lastMessageTime: new Date(),
         messages: [
@@ -94,13 +101,13 @@ export default function Chat() {
     ];
     setChats(mockChats);
 
-    // Load messages for current chat
     if (currentChatId) {
-      const chat = mockChats.find((c) => c.complaintId === currentChatId);
+      const chat = mockChats.find(
+        (c) => c.complaintId === currentChatId || c.complaintId === orderIdParam
+      );
       if (chat) {
         setMessages(chat.messages);
       } else {
-        // Initial sample message
         setMessages([
           {
             id: "1",
@@ -111,7 +118,7 @@ export default function Chat() {
         ]);
       }
     }
-  }, [currentChatId, params.complaintId]);
+  }, [currentChatId, params.complaintId, params.orderId]);
 
   useEffect(() => {
     Animated.timing(sidePanelAnimation, {

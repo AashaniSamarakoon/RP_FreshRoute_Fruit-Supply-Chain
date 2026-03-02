@@ -113,18 +113,42 @@ export default function TransporterDashboard() {
     </TouchableOpacity>
   );
 
+  // --- TESTING ONLY: quick open fruit grading with mock IDs. Remove this block when not testing. ---
+  const openFruitGradingTest = () => {
+    router.push({
+      pathname: "/transporter/fruit-grading",
+      params: {
+        job_id: "test-job-mock",
+        order_id: "test-order-mock",
+        pickup_lat: "6.9271",
+        pickup_lng: "79.8612",
+      },
+    });
+  };
+  // --- END TESTING ONLY ---
+
   const SubHeader = () => (
-    <View style={styles.subHeaderContainer}>
-      <Text style={styles.sectionTitle}>My Jobs</Text>
-      {vehicleInfo && (
-        <View style={styles.vehicleTag}>
-          <Ionicons name="bus-outline" size={14} color="#718096" />
-          <Text style={styles.vehicleText}>
-            {vehicleInfo.vehicle_license_plate}
-          </Text>
-        </View>
-      )}
-    </View>
+    <>
+      <View style={styles.subHeaderContainer}>
+        <Text style={styles.sectionTitle}>My Jobs</Text>
+        {vehicleInfo && (
+          <View style={styles.vehicleTag}>
+            <Ionicons name="bus-outline" size={14} color="#718096" />
+            <Text style={styles.vehicleText}>
+              {vehicleInfo.vehicle_license_plate}
+            </Text>
+          </View>
+        )}
+      </View>
+      {/* TESTING ONLY - remove this block and openFruitGradingTest + test styles */}
+      <TouchableOpacity
+        style={styles.testGradingBtn}
+        onPress={openFruitGradingTest}
+      >
+        <Ionicons name="camera-outline" size={16} color="#fff" />
+        <Text style={styles.testGradingBtnText}>Test grading</Text>
+      </TouchableOpacity>
+    </>
   );
 
   return (
@@ -224,4 +248,18 @@ const styles = StyleSheet.create({
   },
   clickHint: { fontSize: 12, color: "#a0aec0" },
   emptyText: { textAlign: "center", marginTop: 50, color: "#a0aec0" },
+
+  // TESTING ONLY - remove with the testing block in JSX
+  testGradingBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#805ad5",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 6,
+    alignSelf: "flex-start",
+    marginBottom: 12,
+  },
+  testGradingBtnText: { fontSize: 12, color: "#fff", fontWeight: "600" },
 });
