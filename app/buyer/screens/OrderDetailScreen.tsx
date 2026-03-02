@@ -2,9 +2,9 @@ import Header from "@/components/Header";
 import { BuyerColors } from "@/constants/theme";
 import api from "@/services/api";
 import { FarmerInfo, PlacedOrder, TransporterInfo } from "@/types";
-import { formatCurrency, formatDate, formatTime } from "@/utils/formatters";
+import { formatCurrency, formatDate } from "@/utils/formatters";
+import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { MapPin } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -20,6 +20,48 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+// --- Helpers ---
+const getFruitMeta = (fruit: string) => {
+  const f = fruit?.toLowerCase() || "";
+  if (f.includes("banana"))
+    return { emoji: "🍌", bg: "#FEF9C3", text: "#CA8A04" };
+  if (f.includes("mango"))
+    return { emoji: "🥭", bg: "#FFEDD5", text: "#EA580C" };
+  if (f.includes("pineapple"))
+    return { emoji: "🍍", bg: "#FEF08A", text: "#A16207" };
+  if (f.includes("papaya"))
+    return { emoji: "🥥", bg: "#FFEDD5", text: "#EA580C" };
+  return { emoji: "📦", bg: "#F3F4F6", text: "#6B7280" };
+};
+
+const getStatusStyles = (status: string) => {
+  switch (status) {
+    case "AWAITING_PAYMENT":
+    case "UNPAID":
+      return { bg: "#FEF2F2", text: "#EF4444", label: "Awaiting Payment" };
+    case "OPEN":
+    case "PENDING_BUYER":
+    case "PENDING_FARMER":
+      return { bg: "#FFF7ED", text: "#F97316", label: "Pending" };
+    case "MATCHED":
+      return { bg: "#EEF2FF", text: "#6366F1", label: "Matched" };
+    case "PAID_PENDING_DELIVERY":
+    case "IN_TRANSIT":
+      return { bg: "#EFF6FF", text: "#3B82F6", label: "In Transit" };
+    case "DELIVERED":
+    case "COMPLETED":
+      return { bg: "#F0FDF4", text: "#22C55E", label: "Completed" };
+    case "CANCELLED":
+      return { bg: "#F3F4F6", text: "#6B7280", label: "Cancelled" };
+    default:
+      return {
+        bg: "#F3F4F6",
+        text: "#6B7280",
+        label: status?.replace(/_/g, " ") || "Unknown",
+      };
+  }
+};
+
 export default function OrderDetailScreen() {
   const params = useLocalSearchParams<{ orderId: string }>();
   const router = useRouter();
@@ -33,58 +75,51 @@ export default function OrderDetailScreen() {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [bankDetailsVisible, setBankDetailsVisible] = useState(false);
   const [harvestDate, setHarvestDate] = useState<string | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (params.orderId) {
-      fetchOrderDetails();
-    }
+    if (params.orderId) fetchOrderDetails();
   }, [params.orderId]);
 
-  // Auto-refresh every 30 seconds
   useEffect(() => {
     const interval = setInterval(() => {
-      if (params.orderId && !loading) {
-        fetchOrderDetails(true); // Silent refresh
-      }
+      if (params.orderId && !loading) fetchOrderDetails(true);
     }, 30000);
-
     return () => clearInterval(interval);
   }, [params.orderId, loading]);
 
   const fetchOrderDetails = async (silent = false) => {
     try {
       if (!silent) setLoading(true);
-
+      setFetchError(null);
       if (!params.orderId) throw new Error("No orderId provided");
 
-      let data: any;
-      try {
-        data = await api.get(
-          `/api/buyer/place-order/details/${params.orderId}`,
-        );
-        console.log("order detail response", data);
-      } catch (err) {
-        throw err;
-      }
+      let data: any = await api.get(
+        `/api/buyer/place-order/details/${params.orderId}`,
+      );
+      console.log("[OrderDetail] raw response:", JSON.stringify(data, null, 2));
 
-      // Expecting backend to return an object with `order` (and optional related data)
-      // unwrap prices located at root of response
       const orderData = data.order || {};
-      // copy price/delivery fields from root if present
       const merged: any = { ...orderData };
-      [
-        "unitPrice",
-        "basePrice",
-        "serviceCharge",
-        "deliveryFee",
-        "totalPrice",
-        "deliveryType",
-      ].forEach((key) => {
-        if (data[key] !== undefined) merged[key] = data[key];
+
+      // Backend may return pricing fields at top-level (camelCase or snake_case)
+      // or nested inside data.order. Check all variants so nothing is missed.
+      const camelToSnake: Record<string, string> = {
+        unitPrice: "unit_price",
+        basePrice: "base_price",
+        serviceCharge: "service_charge",
+        deliveryFee: "delivery_fee",
+        totalPrice: "total_price",
+        deliveryType: "delivery_type",
+      };
+      Object.entries(camelToSnake).forEach(([camel, snake]) => {
+        // priority: top-level camelCase → top-level snake_case → order.camelCase → order.snake_case
+        const val =
+          data[camel] ?? data[snake] ?? orderData[camel] ?? orderData[snake];
+        if (val !== undefined && val !== null) merged[camel] = val;
       });
       setOrder(merged || null);
 
-      // If backend returns farmer info include it; otherwise leave existing state
       if (data.farmer) {
         const userData = data.farmer.user || data.farmer.users || {};
         setFarmer({
@@ -96,7 +131,6 @@ export default function OrderDetailScreen() {
         });
       }
 
-      // If backend includes images/harvest info populate them
       if (orderData?.product_images) {
         setProductImages(
           Array.isArray(orderData.product_images)
@@ -107,15 +141,12 @@ export default function OrderDetailScreen() {
         setProductImages([]);
       }
 
-      if (orderData?.harvest_date || orderData?.estimated_harvest_date) {
-        setHarvestDate(
-          orderData.harvest_date || orderData.estimated_harvest_date,
-        );
-      } else {
-        setHarvestDate(null);
-      }
-    } catch (error) {
-      // Silent error handling - keep UI stable
+      setHarvestDate(
+        orderData?.harvest_date || orderData?.estimated_harvest_date || null,
+      );
+    } catch (error: any) {
+      console.error("[OrderDetail] fetch error:", error?.message || error);
+      setFetchError(error?.message || "Failed to load order details");
       setOrder(null);
       setProductImages([]);
       setFarmer(null);
@@ -133,11 +164,11 @@ export default function OrderDetailScreen() {
 
   const getPrimaryAction = () => {
     if (!order) return null;
-
     switch (order.status) {
       case "AWAITING_PAYMENT":
         return {
           label: "Upload Payment Slip",
+          icon: "cloud-upload-outline",
           onPress: () =>
             router.push({
               pathname: "/buyer/upload-payment" as any,
@@ -146,7 +177,8 @@ export default function OrderDetailScreen() {
         };
       case "IN_TRANSIT":
         return {
-          label: "Track Your Order",
+          label: "Track Delivery",
+          icon: "navigate-circle-outline",
           onPress: () =>
             router.push({
               pathname: "/buyer/track-delivery" as any,
@@ -156,6 +188,7 @@ export default function OrderDetailScreen() {
       case "DELIVERED":
         return {
           label: "Confirm Receipt",
+          icon: "checkmark-done-circle-outline",
           onPress: () => {},
         };
       default:
@@ -163,11 +196,11 @@ export default function OrderDetailScreen() {
     }
   };
 
-  if (loading) {
+  if (loading && !refreshing) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.safeArea}>
         <Header title="Order Summary" showBackButton />
-        <View style={styles.loadingContainer}>
+        <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={BuyerColors.primaryGreen} />
           <Text style={styles.loadingText}>Loading order details...</Text>
         </View>
@@ -177,76 +210,91 @@ export default function OrderDetailScreen() {
 
   if (!order) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.safeArea}>
         <Header title="Order Summary" showBackButton />
-        <View style={styles.loadingContainer}>
-          <Text style={styles.errorText}>Order not found</Text>
+        <View style={styles.centerContainer}>
+          <Ionicons name="document-text-outline" size={64} color="#E5E7EB" />
+          <Text style={styles.errorText}>
+            {fetchError ? "Failed to load order" : "Order not found"}
+          </Text>
+          {fetchError && <Text style={styles.errorDetail}>{fetchError}</Text>}
         </View>
       </SafeAreaView>
     );
   }
 
   const primaryAction = getPrimaryAction();
+  const statusStyle = getStatusStyles(order.status);
+  const fruitMeta = getFruitMeta(order.fruit_type);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
       <Header title="Order Summary" showBackButton />
+
       <View style={styles.mainContainer}>
+        {/* --- SCROLLABLE CONTENT --- */}
         <ScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.content}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={[BuyerColors.primaryGreen]}
+            />
           }
+          showsVerticalScrollIndicator={false}
         >
-          {/* Order Info Card */}
-          <View style={styles.infoCard}>
-            <View style={styles.infoGrid}>
-              <View style={styles.infoItemThree}>
-                <Text style={styles.infoLabel}>ORDER ID</Text>
-                <Text style={styles.infoValue}>
-                  {order.id.substring(0, 8).toUpperCase()}
+          {/* Section: Order Status & ID */}
+          <View style={styles.section}>
+            <View style={styles.statusRow}>
+              <View>
+                <Text style={styles.orderIdLabel}>ORDER ID</Text>
+                <Text style={styles.orderIdValue}>
+                  #{order.id.substring(0, 8).toUpperCase()}
                 </Text>
               </View>
-              <View style={styles.infoItemThree}>
-                <Text style={styles.infoLabel}>ORDER PLACED</Text>
-                <Text style={styles.infoValue}>
-                  {formatDate(order.created_at)}
+              <View style={[styles.badge, { backgroundColor: statusStyle.bg }]}>
+                <Text style={[styles.badgeText, { color: statusStyle.text }]}>
+                  {statusStyle.label}
                 </Text>
-                <Text style={styles.infoValueSmall}>
-                  {formatTime(order.created_at)}
+              </View>
+            </View>
+
+            <View style={styles.dateGrid}>
+              <View style={styles.dateItem}>
+                <Text style={styles.dateLabel}>Placed On</Text>
+                <Text style={styles.dateValue}>
+                  {formatDate(order.created_at)}
                 </Text>
               </View>
               {order.farmer_accepted_at && (
-                <View style={styles.infoItemThree}>
-                  <Text style={styles.infoLabel}>FARMER ACCEPTED</Text>
-                  <Text style={styles.infoValue}>
+                <View style={styles.dateItem}>
+                  <Text style={styles.dateLabel}>Accepted On</Text>
+                  <Text style={styles.dateValue}>
                     {formatDate(order.farmer_accepted_at)}
-                  </Text>
-                  <Text style={styles.infoValueSmall}>
-                    {formatTime(order.farmer_accepted_at)}
                   </Text>
                 </View>
               )}
             </View>
-
-            {/* Divider */}
-            <View style={styles.statusDivider} />
           </View>
 
-          {/* Product Detail */}
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Product Detail</Text>
-            <View style={styles.productCard}>
-              {/* Product Image */}
+          {/* Solid Separator */}
+          <View style={styles.solidSeparator} />
+
+          {/* Section: Product Detail */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Product Details</Text>
+            <View style={styles.productRow}>
               <TouchableOpacity
-                style={styles.productImageContainer}
+                style={styles.imageWrapper}
                 onPress={() => {
                   if (productImages.length > 0) {
                     setSelectedImageIndex(0);
                     setImageViewerVisible(true);
                   }
                 }}
+                disabled={productImages.length === 0}
               >
                 {productImages.length > 0 ? (
                   <>
@@ -255,216 +303,210 @@ export default function OrderDetailScreen() {
                       style={styles.productImage}
                     />
                     {productImages.length > 1 && (
-                      <View style={styles.imageCountBadge}>
-                        <Text style={styles.imageCountText}>
+                      <View style={styles.imageBadge}>
+                        <Text style={styles.imageBadgeText}>
                           +{productImages.length - 1}
                         </Text>
                       </View>
                     )}
                   </>
                 ) : (
-                  <View style={styles.emptyImagePlaceholder} />
+                  <View
+                    style={[
+                      styles.avatarFallback,
+                      { backgroundColor: fruitMeta.bg },
+                    ]}
+                  >
+                    <Text style={styles.avatarEmoji}>{fruitMeta.emoji}</Text>
+                  </View>
                 )}
               </TouchableOpacity>
 
-              {/* Product Info */}
               <View style={styles.productInfo}>
                 <Text style={styles.productName}>
-                  {order.fruit_type} - {order.variant}
+                  {order.fruit_type}{" "}
+                  <Text style={styles.productVariant}>• {order.variant}</Text>
                 </Text>
-                <Text style={styles.productDetail}>Grade {order.grade}</Text>
-                <Text style={styles.productDetail}>
-                  Qty: {order.quantity} kg
-                </Text>
+
+                <View style={styles.chipContainer}>
+                  <View style={styles.chip}>
+                    <Text style={styles.chipText}>{order.quantity} kg</Text>
+                  </View>
+                  <View style={styles.chip}>
+                    <Text style={styles.chipText}>Grade {order.grade}</Text>
+                  </View>
+                </View>
+
                 {harvestDate && (
-                  <Text style={styles.productDetail}>
-                    Est. Harvest: {formatDate(harvestDate)}
+                  <Text style={styles.harvestText}>
+                    Est. Harvest:{" "}
+                    <Text style={{ fontWeight: "600", color: "#374151" }}>
+                      {formatDate(harvestDate)}
+                    </Text>
                   </Text>
                 )}
               </View>
             </View>
           </View>
 
-          <View style={styles.statusDivider} />
+          {/* Solid Separator */}
+          <View style={styles.solidSeparator} />
 
-          {/* Pickup & Delivery Locations */}
-          <View style={styles.card}>
-            <View style={styles.locationContainer}>
-              {/* Pickup Location */}
-              <View style={styles.locationSection}>
-                <Text style={styles.sectionTitle}>Pickup Location</Text>
-                <View style={styles.addressCard}>
-                  <MapPin size={20} color={BuyerColors.textGray} />
-                  <View style={styles.addressInfo}>
-                    <Text style={styles.addressText}>
-                      {farmer?.location ||
-                        "Green Valley Farm, Nuwara Eliya Road, Pussellawa, Central Province"}
-                    </Text>
+          {/* Section: Logistics */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Location</Text>
+
+            <View style={styles.logisticsContainer}>
+              {farmer && order.status === "AWAITING_PAYMENT" && (
+                <View style={styles.logisticsRow}>
+                  <View style={styles.iconColumn}>
+                    <Ionicons name="storefront" size={20} color="#6B7280" />
+                    <View style={styles.verticalDottedLine} />
+                  </View>
+                  <View style={styles.addressBlock}>
+                    <Text style={styles.addressLabel}>Pickup Location</Text>
+                    <Text style={styles.addressValue}>{farmer.location}</Text>
                   </View>
                 </View>
-              </View>
+              )}
 
-              {/* Vertical Dashed Line */}
-              <View style={styles.verticalDashedLine} />
-
-              {/* Delivery Address */}
-              <View style={styles.locationSection}>
-                <Text style={styles.sectionTitle}>Delivery Address</Text>
-                <View style={styles.addressCard}>
-                  <MapPin size={20} color={BuyerColors.textGray} />
-                  <View style={styles.addressInfo}>
-                    <Text style={styles.addressText}>
-                      {order.delivery_location ||
-                        "No. 123, Main Street, Colombo 07, Western Province, Sri Lanka"}
-                    </Text>
-                    {/* Delivery estimate - Show after payment */}
-                    {/* {order.required_date && (
-                      <Text style={styles.deliveryEstimate}>
-                        Delivery estimate: {formatDate(order.required_date)}
-                      </Text>
-                    )} */}
-                  </View>
+              <View style={[styles.logisticsRow, { marginTop: 4 }]}>
+                <View style={styles.iconColumn}>
+                  <Ionicons
+                    name="location"
+                    size={20}
+                    color={BuyerColors.primaryGreen}
+                  />
+                </View>
+                <View style={styles.addressBlock}>
+                  <Text style={styles.addressLabel}>Delivery Address</Text>
+                  <Text style={styles.addressValue}>
+                    {order.delivery_location}
+                  </Text>
                 </View>
               </View>
             </View>
           </View>
-
-          <View style={styles.bottomPadding} />
         </ScrollView>
 
-        {/* Fixed Bottom Section - Price Details & Action Button */}
-        <View style={styles.fixedBottom}>
-          <View style={styles.fixedBottomContent}>
-            <Text style={styles.sectionTitle}>Price Details</Text>
-            <View style={styles.priceCard}>
-              {order.unitPrice != null && (
-                <View style={styles.priceRow}>
-                  <Text style={styles.priceLabel}>Unit Price</Text>
-                  <Text style={styles.priceValue}>
-                    {formatCurrency(order.unitPrice)}
-                  </Text>
-                </View>
-              )}
-              {order.basePrice != null && (
-                <View style={styles.priceRow}>
-                  <Text style={styles.priceLabel}>Base Price</Text>
-                  <Text style={styles.priceValue}>
-                    {formatCurrency(order.basePrice)}
-                  </Text>
-                </View>
-              )}
-              {order.serviceCharge != null && (
-                <View style={styles.priceRow}>
-                  <Text style={styles.priceLabel}>Service Charge</Text>
-                  <Text style={styles.priceValue}>
-                    {formatCurrency(order.serviceCharge)}
-                  </Text>
-                </View>
-              )}
-              {order.deliveryFee != null && (
-                <View style={styles.priceRow}>
-                  <Text style={styles.priceLabel}>Delivery Fee</Text>
-                  <Text style={styles.priceValue}>
-                    {formatCurrency(order.deliveryFee)}
-                  </Text>
-                </View>
-              )}
-              {order.deliveryType && (
-                <View style={styles.priceRow}>
-                  <Text style={styles.priceLabel}>Delivery Type</Text>
-                  <Text style={styles.priceValue}>{order.deliveryType}</Text>
-                </View>
-              )}
-              <View style={styles.priceRow}></View>
-              {order.target_price &&
-                order.totalPrice &&
-                order.totalPrice < order.target_price && (
-                  <View style={styles.priceRow}>
-                    <Text style={styles.priceLabel}>Discount</Text>
-                    <Text style={styles.priceDiscount}>
-                      -{formatCurrency(order.target_price - order.totalPrice)}
-                    </Text>
-                  </View>
-                )}
+        {/* --- FIXED BOTTOM SECTION --- */}
+        <View style={styles.fixedBottomPanel}>
+          <Text style={styles.sectionTitle}>Payment Summary</Text>
 
-              <View style={styles.priceDivider} />
-              <View style={styles.priceRow}>
-                <Text style={styles.priceTotalLabel}>Total Amount</Text>
-                <Text style={styles.priceTotalValue}>
-                  Rs.{" "}
-                  {order.totalPrice ? formatCurrency(order.totalPrice) : "N/A"}
+          <View style={styles.receiptItems}>
+            {order.unitPrice != null && (
+              <View style={styles.receiptRow}>
+                <Text style={styles.receiptLabel}>
+                  Unit Price ({order.quantity}kg)
+                </Text>
+                <Text style={styles.receiptValue}>
+                  Rs. {formatCurrency(order.unitPrice)}
                 </Text>
               </View>
-            </View>
-
-            {/* Primary Action Button */}
-            {primaryAction && (
-              <>
-                {order.status === "AWAITING_PAYMENT" && (
-                  <TouchableOpacity
-                    style={styles.viewBankDetailsLink}
-                    onPress={() => setBankDetailsVisible(true)}
-                  >
-                    <Text style={styles.viewBankDetailsText}>
-                      View Bank Details
-                    </Text>
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity
-                  style={styles.primaryButton}
-                  onPress={primaryAction.onPress}
-                >
-                  <Text style={styles.primaryButtonText}>
-                    {primaryAction.label}
-                  </Text>
-                </TouchableOpacity>
-              </>
             )}
+            {order.basePrice != null && (
+              <View style={styles.receiptRow}>
+                <Text style={styles.receiptLabel}>Base Price</Text>
+                <Text style={styles.receiptValue}>
+                  Rs. {formatCurrency(order.basePrice)}
+                </Text>
+              </View>
+            )}
+            {order.serviceCharge != null && (
+              <View style={styles.receiptRow}>
+                <Text style={styles.receiptLabel}>Service Charge</Text>
+                <Text style={styles.receiptValue}>
+                  Rs. {formatCurrency(order.serviceCharge)}
+                </Text>
+              </View>
+            )}
+            {order.deliveryFee != null && (
+              <View style={styles.receiptRow}>
+                <Text style={styles.receiptLabel}>Delivery Fee</Text>
+                <Text style={styles.receiptValue}>
+                  {`Rs. ${formatCurrency(order.deliveryFee)}`}
+                </Text>
+              </View>
+            )}
+
+            {/* The ONLY dashed line, strictly for the payment total separator */}
+            <View style={styles.dashedReceiptSeparator} />
+
+            <View style={styles.receiptTotalRow}>
+              <Text style={styles.receiptTotalLabel}>Total Amount</Text>
+              <Text style={styles.receiptTotalValue}>
+                Rs.{" "}
+                {order.totalPrice ? formatCurrency(order.totalPrice) : "N/A"}
+              </Text>
+            </View>
           </View>
+
+          {/* Action Buttons */}
+          {primaryAction && (
+            <View style={styles.actionContainer}>
+              {order.status === "AWAITING_PAYMENT" && (
+                <TouchableOpacity
+                  onPress={() => setBankDetailsVisible(true)}
+                  style={styles.secondaryBtn}
+                >
+                  <Ionicons name="business-outline" size={18} color="#4B5563" />
+                  <Text style={styles.secondaryBtnText}>Bank Details</Text>
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity
+                style={styles.primaryBtn}
+                onPress={primaryAction.onPress}
+              >
+                <Ionicons
+                  name={primaryAction.icon as any}
+                  size={20}
+                  color="#fff"
+                />
+                <Text style={styles.primaryBtnText}>{primaryAction.label}</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </View>
 
+      {/* --- Modals --- */}
       {/* Image Viewer Modal */}
       <Modal
         visible={imageViewerVisible}
         transparent={true}
         animationType="fade"
-        onRequestClose={() => setImageViewerVisible(false)}
       >
-        <View style={styles.modalContainer}>
+        <View style={styles.modalBg}>
           <TouchableOpacity
-            style={styles.modalCloseButton}
+            style={styles.modalClose}
             onPress={() => setImageViewerVisible(false)}
           >
-            <Text style={styles.modalCloseText}>✕</Text>
+            <Ionicons name="close" size={28} color="#fff" />
           </TouchableOpacity>
-
           <ScrollView
             horizontal
             pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            onMomentumScrollEnd={(event) => {
-              const index = Math.round(
-                event.nativeEvent.contentOffset.x /
-                  Dimensions.get("window").width,
+            onMomentumScrollEnd={(e) => {
+              const idx = Math.round(
+                e.nativeEvent.contentOffset.x / Dimensions.get("window").width,
               );
-              setSelectedImageIndex(index);
+              setSelectedImageIndex(idx);
             }}
           >
             {productImages.map((uri, index) => (
-              <View key={index} style={styles.modalImageContainer}>
+              <View key={index} style={styles.fullImageContainer}>
                 <Image
                   source={{ uri }}
-                  style={styles.modalImage}
+                  style={styles.fullImage}
                   resizeMode="contain"
                 />
               </View>
             ))}
           </ScrollView>
-
           {productImages.length > 1 && (
-            <View style={styles.modalImageCounter}>
-              <Text style={styles.modalImageCounterText}>
+            <View style={styles.imageCounter}>
+              <Text style={styles.imageCounterText}>
                 {selectedImageIndex + 1} / {productImages.length}
               </Text>
             </View>
@@ -475,129 +517,66 @@ export default function OrderDetailScreen() {
       {/* Bank Details Modal */}
       <Modal
         visible={bankDetailsVisible}
-        transparent={false}
+        transparent={true}
         animationType="slide"
-        backdropColor="rgba(0, 0, 0, 0)"
-        onRequestClose={() => setBankDetailsVisible(false)}
       >
-        <View style={styles.bankModalWrapper}>
-          <View style={styles.bankModalContainer}>
-            <View style={styles.bankModalHeader}>
-              <Text style={styles.bankModalTitle}>Bank Account Details</Text>
+        <View style={styles.bottomSheetBg}>
+          <View style={styles.bottomSheetCard}>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>Bank Transfer Details</Text>
               <TouchableOpacity
                 onPress={() => setBankDetailsVisible(false)}
-                style={styles.bankModalClose}
+                style={styles.sheetClose}
               >
-                <Text style={styles.bankModalCloseText}>✕</Text>
+                <Ionicons name="close" size={24} color="#6B7280" />
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.bankModalContent}>
-              <Text style={styles.bankModalSubtitle}>
-                Please transfer the total amount to any of the following bank
-                accounts:
-              </Text>
+            <ScrollView style={styles.sheetContent}>
+              <View style={styles.bankWarning}>
+                <Ionicons name="information-circle" size={20} color="#CA8A04" />
+                <Text style={styles.bankWarningText}>
+                  Use Order{" "}
+                  <Text style={{ fontWeight: "bold" }}>
+                    #{order?.id.substring(0, 8).toUpperCase()}
+                  </Text>{" "}
+                  as the reference.
+                </Text>
+              </View>
 
-              {/* Bank 1 - Commercial Bank */}
               <View style={styles.bankCard}>
                 <Text style={styles.bankName}>Commercial Bank of Ceylon</Text>
-                <View style={styles.bankDetailRow}>
-                  <Text style={styles.bankDetailLabel}>Account Name:</Text>
-                  <Text style={styles.bankDetailValue}>FreshRoute Pvt Ltd</Text>
+                <View style={styles.bankRow}>
+                  <Text style={styles.bankLabel}>Name:</Text>
+                  <Text style={styles.bankVal}>FreshRoute Pvt Ltd</Text>
                 </View>
-                <View style={styles.bankDetailRow}>
-                  <Text style={styles.bankDetailLabel}>Account Number:</Text>
-                  <Text style={styles.bankDetailValue}>1234567890</Text>
+                <View style={styles.bankRow}>
+                  <Text style={styles.bankLabel}>Account:</Text>
+                  <Text style={styles.bankVal}>1234567890</Text>
                 </View>
-                <View style={styles.bankDetailRow}>
-                  <Text style={styles.bankDetailLabel}>Branch:</Text>
-                  <Text style={styles.bankDetailValue}>
-                    Colombo Main Branch
-                  </Text>
-                </View>
-                <View style={styles.bankDetailRow}>
-                  <Text style={styles.bankDetailLabel}>Branch Code:</Text>
-                  <Text style={styles.bankDetailValue}>001</Text>
-                </View>
-                <View style={styles.bankDetailRow}>
-                  <Text style={styles.bankDetailLabel}>SWIFT Code:</Text>
-                  <Text style={styles.bankDetailValue}>CCEYLKLX</Text>
+                <View style={styles.bankRow}>
+                  <Text style={styles.bankLabel}>Branch:</Text>
+                  <Text style={styles.bankVal}>Colombo Main (001)</Text>
                 </View>
               </View>
 
-              {/* Bank 2 - Bank of Ceylon */}
-              <View style={styles.bankCard}>
-                <Text style={styles.bankName}>Bank of Ceylon</Text>
-                <View style={styles.bankDetailRow}>
-                  <Text style={styles.bankDetailLabel}>Account Name:</Text>
-                  <Text style={styles.bankDetailValue}>FreshRoute Pvt Ltd</Text>
-                </View>
-                <View style={styles.bankDetailRow}>
-                  <Text style={styles.bankDetailLabel}>Account Number:</Text>
-                  <Text style={styles.bankDetailValue}>9876543210</Text>
-                </View>
-                <View style={styles.bankDetailRow}>
-                  <Text style={styles.bankDetailLabel}>Branch:</Text>
-                  <Text style={styles.bankDetailValue}>Kandy Branch</Text>
-                </View>
-                <View style={styles.bankDetailRow}>
-                  <Text style={styles.bankDetailLabel}>Branch Code:</Text>
-                  <Text style={styles.bankDetailValue}>305</Text>
-                </View>
-                <View style={styles.bankDetailRow}>
-                  <Text style={styles.bankDetailLabel}>SWIFT Code:</Text>
-                  <Text style={styles.bankDetailValue}>BCEYLKLX</Text>
-                </View>
-              </View>
-
-              {/* Bank 3 - Sampath Bank */}
               <View style={styles.bankCard}>
                 <Text style={styles.bankName}>Sampath Bank PLC</Text>
-                <View style={styles.bankDetailRow}>
-                  <Text style={styles.bankDetailLabel}>Account Name:</Text>
-                  <Text style={styles.bankDetailValue}>FreshRoute Pvt Ltd</Text>
+                <View style={styles.bankRow}>
+                  <Text style={styles.bankLabel}>Name:</Text>
+                  <Text style={styles.bankVal}>FreshRoute Pvt Ltd</Text>
                 </View>
-                <View style={styles.bankDetailRow}>
-                  <Text style={styles.bankDetailLabel}>Account Number:</Text>
-                  <Text style={styles.bankDetailValue}>5647382910</Text>
+                <View style={styles.bankRow}>
+                  <Text style={styles.bankLabel}>Account:</Text>
+                  <Text style={styles.bankVal}>5647382910</Text>
                 </View>
-                <View style={styles.bankDetailRow}>
-                  <Text style={styles.bankDetailLabel}>Branch:</Text>
-                  <Text style={styles.bankDetailValue}>Galle Road Branch</Text>
-                </View>
-                <View style={styles.bankDetailRow}>
-                  <Text style={styles.bankDetailLabel}>Branch Code:</Text>
-                  <Text style={styles.bankDetailValue}>125</Text>
-                </View>
-                <View style={styles.bankDetailRow}>
-                  <Text style={styles.bankDetailLabel}>SWIFT Code:</Text>
-                  <Text style={styles.bankDetailValue}>BSAMLKLX</Text>
+                <View style={styles.bankRow}>
+                  <Text style={styles.bankLabel}>Branch:</Text>
+                  <Text style={styles.bankVal}>Galle Road (125)</Text>
                 </View>
               </View>
-
-              <View style={styles.bankModalNote}>
-                <Text style={styles.bankModalNoteTitle}>Important Note:</Text>
-                <Text style={styles.bankModalNoteText}>
-                  • Please use your Order ID (
-                  {order?.id.substring(0, 8).toUpperCase()}) as the payment
-                  reference
-                </Text>
-                <Text style={styles.bankModalNoteText}>
-                  • After making the payment, upload the payment slip to confirm
-                  your order
-                </Text>
-                <Text style={styles.bankModalNoteText}>
-                  • Payment confirmation may take 1-2 business days
-                </Text>
-              </View>
+              <View style={{ height: 40 }} />
             </ScrollView>
-
-            {/* <TouchableOpacity
-              style={styles.bankModalButton}
-              onPress={() => setBankDetailsVisible(false)}
-            >
-              <Text style={styles.bankModalButtonText}>Close</Text>
-            </TouchableOpacity> */}
           </View>
         </View>
       </Modal>
@@ -606,457 +585,320 @@ export default function OrderDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#ffffff",
-  },
-  mainContainer: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  content: {
-    paddingBottom: 16,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: "#666",
-  },
+  safeArea: { flex: 1, backgroundColor: "#FFFFFF" },
+  mainContainer: { flex: 1 },
+  scrollView: { flex: 1 },
+  content: { paddingVertical: 16, paddingBottom: 24 },
+
+  centerContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
+  loadingText: { marginTop: 12, fontSize: 16, color: "#6B7280" },
   errorText: {
-    fontSize: 16,
-    color: "#d32f2f",
-  },
-  infoCard: {
-    backgroundColor: "#fff",
-    marginBottom: 8,
-  },
-  infoGrid: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 20,
-    flexDirection: "row",
-    flexWrap: "wrap",
-  },
-  infoItem: {
-    width: "50%",
-    marginBottom: 14,
-  },
-  infoItemThree: {
-    width: "33.33%",
-    paddingHorizontal: 4,
-  },
-  infoLabel: {
-    fontSize: 10,
-    color: "#888",
-    marginBottom: 6,
-    fontWeight: "600",
-    letterSpacing: 0.5,
-  },
-  infoValue: {
-    fontSize: 13,
-    color: BuyerColors.textBlack,
-    fontWeight: "600",
-    marginBottom: 2,
-  },
-  infoValueSmall: {
-    fontSize: 12,
-    color: "#666",
-    fontWeight: "400",
-  },
-  infoValuePrimary: {
+    marginTop: 12,
     fontSize: 18,
-    color: BuyerColors.primaryGreen,
-    fontWeight: "700",
+    fontWeight: "bold",
+    color: "#6B7280",
   },
-  timelineContainer: {
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-    flexDirection: "row",
-    gap: 16,
-  },
-  timelineItem: {
-    flex: 1,
-    backgroundColor: "#F8F8F8",
-    borderRadius: 8,
-    padding: 12,
-  },
-  timelineLabel: {
-    fontSize: 11,
-    color: "#666",
-    fontWeight: "600",
-    marginBottom: 8,
-  },
-  timelineDate: {
-    fontSize: 14,
-    color: BuyerColors.textBlack,
-    fontWeight: "600",
-    marginBottom: 2,
-  },
-  timelineTime: {
+  errorDetail: {
+    marginTop: 8,
     fontSize: 13,
-    color: "#666",
+    color: "#EF4444",
+    textAlign: "center",
+    paddingHorizontal: 32,
   },
-  statusDivider: {
+
+  // Sections
+  section: { paddingHorizontal: 20 },
+  sectionTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 16,
+    letterSpacing: -0.2,
+  },
+
+  // Solid Separator for general sections
+  solidSeparator: {
     height: 1,
-    backgroundColor: "#F0F0F0",
+    backgroundColor: "#E5E7EB", // Solid light gray line
+    marginVertical: 24,
     marginHorizontal: 20,
   },
-  card: {
-    backgroundColor: "#fff",
-    marginTop: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 18,
-  },
-  sectionTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: BuyerColors.textBlack,
-    marginBottom: 14,
-  },
-  locationContainer: {
-    gap: 20,
-  },
-  locationSection: {
-    flex: 1,
-  },
-  verticalDashedLine: {
-    width: 1,
-    height: 40,
-    borderStyle: "dashed",
-    borderWidth: 1,
-    borderColor: "#D0D0D0",
-    alignSelf: "flex-start",
-    marginStart: 8,
-    marginVertical: 0,
-  },
-  productCard: {
+
+  // Status & Top Data
+  statusRow: {
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "flex-start",
-    gap: 12,
+    marginBottom: 16,
   },
-  productImageContainer: {
+  orderIdLabel: {
+    fontSize: 12,
+    color: "#6B7280",
+    fontWeight: "600",
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  orderIdValue: { fontSize: 20, fontWeight: "800", color: "#111827" },
+  badge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
+  badgeText: { fontSize: 12, fontWeight: "700", textTransform: "uppercase" },
+
+  dateGrid: { flexDirection: "row", gap: 32 },
+  dateItem: {},
+  dateLabel: {
+    fontSize: 12,
+    color: "#6B7280",
+    fontWeight: "500",
+    marginBottom: 4,
+  },
+  dateValue: { fontSize: 14, fontWeight: "700", color: "#374151" },
+
+  // Product Row
+  productRow: { flexDirection: "row", alignItems: "center" },
+  imageWrapper: {
     width: 80,
     height: 80,
-    borderRadius: 8,
+    borderRadius: 12,
     overflow: "hidden",
-    position: "relative",
+    backgroundColor: "#F9FAFB",
   },
-  productImage: {
-    width: "100%",
-    height: "100%",
-    resizeMode: "cover",
-  },
-  emptyImagePlaceholder: {
-    width: "100%",
-    height: "100%",
-    backgroundColor: "#F8F8F8",
-  },
-  imageCountBadge: {
+  productImage: { width: "100%", height: "100%", resizeMode: "cover" },
+  imageBadge: {
     position: "absolute",
     bottom: 4,
     right: 4,
-    backgroundColor: "rgba(0, 0, 0, 0.7)",
-    borderRadius: 10,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    borderRadius: 8,
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
-  imageCountText: {
-    color: "#fff",
-    fontSize: 11,
-    fontWeight: "600",
+  imageBadgeText: { color: "#fff", fontSize: 10, fontWeight: "bold" },
+  avatarFallback: {
+    width: "100%",
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
   },
-  productInfo: {
-    flex: 1,
-  },
+  avatarEmoji: { fontSize: 36 },
+
+  productInfo: { flex: 1, marginLeft: 16 },
   productName: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: BuyerColors.textBlack,
-    marginBottom: 8,
-  },
-  productDetail: {
-    fontSize: 14,
-    color: "#666",
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#111827",
     marginBottom: 4,
-    lineHeight: 20,
   },
-  addressCard: {
+  productVariant: { fontSize: 15, fontWeight: "500", color: "#6B7280" },
+  chipContainer: {
     flexDirection: "row",
-    alignItems: "flex-start",
-  },
-  addressInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  addressText: {
-    fontSize: 14,
-    color: BuyerColors.textBlack,
-    lineHeight: 22,
+    gap: 8,
     marginBottom: 8,
+    marginTop: 4,
   },
-  deliveryEstimate: {
+  chip: {
+    backgroundColor: "#F3F4F6",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  chipText: { fontSize: 12, fontWeight: "600", color: "#4B5563" },
+  harvestText: { fontSize: 13, color: "#6B7280" },
+
+  // Logistics
+  logisticsContainer: {},
+  logisticsRow: { flexDirection: "row" },
+  iconColumn: { alignItems: "center", width: 24, marginRight: 16 },
+  verticalDottedLine: {
+    flex: 1,
+    width: 2,
+    backgroundColor: "transparent",
+    borderStyle: "dashed",
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    marginVertical: 4,
+  },
+  addressBlock: {
+    flex: 1,
+    paddingBottom: 16,
+    justifyContent: "flex-start",
+    paddingTop: 2,
+  },
+  addressLabel: {
     fontSize: 13,
-    color: BuyerColors.primaryGreen,
+    color: "#6B7280",
     fontWeight: "600",
+    marginBottom: 4,
   },
-  fixedBottom: {
+  addressValue: {
+    fontSize: 15,
+    color: "#111827",
+    fontWeight: "500",
+    lineHeight: 22,
+  },
+
+  // --- Fixed Bottom Panel Styles ---
+  fixedBottomPanel: {
     backgroundColor: "#fff",
     borderTopWidth: 1,
-    borderTopColor: "#E0E0E0",
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: -2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  fixedBottomContent: {
+    borderTopColor: "#E5E7EB",
     paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 20,
+    paddingVertical: 20,
+    // Add shadow to emphasize it sits above the scroll view
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 10,
   },
-  priceCard: {
-    gap: 14,
+
+  receiptItems: { gap: 10, marginBottom: 16 },
+  receiptRow: { flexDirection: "row", justifyContent: "space-between" },
+  receiptLabel: { fontSize: 14, color: "#4B5563" },
+  receiptValue: { fontSize: 14, color: "#111827", fontWeight: "500" },
+
+  // The strictly requested dashed separator for the payment total
+  dashedReceiptSeparator: {
+    height: 1,
+    borderTopWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "#D1D5DB",
+    marginVertical: 6,
   },
-  priceRow: {
+
+  receiptTotalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  priceLabel: {
-    fontSize: 15,
-    color: "#333",
-  },
-  priceValue: {
-    fontSize: 15,
-    color: "#333",
-  },
-  priceDiscount: {
-    fontSize: 15,
-    color: "#d32f2f",
-    fontWeight: "500",
-  },
-  priceFree: {
-    fontSize: 15,
+  receiptTotalLabel: { fontSize: 16, fontWeight: "bold", color: "#111827" },
+  receiptTotalValue: {
+    fontSize: 20,
+    fontWeight: "900",
     color: BuyerColors.primaryGreen,
-    fontWeight: "600",
   },
-  priceDivider: {
-    height: 1,
-    backgroundColor: "#E0E0E0",
-    marginVertical: 4,
-  },
-  priceTotalLabel: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: BuyerColors.textBlack,
-  },
-  priceTotalValue: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: BuyerColors.textBlack,
-  },
-  viewBankDetailsLink: {
-    alignItems: "flex-start",
-    paddingVertical: 12,
-    marginTop: 12,
-  },
-  viewBankDetailsText: {
-    color: BuyerColors.primaryGreen,
-    fontSize: 15,
-    fontWeight: "600",
-    textDecorationLine: "underline",
-  },
-  primaryButton: {
-    backgroundColor: "#000",
-    borderRadius: 10,
-    paddingVertical: 16,
+
+  actionContainer: { flexDirection: "row", gap: 12 },
+  secondaryBtn: {
+    flex: 1,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 16,
+    backgroundColor: "#F3F4F6",
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 6,
   },
-  primaryButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "700",
-    letterSpacing: 0.3,
+  secondaryBtnText: { fontSize: 14, fontWeight: "700", color: "#4B5563" },
+  primaryBtn: {
+    flex: 2,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: BuyerColors.primaryGreen,
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
   },
-  bottomPadding: {
-    height: 16,
-  },
-  modalContainer: {
+  primaryBtnText: { fontSize: 15, fontWeight: "bold", color: "#ffffff" },
+
+  // --- Modals (Unchanged) ---
+  modalBg: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.95)",
+    backgroundColor: "rgba(0,0,0,0.95)",
     justifyContent: "center",
   },
-  modalCloseButton: {
+  modalClose: {
     position: "absolute",
     top: 50,
     right: 20,
     zIndex: 10,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.2)",
     justifyContent: "center",
     alignItems: "center",
   },
-  modalCloseText: {
-    color: "#fff",
-    fontSize: 24,
-    fontWeight: "bold",
-  },
-  modalImageContainer: {
+  fullImageContainer: {
     width: Dimensions.get("window").width,
     height: Dimensions.get("window").height,
     justifyContent: "center",
     alignItems: "center",
   },
-  modalImage: {
-    width: "100%",
-    height: "100%",
-  },
-  modalImageCounter: {
+  fullImage: { width: "100%", height: "100%" },
+  imageCounter: {
     position: "absolute",
     bottom: 40,
     alignSelf: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.6)",
+    backgroundColor: "rgba(0,0,0,0.6)",
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
   },
-  modalImageCounterText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  bankModalOverlay: {
+  imageCounterText: { color: "#fff", fontSize: 14, fontWeight: "bold" },
+
+  bottomSheetBg: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "flex-end",
   },
-  bankModalWrapper: {
-    flex: 1,
-    justifyContent: "flex-end",
-  },
-  bankModalContainer: {
+  bottomSheetCard: {
     backgroundColor: "#fff",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: "95%",
-    paddingBottom: 20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: "80%",
   },
-  bankModalHeader: {
+  sheetHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 16,
+    padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: "#F0F0F0",
+    borderBottomColor: "#F3F4F6",
   },
-  bankModalTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: BuyerColors.textBlack,
-  },
-  bankModalClose: {
+  sheetTitle: { fontSize: 18, fontWeight: "bold", color: "#111827" },
+  sheetClose: {
     width: 32,
     height: 32,
+    backgroundColor: "#F3F4F6",
     borderRadius: 16,
-    backgroundColor: "#F5F5F5",
     justifyContent: "center",
     alignItems: "center",
   },
-  bankModalCloseText: {
-    fontSize: 18,
-    color: "#666",
-    fontWeight: "600",
-  },
-  bankModalContent: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-  },
-  bankModalSubtitle: {
-    fontSize: 14,
-    color: "#666",
+  sheetContent: { padding: 20 },
+
+  bankWarning: {
+    flexDirection: "row",
+    backgroundColor: "#FEF9C3",
+    padding: 12,
+    borderRadius: 8,
     marginBottom: 20,
-    lineHeight: 20,
+    alignItems: "center",
+    gap: 8,
   },
+  bankWarningText: { flex: 1, fontSize: 13, color: "#854D0E" },
+
   bankCard: {
-    backgroundColor: "#F8F8F8",
+    backgroundColor: "#F9FAFB",
     borderRadius: 12,
     padding: 16,
-    marginBottom: 16,
+    marginBottom: 12,
     borderWidth: 1,
-    borderColor: "#E0E0E0",
+    borderColor: "#E5E7EB",
   },
   bankName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "700",
-    color: BuyerColors.textBlack,
+    color: "#111827",
     marginBottom: 12,
-    paddingBottom: 8,
     borderBottomWidth: 1,
-    borderBottomColor: "#D0D0D0",
+    borderBottomColor: "#E5E7EB",
+    paddingBottom: 8,
   },
-  bankDetailRow: {
+  bankRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 8,
+    marginBottom: 6,
   },
-  bankDetailLabel: {
-    fontSize: 13,
-    color: "#666",
-    fontWeight: "500",
-  },
-  bankDetailValue: {
-    fontSize: 13,
-    color: BuyerColors.textBlack,
-    fontWeight: "600",
-  },
-  bankModalNote: {
-    backgroundColor: "#FFF9E6",
-    borderRadius: 8,
-    padding: 16,
-    marginTop: 8,
-    marginBottom: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: "#FFB800",
-  },
-  bankModalNoteTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#333",
-    marginBottom: 8,
-  },
-  bankModalNoteText: {
-    fontSize: 13,
-    color: "#666",
-    marginBottom: 4,
-    lineHeight: 20,
-  },
-  bankModalButton: {
-    backgroundColor: "#000",
-    marginHorizontal: 20,
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  bankModalButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "700",
-  },
+  bankLabel: { fontSize: 13, color: "#6B7280" },
+  bankVal: { fontSize: 13, color: "#111827", fontWeight: "600" },
 });

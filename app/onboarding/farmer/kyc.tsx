@@ -81,10 +81,11 @@ export default function KycStep() {
       }
       const userId = user.id as string;
 
-      const locJson = (await AsyncStorage.getItem("locationInfo")) || "{}";
-      const farmJson = (await AsyncStorage.getItem("farmerInfo")) || "{}";
-      const locInfo = JSON.parse(locJson);
-      const farmInfo = JSON.parse(farmJson);
+      // farmerData comes from OnboardingContext (saved under "onboarding_farmer")
+      // and contains lat/lng/location from the location step plus
+      // farm_size/primary_crops from the farm-info step.
+      const locInfo = farmerData;
+      const farmInfo = farmerData;
 
       // 2. upload all images sequentially so failure is easier to trace
       let nicFrontUrl: string,
@@ -131,7 +132,7 @@ export default function KycStep() {
       const payload = {
         lat: locInfo.lat,
         lng: locInfo.lng,
-        location: locInfo.address,
+        location: locInfo.location,
         bank_details: bankDetails,
         farm_size: farmInfo.farm_size,
         primary_crops: farmInfo.primary_crops,

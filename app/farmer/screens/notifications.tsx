@@ -78,13 +78,6 @@ export default function NotificationsScreen() {
         : `/api/farmer/notifications`;
       const data = await api.get(path);
 
-      if (!res.ok) {
-        console.log("[NOTIFICATIONS] Error:", data.message);
-        setNotifications([]);
-        setUnreadCount(0);
-        return;
-      }
-
       const mapped: NotificationItem[] = (data.notifications || data || []).map(
         (n: any) => {
           console.log("[NOTIFICATIONS] Raw notification:", {

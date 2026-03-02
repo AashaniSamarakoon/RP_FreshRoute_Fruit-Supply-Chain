@@ -1,10 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { useRouter } from "expo-router";
+import * as Location from "expo-location";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   Platform,
   SafeAreaView,
@@ -119,6 +120,15 @@ export const options = {
 
 export default function AddStock() {
   const router = useRouter();
+  const {
+    location: paramLocation,
+    latitude: paramLatitude,
+    longitude: paramLongitude,
+  } = useLocalSearchParams<{
+    location?: string;
+    latitude?: string;
+    longitude?: string;
+  }>();
   const [showModal, setShowModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [modalData, setModalData] = useState({
@@ -137,7 +147,92 @@ export default function AddStock() {
     setDatePickerVisible,
     handleSubmit: originalHandleSubmit,
     handleDateChange,
+    // expose method to rehydrate - we can call internal effect indirectly by
+    // setting state via updateField after reading storage
   } = useOrderForm();
+
+  // when screen gains focus, re-read persisted form and apply
+  useFocusEffect(
+    React.useCallback(() => {
+      const restore = async () => {
+        try {
+          const saved = await AsyncStorage.getItem("order_form");
+          console.log("[PlaceOrder] focusEffect fired, saved=", saved);
+          if (saved) {
+            const obj = JSON.parse(saved);
+            console.log("[PlaceOrder] focus restore obj", obj);
+            Object.entries(obj).forEach(([key, value]) => {
+              console.log("[PlaceOrder] restoring field", key, value);
+              updateField(key as any, value);
+            });
+          }
+        } catch (e) {
+          console.warn("[PlaceOrder] focus restore failed", e);
+        }
+      };
+      restore();
+    }, []),
+  );
+
+  // apply returned location params after coming back from picker
+  // debug incoming params and update state
+  useEffect(() => {
+    console.log("[PlaceOrder] params", {
+      paramLocation,
+      paramLatitude,
+      paramLongitude,
+    });
+    console.log("[PlaceOrder] before update formData", formData);
+
+    if (paramLocation && paramLocation !== formData.deliveryLocation) {
+      console.log("[PlaceOrder] updating deliveryLocation to", paramLocation);
+      updateField("deliveryLocation", String(paramLocation));
+    }
+    if (paramLatitude) {
+      const lat = parseFloat(String(paramLatitude));
+      if (!isNaN(lat) && lat !== formData.latitude) {
+        console.log("[PlaceOrder] updating latitude to", lat);
+        updateField("latitude", lat);
+      }
+    }
+    if (paramLongitude) {
+      const lng = parseFloat(String(paramLongitude));
+      if (!isNaN(lng) && lng !== formData.longitude) {
+        console.log("[PlaceOrder] updating longitude to", lng);
+        updateField("longitude", lng);
+      }
+    }
+
+    console.log("[PlaceOrder] after update formData", formData);
+    // if latitude/longitude changed, compute human-readable address
+    if (paramLatitude || paramLongitude) {
+      const lat = parseFloat(String(paramLatitude || formData.latitude));
+      const lng = parseFloat(String(paramLongitude || formData.longitude));
+      if (!isNaN(lat) && !isNaN(lng)) {
+        (async () => {
+          try {
+            const rev = await Location.reverseGeocodeAsync({
+              latitude: lat,
+              longitude: lng,
+            });
+            if (rev && rev.length > 0) {
+              const { name, street, district, city } = rev[0];
+              const addr =
+                `${name || ""} ${street || ""}, ${city || district || ""}`
+                  .replace(/^[ ,]+/, "")
+                  .trim();
+              if (addr && addr !== formData.deliveryLocation) {
+                console.log("[PlaceOrder] reverse geocoded address", addr);
+                updateField("deliveryLocation", addr);
+              }
+            }
+          } catch (e) {
+            console.warn("[PlaceOrder] reverse geocode failed", e);
+          }
+        })();
+      }
+    }
+  }, [paramLocation, paramLatitude, paramLongitude]);
 
   const handleNavigateToHome = () => {
     setShowModal(false);
@@ -155,6 +250,9 @@ export default function AddStock() {
       const result = await originalHandleSubmit();
 
       if (result?.success) {
+        // remove saved data after successful submit
+        AsyncStorage.removeItem("order_form");
+
         // First navigate to home
         if (router.canGoBack()) {
           router.back();
@@ -347,9 +445,21 @@ export default function AddStock() {
                     {formData.deliveryLocation}
                   </Text>
                   <TouchableOpacity
-                    onPress={() =>
-                      Alert.alert("Change Location", "Feature coming soon")
-                    }
+                    onPress={() => {
+                      console.log("[PlaceOrder] navigating to change with", {
+                        lat: formData.latitude,
+                        lng: formData.longitude,
+                        location: formData.deliveryLocation,
+                      });
+                      router.push({
+                        pathname: "/buyer/change-location",
+                        params: {
+                          latitude: String(formData.latitude),
+                          longitude: String(formData.longitude),
+                          location: formData.deliveryLocation,
+                        },
+                      });
+                    }}
                   >
                     <Text style={styles.changeText}>Change</Text>
                   </TouchableOpacity>

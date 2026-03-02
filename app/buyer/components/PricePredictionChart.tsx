@@ -1,11 +1,12 @@
 import api from "@/services/api";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Dimensions,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
+  ActivityIndicator,
 } from "react-native";
 import Svg, {
   Defs,
@@ -29,25 +30,18 @@ interface PricePredictionChartProps {
   title?: string;
 }
 
-// helper to convert a date string (YYYY‑MM‑DD) to weekday short name
+// helper to convert a date string (YYYY-MM-DD) to weekday short name
 const weekdayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 // fetch forecast from backend; returns prediction data for the next 7 days
 async function fetchPrediction(fruit: string): Promise<PredictionData[]> {
-  console.log("[PricePredictionChart] fetchPrediction called, fruit=>", fruit);
   if (!fruit) return [];
-  // endpoint now requires `7day` segment (unified across app)
   const path = `/api/forecast/7day?fruit=${encodeURIComponent(fruit)}`;
-  console.log("[PricePredictionChart] built path", path);
   try {
-    console.log("[PricePredictionChart] fetching", path);
     const resp = await api.get(path);
-    console.log("[PricePredictionChart] forecast response", resp);
-    // backend now returns { days: [ { day, value, ... } ] }
     const arr = resp.days || resp.forecast || [];
     return arr.slice(0, 7).map((item: any) => {
       let dayName = item.day;
-      // some responses give full weekday, convert to short
       if (dayName && dayName.length > 3) {
         dayName = dayName.slice(0, 3);
       }
@@ -71,14 +65,17 @@ const fruitOptions = [
 export default function PricePredictionChart({}: PricePredictionChartProps): React.JSX.Element {
   const [selectedFruit, setSelectedFruit] = useState<string>("mango");
   const [currentData, setCurrentData] = useState<PredictionData[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
 
   // fetch predictions whenever fruit filter changes
-  React.useEffect(() => {
-    console.log("[PricePredictionChart] selectedFruit changed", selectedFruit);
+  useEffect(() => {
     let cancelled = false;
+    setLoading(true);
     fetchPrediction(selectedFruit).then((data) => {
-      console.log("[PricePredictionChart] got data length", data.length);
-      if (!cancelled) setCurrentData(data);
+      if (!cancelled) {
+        setCurrentData(data);
+        setLoading(false);
+      }
     });
     return () => {
       cancelled = true;
@@ -86,7 +83,8 @@ export default function PricePredictionChart({}: PricePredictionChartProps): Rea
   }, [selectedFruit]);
 
   const chartWidth = screenWidth - 60;
-  const chartHeight = 180;
+  // Increased height slightly to accommodate 7 rows without crowding
+  const chartHeight = 220; 
   const paddingLeft = 40;
   const paddingRight = 20;
   const paddingTop = 20;
@@ -95,18 +93,22 @@ export default function PricePredictionChart({}: PricePredictionChartProps): Rea
   const graphWidth = chartWidth - paddingLeft - paddingRight;
   const graphHeight = chartHeight - paddingTop - paddingBottom;
 
-  const prices = currentData.map((d) => d.predictedPrice);
+  // Safety check for empty data
+  const prices = currentData.length > 0 ? currentData.map((d) => d.predictedPrice) : [0, 100];
   const minPrice = Math.floor(Math.min(...prices) * 10) / 10 - 0.1;
   const maxPrice = Math.ceil(Math.max(...prices) * 10) / 10 + 0.1;
-  const priceRange = maxPrice - minPrice;
+  const priceRange = maxPrice - minPrice || 1; // Fallback to 1 if range is 0
 
-  const getX = (index: number) =>
-    paddingLeft + (index / (currentData.length - 1)) * graphWidth;
+  const getX = (index: number) => {
+    const dataLength = Math.max(currentData.length - 1, 1);
+    return paddingLeft + (index / dataLength) * graphWidth;
+  };
+  
   const getY = (price: number) =>
     paddingTop + graphHeight - ((price - minPrice) / priceRange) * graphHeight;
 
-  const createPath = (prices: number[]) => {
-    return prices
+  const createPath = (pricesArr: number[]) => {
+    return pricesArr
       .map((price, index) => {
         const x = getX(index);
         const y = getY(price);
@@ -117,7 +119,12 @@ export default function PricePredictionChart({}: PricePredictionChartProps): Rea
 
   const path = createPath(prices);
 
-  const yLabels = [minPrice, (minPrice + maxPrice) / 2, maxPrice];
+  // Generate exactly 7 evenly spaced Y-axis labels
+  const numRows = 7;
+  const yLabels = Array.from({ length: numRows }).map((_, i) => {
+    const val = minPrice + (priceRange * i) / (numRows - 1);
+    return Number(val.toFixed(1)); // Format nicely to 1 decimal place
+  });
 
   return (
     <View style={styles.container}>
@@ -142,97 +149,106 @@ export default function PricePredictionChart({}: PricePredictionChartProps): Rea
           </TouchableOpacity>
         ))}
       </View>
-      <View style={styles.header}>
-        <Text style={styles.headerText}>7‑Day Predicted Price</Text>
-      </View>
-      <Svg width={chartWidth} height={chartHeight}>
-        <Defs>
-          <LinearGradient id="predGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-            <Stop
-              offset="0%"
-              stopColor={BuyerColors.primaryGreen}
-              stopOpacity="0.3"
-            />
-            <Stop
-              offset="100%"
-              stopColor={BuyerColors.primaryGreen}
-              stopOpacity="0.05"
-            />
-          </LinearGradient>
-        </Defs>
-        {/* horizontal grid lines */}
-        {yLabels.map((lbl, i) => {
-          const y = getY(lbl);
-          return (
-            <Line
-              key={i}
-              x1={paddingLeft}
-              y1={y}
-              x2={chartWidth - paddingRight}
-              y2={y}
-              stroke="#E5E7EB" // light grey
-              strokeWidth={1}
-            />
-          );
-        })}
-        {/* vertical divider (y-axis) */}
-        <Line
-          x1={paddingLeft}
-          y1={paddingTop}
-          x2={paddingLeft}
-          y2={chartHeight - paddingBottom}
-          stroke="#6B7280"
-          strokeWidth={1}
-        />
-        {/* optional vertical tick lines for each day */}
-        {currentData.map((_, idx) => {
-          const x = getX(idx);
-          return (
-            <Line
-              key={`vx-${idx}`}
-              x1={x}
-              y1={paddingTop}
-              x2={x}
-              y2={chartHeight - paddingBottom}
-              stroke="#F3F4F6"
-              strokeWidth={0.5}
-            />
-          );
-        })}
-        <Path
-          d={path}
-          stroke={BuyerColors.primaryGreen}
-          strokeWidth={2}
-          fill="none"
-        />
-        {/* y-axis labels inside SVG */}
-        {yLabels.map((lbl, idx) => (
-          <SvgText
-            key={`y-label-${idx}`}
-            x={paddingLeft - 8}
-            y={getY(lbl) + 4}
-            fontSize={10}
-            fill={BuyerColors.textGray}
-            textAnchor="end"
-          >
-            <TSpan>{lbl}</TSpan>
-          </SvgText>
-        ))}
-        {/* x-axis labels inside SVG */}
-        {currentData.map((d, idx) => (
-          <SvgText
-            key={`x-label-${idx}`}
-            x={getX(idx)}
-            y={chartHeight - 8}
-            fontSize={10}
-            fill={BuyerColors.textGray}
-            textAnchor="middle"
-          >
-            <TSpan>{d.day}</TSpan>
-          </SvgText>
-        ))}
-      </Svg>
-      {/* removed absolute-positioned label views */}
+
+      {loading ? (
+        <View style={{ height: chartHeight, justifyContent: "center", alignItems: "center" }}>
+          <ActivityIndicator size="small" color={BuyerColors.primaryGreen} />
+        </View>
+      ) : (
+        <Svg width={chartWidth} height={chartHeight}>
+          <Defs>
+            <LinearGradient id="predGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+              <Stop
+                offset="0%"
+                stopColor={BuyerColors.primaryGreen}
+                stopOpacity="0.3"
+              />
+              <Stop
+                offset="100%"
+                stopColor={BuyerColors.primaryGreen}
+                stopOpacity="0.05"
+              />
+            </LinearGradient>
+          </Defs>
+          
+          {/* horizontal grid lines */}
+          {yLabels.map((lbl, i) => {
+            const y = getY(lbl);
+            return (
+              <Line
+                key={`hline-${i}`}
+                x1={paddingLeft}
+                y1={y}
+                x2={chartWidth - paddingRight}
+                y2={y}
+                stroke="#E5E7EB"
+                strokeWidth={1}
+              />
+            );
+          })}
+          
+          {/* vertical divider (y-axis) */}
+          <Line
+            x1={paddingLeft}
+            y1={paddingTop}
+            x2={paddingLeft}
+            y2={chartHeight - paddingBottom}
+            stroke="#6B7280"
+            strokeWidth={1}
+          />
+          
+          {/* vertical tick lines for each day */}
+          {currentData.map((_, idx) => {
+            const x = getX(idx);
+            return (
+              <Line
+                key={`vx-${idx}`}
+                x1={x}
+                y1={paddingTop}
+                x2={x}
+                y2={chartHeight - paddingBottom}
+                stroke="#F3F4F6"
+                strokeWidth={0.5}
+              />
+            );
+          })}
+          
+          <Path
+            d={path}
+            stroke={BuyerColors.primaryGreen}
+            strokeWidth={2}
+            fill="none"
+          />
+          
+          {/* y-axis labels inside SVG */}
+          {yLabels.map((lbl, idx) => (
+            <SvgText
+              key={`y-label-${idx}`}
+              x={paddingLeft - 8}
+              y={getY(lbl) + 4}
+              fontSize={10}
+              fill={BuyerColors.textGray}
+              textAnchor="end"
+            >
+              <TSpan>{lbl}</TSpan>
+            </SvgText>
+          ))}
+          
+          {/* x-axis labels inside SVG */}
+          {currentData.map((d, idx) => (
+            <SvgText
+              key={`x-label-${idx}`}
+              x={getX(idx)}
+              y={chartHeight - 8}
+              fontSize={10}
+              fill={BuyerColors.textGray}
+              textAnchor="middle"
+            >
+              <TSpan>{d.day}</TSpan>
+            </SvgText>
+          ))}
+        </Svg>
+      )}
     </View>
   );
 }
@@ -274,21 +290,5 @@ const styles = StyleSheet.create({
   filterTextActive: {
     color: BuyerColors.primaryGreen,
     fontWeight: "700",
-  },
-  header: {
-    marginBottom: 8,
-  },
-  headerText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: BuyerColors.textBlack,
-  },
-  yLabelText: {
-    fontSize: 10,
-    color: BuyerColors.textGray,
-  },
-  xLabelText: {
-    fontSize: 10,
-    color: BuyerColors.textGray,
   },
 });

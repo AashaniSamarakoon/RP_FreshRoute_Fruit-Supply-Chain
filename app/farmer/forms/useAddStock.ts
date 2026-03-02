@@ -234,14 +234,36 @@ export const useAddStock = () => {
         } as any);
       });
 
+      // quick sanity check: make sure backend recognises us as a farmer
+      try {
+        // orders/stats endpoint may not exist on development servers; use proposals which
+        // is exercised by the farmer orders screen and is a safer check.
+        await api.get(`/api/farmer/proposals`);
+      } catch (checkErr: any) {
+        console.warn("[addStock] farmer check failed", checkErr);
+        Alert.alert(
+          "Cannot submit harvest",
+          "Your farmer profile could not be found on the server. Please complete onboarding or contact support.",
+        );
+        throw checkErr;
+      }
+
+      console.log("[addStock] submitting form data", {
+        fruit: state.formData.fruit,
+        category: state.formData.category,
+        quantity: state.formData.quantity,
+        estimatedDate: state.formData.estimatedDate,
+        imagesCount: state.formData.images.length,
+      });
       const body = await api.postForm(
         `/api/farmer/add-predict-stock`,
         formData,
       );
+      console.log("[addStock] server response", body);
       // api helper throws on non-ok responses
       // Success - let the caller handle the success feedback
     } catch (err) {
-      console.error(err);
+      console.error("[addStock] submit failed", err);
       throw err;
     }
   };

@@ -44,7 +44,7 @@ export const handleApiError = (error: any): string => {
       return message || "Invalid data provided.";
     }
 
-    if (status >= 500) {
+    if (status && status >= 500) {
       return "Server error occurred. Please try again later.";
     }
 

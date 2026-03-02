@@ -71,6 +71,7 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#f0f0f0",
+    backgroundColor: "#fff",
   },
   headerTitle: { fontSize: 18, fontWeight: "600", color: "#000" },
   iconBtn: {

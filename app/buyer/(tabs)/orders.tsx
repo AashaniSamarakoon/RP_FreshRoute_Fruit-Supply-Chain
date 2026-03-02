@@ -1,4 +1,5 @@
 import api from "@/services/api";
+import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
@@ -13,8 +14,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "../../../components/Header";
 import { BuyerColors } from "../../../constants/theme";
 
-// supabase queries removed; backend will handle fetching orders
-
 interface PlacedOrder {
   id: string;
   buyer_id: string;
@@ -28,6 +27,7 @@ interface PlacedOrder {
   longitude: number | null;
   created_at: string;
   totalPrice: string | null;
+  unitPrice: number | null;
   updated_at: string;
   status: string;
   payment_status: string;
@@ -39,52 +39,83 @@ interface PlacedOrder {
   delivery_notes: string | null;
 }
 
+// 🎨 NEW: Visual Helper for Fruits
+const getFruitMeta = (fruit: string) => {
+  const f = fruit.toLowerCase();
+  if (f.includes("banana"))
+    return { emoji: "🍌", bg: "#FEF9C3", text: "#CA8A04" };
+  if (f.includes("mango"))
+    return { emoji: "🥭", bg: "#FFEDD5", text: "#EA580C" };
+  if (f.includes("pineapple"))
+    return { emoji: "🍍", bg: "#FEF08A", text: "#A16207" };
+  if (f.includes("papaya"))
+    return { emoji: "🥥", bg: "#FFEDD5", text: "#EA580C" };
+  return { emoji: "📦", bg: "#F3F4F6", text: "#6B7280" };
+};
+
+const getStatusStyles = (status: string) => {
+  switch (status) {
+    case "AWAITING_PAYMENT":
+    case "UNPAID":
+      return { bg: "#FEF2F2", text: "#EF4444", label: "Awaiting Payment" };
+    case "PENDING_BUYER":
+      return { bg: "#F0FDF4", text: "#16A34A", label: "Review Proposals" };
+    case "OPEN":
+      return { bg: "#FFF7ED", text: "#F97316", label: "Seeking Farmers" };
+    case "PENDING_FARMER":
+      return { bg: "#EFF6FF", text: "#3B82F6", label: "Awaiting Farmer" };
+    case "MATCHED":
+      return { bg: "#EEF2FF", text: "#6366F1", label: "Matched" };
+    case "PAID_PENDING_DELIVERY":
+    case "IN_TRANSIT":
+      return { bg: "#EFF6FF", text: "#3B82F6", label: "In Transit" };
+    case "DELIVERED":
+    case "COMPLETED":
+      return { bg: "#F0FDF4", text: "#22C55E", label: "Completed" };
+    case "CANCELLED":
+      return { bg: "#F3F4F6", text: "#6B7280", label: "Cancelled" };
+    default:
+      return {
+        bg: "#F3F4F6",
+        text: "#6B7280",
+        label: status.replace(/_/g, " "),
+      };
+  }
+};
+
 export default function BuyerOrders() {
   const router = useRouter();
   const [orders, setOrders] = useState<PlacedOrder[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Categorize orders into sections
   const categorizeOrders = (orders: PlacedOrder[]) => {
-    const awaitingPayment = orders.filter(
-      (order) => order.status === "AWAITING_PAYMENT",
+    // Action Required: needs buyer to DO something (pay, or review/approve proposals)
+    const actionRequired = orders.filter(
+      (o) => o.status === "AWAITING_PAYMENT" || o.status === "PENDING_BUYER",
     );
-
-    const active = orders.filter(
-      (order) =>
-        order.status === "OPEN" ||
-        order.status === "MATCHED" ||
-        order.status === "PENDING_BUYER" ||
-        order.status === "PENDING_FARMER" ||
-        order.status === "PAID_PENDING_DELIVERY" ||
-        order.status === "IN_TRANSIT",
+    const active = orders.filter((o) =>
+      [
+        "OPEN",
+        "MATCHED",
+        "PENDING_FARMER",
+        "PAID_PENDING_DELIVERY",
+        "IN_TRANSIT",
+      ].includes(o.status),
     );
-
-    const past = orders.filter(
-      (order) =>
-        order.status === "DELIVERED" ||
-        order.status === "COMPLETED" ||
-        order.status === "CANCELLED",
+    const past = orders.filter((o) =>
+      ["DELIVERED", "COMPLETED", "CANCELLED"].includes(o.status),
     );
 
     const sections = [];
-
-    if (awaitingPayment.length > 0) {
-      sections.push({ title: "Awaiting Payments", data: awaitingPayment });
-    }
-
-    if (active.length > 0) {
+    if (actionRequired.length > 0)
+      sections.push({ title: "Action Required", data: actionRequired });
+    if (active.length > 0)
       sections.push({ title: "Active Orders", data: active });
-    }
-
-    if (past.length > 0) {
-      sections.push({ title: "Past Orders", data: past });
-    }
+    if (past.length > 0) sections.push({ title: "Past Orders", data: past });
 
     return sections;
   };
 
-  // Load orders from Supabase
   useFocusEffect(
     React.useCallback(() => {
       fetchOrders();
@@ -94,19 +125,8 @@ export default function BuyerOrders() {
   const fetchOrders = async () => {
     try {
       setLoading(true);
-
-      // hitting backend route that handles buyer lookup via token
-      let body: any;
-      try {
-        body = await api.get(`/api/buyer/place-order`);
-      } catch (err) {
-        setOrders([]);
-        return;
-      }
-      console.log("orders response body", body);
-      // backend may return totalPrice or total_price, normalize and compute if missing
+      const body: any = await api.get(`/api/buyer/place-order`);
       const ordersList: PlacedOrder[] = (body.orders || []).map((o: any) => {
-        // simply propagate backend-provided totalPrice (or total_price) without calculation
         const totalRaw = o.totalPrice ?? o.total_price ?? null;
         return {
           ...o,
@@ -115,7 +135,6 @@ export default function BuyerOrders() {
       });
       setOrders(ordersList);
     } catch (error) {
-      // Silent error handling
       setOrders([]);
     } finally {
       setLoading(false);
@@ -123,6 +142,7 @@ export default function BuyerOrders() {
   };
 
   const formatDate = (dateString: string) => {
+    if (!dateString) return "N/A";
     const date = new Date(dateString);
     return date.toLocaleDateString("en-US", {
       month: "short",
@@ -131,50 +151,142 @@ export default function BuyerOrders() {
     });
   };
 
+  const formatCurrency = (amount: string | null) => {
+    if (!amount) return "N/A";
+    return Number(amount).toLocaleString("en-US");
+  };
+
   const renderSectionHeader = ({ section }: { section: { title: string } }) => (
     <View style={styles.sectionHeader}>
       <Text style={styles.sectionTitle}>{section.title}</Text>
     </View>
   );
 
-  const renderOrderCard = ({ item }: { item: PlacedOrder }) => (
-    <TouchableOpacity
-      style={styles.orderCard}
-      activeOpacity={0.7}
-      onPress={() =>
-        router.push({
-          pathname: "/buyer/screens/OrderDetailScreen" as any,
-          params: { orderId: item.id },
-        })
-      }
-    >
-      <View style={styles.orderHeader}>
-        <View style={styles.orderInfo}>
-          <Text style={styles.productName}>
-            {item.fruit_type} - {item.variant}
-          </Text>
-          <Text style={styles.orderId}>Order #{item.id.substring(0, 8)}</Text>
-          <Text style={styles.orderDate}>
-            Placed: {formatDate(item.created_at)}
-          </Text>
+  // Orders in these statuses are still in the matching/proposal phase.
+  // Tapping them should open proposals, not the order detail/payment screen.
+  const MATCHING_PHASE_STATUSES = ["OPEN", "PENDING_BUYER", "PENDING_FARMER"];
+
+  const handleOrderPress = (item: PlacedOrder) => {
+    if (MATCHING_PHASE_STATUSES.includes(item.status)) {
+      // Go to MatchedStocks with the specific orderId so it fetches proposals for this order
+      router.push({
+        pathname: "/buyer/screens/MatchedStocks" as any,
+        params: { orderId: item.id },
+      });
+    } else {
+      // Post-acceptance: show order summary, payment, tracking
+      router.push({
+        pathname: "/buyer/screens/OrderDetailScreen" as any,
+        params: { orderId: item.id },
+      });
+    }
+  };
+
+  const renderOrderCard = ({ item }: { item: PlacedOrder }) => {
+    const statusStyle = getStatusStyles(item.status);
+    const fruitMeta = getFruitMeta(item.fruit_type);
+    const hasPendingProposals = item.status === "PENDING_BUYER";
+
+    return (
+      <TouchableOpacity
+        style={styles.orderCard}
+        activeOpacity={0.8}
+        onPress={() => handleOrderPress(item)}
+      >
+        {/* Top Section: Fruit Icon & Main Details */}
+        <View style={styles.cardTop}>
+          {/* Vibrant Fruit Avatar */}
+          <View style={[styles.fruitAvatar, { backgroundColor: fruitMeta.bg }]}>
+            <Text style={styles.fruitEmoji}>{fruitMeta.emoji}</Text>
+          </View>
+
+          <View style={styles.cardHeaderInfo}>
+            <View style={styles.titleRow}>
+              <Text style={styles.productName}>{item.fruit_type}</Text>
+              <View style={[styles.badge, { backgroundColor: statusStyle.bg }]}>
+                <Text style={[styles.badgeText, { color: statusStyle.text }]}>
+                  {statusStyle.label}
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.variantText}>
+              {item.variant} • Order #{item.id.substring(0, 8).toUpperCase()}
+            </Text>
+          </View>
         </View>
-        <View style={styles.priceContainer}>
-          <Text style={styles.priceLabel}>Total</Text>
-          <Text style={styles.priceValue}>
-            {item.totalPrice ? `Rs. ${item.totalPrice}` : "N/A"}
-          </Text>
+
+        {/* Middle Section: Chips */}
+        <View style={styles.chipRow}>
+          <View style={styles.chip}>
+            <Ionicons name="scale" size={14} color="#6B7280" />
+            <Text style={styles.chipText}>{item.quantity} kg</Text>
+          </View>
+          <View style={styles.chip}>
+            <Ionicons name="star" size={14} color="#F59E0B" />
+            <Text style={styles.chipText}>Grade {item.grade}</Text>
+          </View>
+          {item.payment_status === "PAID" && (
+            <View
+              style={[
+                styles.chip,
+                {
+                  backgroundColor: "#F0FDF4",
+                  borderColor: "#BBF7D0",
+                  borderWidth: 1,
+                },
+              ]}
+            >
+              <Ionicons name="checkmark-circle" size={14} color="#16A34A" />
+              <Text style={[styles.chipText, { color: "#16A34A" }]}>Paid</Text>
+            </View>
+          )}
         </View>
-      </View>
-    </TouchableOpacity>
-  );
+
+        {/* Modern Dashed Divider */}
+        <View style={styles.dashedDivider} />
+
+        {/* Bottom Section: Dates and Price */}
+        <View style={styles.cardFooter}>
+          <View style={styles.footerColumn}>
+            <Text style={styles.footerLabel}>Required By</Text>
+            <View style={styles.dateRow}>
+              <Ionicons name="calendar-outline" size={16} color="#6B7280" />
+              <Text style={styles.footerValue}>
+                {formatDate(item.required_date)}
+              </Text>
+            </View>
+          </View>
+
+          <View style={[styles.footerColumn, { alignItems: "flex-end" }]}>
+            <Text style={styles.footerLabel}>Total Amount</Text>
+            <Text style={styles.priceValue}>
+              Rs. {formatCurrency(item.totalPrice)}
+            </Text>
+          </View>
+        </View>
+
+        {/* Action banner for orders waiting for buyer to review proposals */}
+        {hasPendingProposals && (
+          <View style={styles.proposalBanner}>
+            <View style={styles.proposalBannerDot} />
+            <Text style={styles.proposalBannerText}>
+              Farmer proposals waiting — tap to review
+            </Text>
+            <Ionicons name="chevron-forward" size={14} color="#16A34A" />
+          </View>
+        )}
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       <Header
-        title="Orders"
+        title="My Orders"
         showNotification={true}
         onNotificationPress={() => {}}
       />
+
       {loading ? (
         <View style={styles.emptyState}>
           <ActivityIndicator size="large" color={BuyerColors.primaryGreen} />
@@ -182,9 +294,15 @@ export default function BuyerOrders() {
         </View>
       ) : orders.length === 0 ? (
         <View style={styles.emptyState}>
-          <Text style={styles.title}>My Orders</Text>
-          <Text style={styles.subtitle}>
-            Your order history will appear here.
+          <Ionicons
+            name="receipt-outline"
+            size={64}
+            color="#E5E7EB"
+            style={{ marginBottom: 16 }}
+          />
+          <Text style={styles.emptyTitle}>No Orders Yet</Text>
+          <Text style={styles.emptySubtitle}>
+            When you place an order for wholesale fruits, it will appear here.
           </Text>
         </View>
       ) : (
@@ -203,108 +321,159 @@ export default function BuyerOrders() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
+  container: { flex: 1, backgroundColor: BuyerColors.background }, // Slightly darker background to make white cards pop
 
   emptyState: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: 20,
+    padding: 32,
   },
-
   loadingText: {
     marginTop: 12,
-    fontSize: 16,
-    color: "#666",
+    fontSize: 15,
+    color: "#6B7280",
+    fontWeight: "500",
   },
-
-  listContent: {
-    padding: 16,
-    paddingBottom: 20,
-  },
-
-  sectionHeader: {
-    backgroundColor: "#fff",
-    paddingVertical: 12,
-    paddingHorizontal: 4,
-    marginTop: 8,
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#111827",
     marginBottom: 8,
   },
+  emptySubtitle: {
+    fontSize: 15,
+    color: "#6B7280",
+    textAlign: "center",
+    lineHeight: 22,
+  },
 
+  listContent: { padding: 16, paddingBottom: 40 },
+
+  sectionHeader: { paddingVertical: 12, marginBottom: 4 },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: BuyerColors.textBlack,
-    textTransform: "capitalize",
+    fontSize: 20,
+    fontWeight: "800",
+    color: "#1F2937",
     letterSpacing: 0.5,
   },
 
-  title: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: BuyerColors?.textBlack || "#000",
-    marginBottom: 8,
-  },
-
-  subtitle: { fontSize: 16, color: "#666", textAlign: "center" },
-
   orderCard: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
+    backgroundColor: "#ffffff",
+    borderRadius: 20,
     padding: 16,
-    borderWidth: 1,
-    borderColor: "#F0F0F0",
-    elevation: 2,
+    marginBottom: 16,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    marginBottom: 20,
-    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 1,
   },
 
-  orderHeader: {
+  // Top Section Layout
+  cardTop: { flexDirection: "row", alignItems: "center", marginBottom: 16 },
+
+  fruitAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 14,
+  },
+  fruitEmoji: { fontSize: 24 },
+
+  cardHeaderInfo: { flex: 1, justifyContent: "center" },
+  titleRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
-  },
-
-  orderInfo: {
-    flex: 1,
-  },
-
-  productName: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#1a1a1a",
+    alignItems: "center",
     marginBottom: 4,
   },
 
-  orderId: {
+  productName: { fontSize: 18, fontWeight: "800", color: "#111827" },
+  variantText: { fontSize: 13, fontWeight: "500", color: "#6B7280" },
+
+  badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  badgeText: {
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+
+  // Chips Section
+  chipRow: { flexDirection: "row", gap: 10, marginBottom: 16 },
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F3F4F6",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 6,
+  },
+  chipText: { fontSize: 13, fontWeight: "700", color: "#374151" },
+
+  // Divider
+  dashedDivider: {
+    height: 1,
+    borderStyle: "dashed",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    margin: -1,
+    marginBottom: 16,
+  },
+
+  // Footer Layout
+  cardFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  footerColumn: { flex: 1, justifyContent: "center" },
+
+  footerLabel: {
     fontSize: 12,
-    color: "#666",
-    marginBottom: 2,
+    color: "#6B7280",
+    fontWeight: "600",
+    marginBottom: 6,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
 
-  orderDate: {
-    fontSize: 11,
-    color: "#999",
-  },
-
-  priceContainer: {
-    alignItems: "flex-end",
-    justifyContent: "center",
-    marginLeft: 8,
-  },
-
-  priceLabel: {
-    fontSize: 11,
-    color: "#999",
-    marginBottom: 2,
-  },
+  dateRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  footerValue: { fontSize: 15, fontWeight: "700", color: "#1F2937" },
 
   priceValue: {
-    fontSize: 18,
-    fontWeight: "700",
+    fontSize: 20,
+    fontWeight: "800",
     color: BuyerColors.primaryGreen,
+  },
+
+  // Proposal waiting banner
+  proposalBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F0FDF4",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 12,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: "#BBF7D0",
+  },
+  proposalBannerDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#16A34A",
+  },
+  proposalBannerText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#16A34A",
   },
 });

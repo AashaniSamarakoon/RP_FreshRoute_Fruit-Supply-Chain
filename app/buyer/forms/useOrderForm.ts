@@ -1,5 +1,7 @@
 import api from "@/services/api";
+import { supabase } from "@/utils/supabaseClient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Location from "expo-location";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Alert, Platform } from "react-native";
@@ -37,6 +39,21 @@ export const useOrderForm = () => {
   const router = useRouter();
 
   const [rows, setRows] = useState<FruitPropertyRow[]>([]);
+
+  // try restoring saved order form data
+  const loadSavedForm = async (): Promise<Partial<OrderFormData> | null> => {
+    try {
+      const saved = await AsyncStorage.getItem("order_form");
+      if (saved) {
+        console.log("[useOrderForm] restoring saved order form", saved);
+        return JSON.parse(saved);
+      }
+    } catch (e) {
+      console.warn("[useOrderForm] failed to load saved form", e);
+    }
+    return null;
+  };
+
   const [state, setState] = useState<OrderFormState>({
     formData: {
       fruit: null,
@@ -60,6 +77,16 @@ export const useOrderForm = () => {
 
   // Load fruit properties data
   useEffect(() => {
+    // restore persisted form values on mount
+    loadSavedForm().then((saved) => {
+      if (saved) {
+        setState((prev) => ({
+          ...prev,
+          formData: { ...prev.formData, ...saved },
+        }));
+      }
+    });
+
     const loadFruitProperties = async () => {
       try {
         const token = await AsyncStorage.getItem("token");
@@ -135,6 +162,94 @@ export const useOrderForm = () => {
     loadFruitProperties();
   }, []);
 
+  // fetch buyer profile (location/coords) directly from supabase table
+  useEffect(() => {
+    const loadBuyerLocation = async () => {
+      try {
+        const userStr = await AsyncStorage.getItem("user");
+        console.log("[useOrderForm] loadBuyerLocation userStr=", userStr);
+        if (!userStr) return;
+        const user = JSON.parse(userStr);
+        console.log("[useOrderForm] loadBuyerLocation user=", user);
+        if (!user?.id) return;
+
+        const { data, error } = await supabase
+          .from("buyers")
+          .select("location, latitude, longitude")
+          .eq("user_id", user.id)
+          .single();
+
+        console.log("[useOrderForm] supabase buyers fetch result", {
+          data,
+          error,
+        });
+
+        if (error) {
+          console.warn("Unable to fetch buyer profile:", error.message);
+          return;
+        }
+
+        if (data) {
+          setState((prev) => {
+            // compute location text inside updater to access prev
+            let locationText = data.location ?? prev.formData.deliveryLocation;
+            if (!data.location && data.latitude && data.longitude) {
+              try {
+                // reverse geocode synchronously inside updater? we can't await here,
+                // so perform outside and pass in via variable.
+              } catch {}
+            }
+
+            return {
+              ...prev,
+              formData: {
+                ...prev.formData,
+                deliveryLocation: locationText,
+                latitude:
+                  typeof data.latitude === "number"
+                    ? data.latitude
+                    : prev.formData.latitude,
+                longitude:
+                  typeof data.longitude === "number"
+                    ? data.longitude
+                    : prev.formData.longitude,
+              },
+            };
+          });
+          // if location text missing, reverse geocode and update again
+          if (!data.location && data.latitude && data.longitude) {
+            try {
+              const rev = await Location.reverseGeocodeAsync({
+                latitude: data.latitude,
+                longitude: data.longitude,
+              });
+              if (rev && rev.length > 0) {
+                const { name, street, district, city } = rev[0];
+                const addressText =
+                  `${name || ""} ${street || ""}, ${city || district || ""}`
+                    .replace(/^[ ,]+/, "")
+                    .trim();
+                setState((prev) => ({
+                  ...prev,
+                  formData: {
+                    ...prev.formData,
+                    deliveryLocation: addressText,
+                  },
+                }));
+              }
+            } catch (err) {
+              console.warn("Reverse geocode failed", err);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load buyer location", err);
+      }
+    };
+
+    loadBuyerLocation();
+  }, []);
+
   // Update category items when fruit changes
   useEffect(() => {
     if (!state.formData.fruit) {
@@ -166,6 +281,21 @@ export const useOrderForm = () => {
       errors: { ...prev.errors, [field]: "" }, // Clear error when field changes
     }));
   };
+
+  // persist form data whenever it changes
+  useEffect(() => {
+    const save = async () => {
+      try {
+        await AsyncStorage.setItem(
+          "order_form",
+          JSON.stringify(state.formData),
+        );
+      } catch (e) {
+        console.warn("[useOrderForm] failed to persist form", e);
+      }
+    };
+    save();
+  }, [state.formData]);
 
   const setDatePickerVisible = (visible: boolean) => {
     setState((prev) => ({ ...prev, datePickerVisible: visible }));

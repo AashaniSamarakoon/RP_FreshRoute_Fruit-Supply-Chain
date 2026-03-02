@@ -72,25 +72,20 @@ export default function BuyerDashboardScreen(): React.JSX.Element {
 
         // Transform API response to DealData format
         const matchingDeals = (data.proposals || data || []).map(
-          (proposal: any) => ({
-            id: proposal.id,
-            title:
-              `${proposal.order?.fruit_type || proposal.fruit_type || ""} ${
-                proposal.order?.variant || proposal.variant || ""
-              }`.trim(),
-            price: proposal.price_per_kg || proposal.price || "",
-            unit: proposal.price_per_kg ? "kg" : "",
-            location:
-              proposal.order?.delivery_location ||
-              proposal.delivery_location ||
-              proposal.location ||
-              "Unknown Location",
-            grade: proposal.order?.grade || proposal.grade || "Standard",
-            quality:
-              (proposal.order?.grade || proposal.grade) === "Grade A"
-                ? "Premium"
-                : "Standard",
-          }),
+          (proposal: any) => {
+            console.log("Raw proposal from backend:", proposal);
+            return {
+              id: proposal.id,
+              title:
+                `${proposal.stock?.fruit_type || "Unknown"} ${proposal.stock?.variant || ""}`.trim(),
+              price: proposal.stock?.price_per_kg || "",
+              unit: "kg",
+              location: proposal.stock?.farmer?.location || "Unknown",
+              grade: proposal.order?.grade || "Unknown",
+              quality: proposal.order?.grade || "Unknown", // Using grade as quality for now
+              quantity_proposed: proposal.quantity_proposed || "0",
+            };
+          },
         );
 
         // Only set deals if there are matching deals, otherwise empty array
@@ -227,7 +222,7 @@ const styles = StyleSheet.create({
   },
 
   dealsScroll: {
-    paddingBottom: 20,
+    // paddingBottom: 20,
   },
 
   loadingContainer: {
