@@ -1,4 +1,5 @@
 import api from "@/services/api";
+import { supabase } from "@/utils/supabaseClient";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -116,25 +117,21 @@ export default function ProfileScreen() {
 
   const fetchOrderStats = async () => {
     try {
-      const data = await api.get(`/api/farmer/orders/stats`);
-
-      if (response.ok) {
-        const data = await response.json();
-        setOrderStats({
-          completedCount: data.completedCount ?? demoOrderStats.completedCount,
-          lastCompletedDate: data.lastCompletedDate
-            ? new Date(data.lastCompletedDate).toLocaleDateString()
-            : demoOrderStats.lastCompletedDate,
-          nextOrderDate: data.nextOrderDate
-            ? new Date(data.nextOrderDate).toLocaleDateString()
-            : demoOrderStats.nextOrderDate,
-        });
-      } else {
-        setOrderStats(demoOrderStats);
-      }
+      // call backend; if it 404s or returns invalid JSON we fall back
+      const stats = await api.get(`/api/farmer/orders/stats`);
+      // the api helper already parses JSON and throws on non-ok status
+      setOrderStats({
+        completedCount: stats.completedCount ?? demoOrderStats.completedCount,
+        lastCompletedDate: stats.lastCompletedDate
+          ? new Date(stats.lastCompletedDate).toLocaleDateString()
+          : demoOrderStats.lastCompletedDate,
+        nextOrderDate: stats.nextOrderDate
+          ? new Date(stats.nextOrderDate).toLocaleDateString()
+          : demoOrderStats.nextOrderDate,
+      });
     } catch (err) {
       console.error("Error fetching order stats:", err);
-      // Set mock data if API fails
+      // use local demo data if the endpoint doesn't exist or fails
       setOrderStats(demoOrderStats);
     }
   };
@@ -151,7 +148,17 @@ export default function ProfileScreen() {
   );
 
   const logout = async () => {
-    await AsyncStorage.multiRemove(["token", "user"]);
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.warn("Supabase signOut failed", e);
+    }
+    await AsyncStorage.multiRemove([
+      "token",
+      "user",
+      "onboarded",
+      "onboarding_farmer",
+    ]);
     router.replace("/login");
   };
 

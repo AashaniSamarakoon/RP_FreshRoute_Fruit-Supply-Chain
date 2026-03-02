@@ -43,6 +43,21 @@ export default function RootLayout() {
         }
         const role = computed.toLowerCase();
         console.log("[RootLayout] computed role", role);
+
+        // check for onboarding flag stored locally (set when the final step
+        // of the onboarding flow completes).  this allows us to redirect
+        // back into the flow if a user quits before finishing.
+        const onboardedFlag = await AsyncStorage.getItem("onboarded");
+        const onboarded = onboardedFlag === "true";
+        if (!onboarded && (role === "farmer" || role === "buyer")) {
+          const startPath =
+            role === "farmer"
+              ? "/onboarding/farmer/farm-info"
+              : "/onboarding/buyer/business";
+          router.replace(startPath as any);
+          return;
+        }
+
         // replace stack with role-specific path (farmer/buyer/transporter)
         // role should be one of "farmer" | "buyer" | "transporter".
         // only redirect if it matches one of the known routes; otherwise
@@ -64,6 +79,10 @@ export default function RootLayout() {
       <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
         <Stack initialRouteName="index">
           <Stack.Screen name="index" options={{ headerShown: false }} />
+          {/* root-level placeholder for the onboarding folder; prevents the
+              parent stack from drawing its own header when navigating into the
+              flow (matches login/signup approach). */}
+          <Stack.Screen name="onboarding" options={{ headerShown: false }} />
           {/* <Stack.Screen name="(tabs)" options={{ headerShown: false }} /> */}
           <Stack.Screen
             name="modal"

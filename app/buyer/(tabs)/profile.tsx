@@ -1,3 +1,4 @@
+import { supabase } from "@/utils/supabaseClient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React from "react";
@@ -10,8 +11,19 @@ export default function BuyerProfile() {
   const router = useRouter();
 
   const handleLogout = async () => {
-    await AsyncStorage.removeItem("token");
-    await AsyncStorage.removeItem("user");
+    try {
+      // sign out from Supabase (clears session storage)
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.warn("Supabase signOut failed", e);
+    }
+    // clear any local keys we set during onboarding or auth
+    await AsyncStorage.multiRemove([
+      "token",
+      "user",
+      "onboarded",
+      "onboarding_buyer",
+    ]);
     router.replace("/login");
   };
 
