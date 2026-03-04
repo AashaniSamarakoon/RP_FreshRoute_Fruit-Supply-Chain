@@ -2,6 +2,7 @@ import Header from "@/components/Header";
 import PaymentInfoModal from "@/components/modals/PaymentInfoModal";
 import { BuyerColors } from "@/constants/theme";
 import api from "@/services/api";
+import { startPayHerePayment } from "@/services/payhereService";
 import { FarmerInfo, PlacedOrder, TransporterInfo } from "@/types";
 import { formatCurrency, formatDate } from "@/utils/formatters";
 import { Ionicons } from "@expo/vector-icons";
@@ -10,6 +11,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Dimensions,
   Image,
   Modal,
@@ -293,21 +295,46 @@ export default function OrderDetailScreen() {
   /** Called when user taps Pay Now inside the info modal */
   const handlePayNow = async () => {
     if (!order || !priceLockKey) return;
+
+    // Lock the price locally
     const priceToLock = lockedUnitPrice ?? order.unitPrice ?? null;
     if (priceToLock != null) {
       const lock = {
         lockedPrice: priceToLock,
-        lockedDate: new Date().toISOString().slice(0, 10), // YYYY-MM-DD
+        lockedDate: new Date().toISOString().slice(0, 10),
       };
       await AsyncStorage.setItem(priceLockKey, JSON.stringify(lock));
       setLockedUnitPrice(priceToLock);
       setIsPriceLocked(true);
     }
     setPaymentModalVisible(false);
-    router.push({
-      pathname: "/buyer/upload-payment" as any,
-      params: { orderId: order.id },
-    });
+
+    await startPayHerePayment(
+      {
+        orderId: order.id,
+        fruitType: order.fruit_type,
+        variant: order.variant ?? null,
+        quantity: order.quantity,
+        totalPrice: order.totalPrice ?? null,
+        deliveryLocation: order.delivery_location ?? null,
+      },
+      (paymentId) => {
+        Alert.alert(
+          "Payment Successful",
+          `Your payment has been received. We'll notify you once it's verified.\n\nPayment ID: ${paymentId}`,
+          [{ text: "OK", onPress: () => fetchOrderDetails() }],
+        );
+      },
+      (error) => {
+        Alert.alert(
+          "Payment Failed",
+          `Something went wrong: ${error}\n\nPlease try again or contact support.`,
+        );
+      },
+      () => {
+        // User dismissed the sheet — no action needed
+      },
+    );
   };
 
   const getPrimaryAction = () => {
