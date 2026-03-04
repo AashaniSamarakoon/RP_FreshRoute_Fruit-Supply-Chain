@@ -12,9 +12,11 @@ import {
   Camera,
   CheckCircle2,
   Image as ImageIcon,
-  Upload,
   Info,
-  RefreshCw
+  RefreshCw,
+  Upload,
+  Building,
+  X
 } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -26,6 +28,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -68,6 +71,7 @@ export default function PaymentSlipUploadScreen() {
   const [errorMessage, setErrorMessage] = useState("");
   const [verificationStatus, setVerificationStatus] = useState<VerificationStatus>(null);
   const [successMessage, setSuccessMessage] = useState("");
+  const [bankDetailsVisible, setBankDetailsVisible] = useState(false);
 
   // Effects
   useEffect(() => {
@@ -353,6 +357,13 @@ export default function PaymentSlipUploadScreen() {
                 </TouchableOpacity>
               </View>
             )}
+
+            {/* View Bank Details Button (Moved to the bottom) */}
+            <TouchableOpacity style={styles.viewBankBtn} onPress={() => setBankDetailsVisible(true)}>
+              <Building size={18} color="#4338CA" />
+              <Text style={styles.viewBankBtnText}>View Bank Transfer Details</Text>
+            </TouchableOpacity>
+
           </View>
 
           <View style={styles.bottomPadding} />
@@ -407,6 +418,45 @@ export default function PaymentSlipUploadScreen() {
         title="Upload Failed"
         message={errorMessage}
       />
+
+      {/* Bank Details Modal */}
+      <Modal visible={bankDetailsVisible} transparent={true} animationType="slide">
+        <View style={styles.bottomSheetBg}>
+          <View style={styles.bottomSheetCard}>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>Bank Transfer Details</Text>
+              <TouchableOpacity onPress={() => setBankDetailsVisible(false)} style={styles.sheetClose}>
+                <X size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.sheetContent}>
+              <View style={styles.bankWarning}>
+                <Info size={20} color="#CA8A04" />
+                <Text style={styles.bankWarningText}>
+                  Use Order <Text style={{fontWeight: 'bold'}}>#{orderDetails?.id.substring(0, 8).toUpperCase()}</Text> as the reference.
+                </Text>
+              </View>
+
+              <View style={styles.bankCard}>
+                <Text style={styles.bankName}>Commercial Bank of Ceylon</Text>
+                <View style={styles.bankRow}><Text style={styles.bankLabel}>Name:</Text><Text style={styles.bankVal}>FreshRoute Pvt Ltd</Text></View>
+                <View style={styles.bankRow}><Text style={styles.bankLabel}>Account:</Text><Text style={styles.bankVal}>1234567890</Text></View>
+                <View style={styles.bankRow}><Text style={styles.bankLabel}>Branch:</Text><Text style={styles.bankVal}>Colombo Main (001)</Text></View>
+              </View>
+              
+              <View style={styles.bankCard}>
+                <Text style={styles.bankName}>Sampath Bank PLC</Text>
+                <View style={styles.bankRow}><Text style={styles.bankLabel}>Name:</Text><Text style={styles.bankVal}>FreshRoute Pvt Ltd</Text></View>
+                <View style={styles.bankRow}><Text style={styles.bankLabel}>Account:</Text><Text style={styles.bankVal}>5647382910</Text></View>
+                <View style={styles.bankRow}><Text style={styles.bankLabel}>Branch:</Text><Text style={styles.bankVal}>Galle Road (125)</Text></View>
+              </View>
+              <View style={{height: 40}} />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -456,6 +506,10 @@ const styles = StyleSheet.create({
   changeImageBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: "#FFFFFF", paddingVertical: 12, paddingHorizontal: 20, borderRadius: 12, borderWidth: 1, borderColor: "#D1D5DB", gap: 8, width: "100%" },
   changeImageText: { fontSize: 14, fontWeight: "700", color: "#4B5563" },
 
+  // View Bank Details Button (Moved to bottom of section)
+  viewBankBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEF2FF', paddingVertical: 14, borderRadius: 12, marginTop: 16, gap: 8, borderWidth: 1, borderColor: '#E0E7FF' },
+  viewBankBtnText: { fontSize: 14, fontWeight: '700', color: '#4338CA' },
+
   // Fixed Bottom Panel
   fixedBottomPanel: { backgroundColor: "#fff", borderTopWidth: 1, borderTopColor: "#E5E7EB", paddingHorizontal: 20, paddingVertical: 20, shadowColor: "#000", shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 10 },
   primaryButton: { backgroundColor: BuyerColors.primaryGreen, borderRadius: 12, paddingVertical: 16, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10 },
@@ -467,4 +521,19 @@ const styles = StyleSheet.create({
   progressBar: { height: 6, backgroundColor: "#E5E7EB", borderRadius: 3, overflow: "hidden", marginBottom: 8 },
   progressFill: { height: "100%", backgroundColor: BuyerColors.primaryGreen, borderRadius: 3 },
   progressText: { fontSize: 13, color: "#6B7280", textAlign: "center", fontWeight: "500" },
+
+  // Bank Modal Styles
+  bottomSheetBg: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
+  bottomSheetCard: { backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: "80%" },
+  sheetHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 20, borderBottomWidth: 1, borderBottomColor: "#F3F4F6" },
+  sheetTitle: { fontSize: 18, fontWeight: "bold", color: "#111827" },
+  sheetClose: { width: 32, height: 32, backgroundColor: "#F3F4F6", borderRadius: 16, justifyContent: "center", alignItems: "center" },
+  sheetContent: { padding: 20 },
+  bankWarning: { flexDirection: 'row', backgroundColor: "#FEF9C3", padding: 12, borderRadius: 8, marginBottom: 20, alignItems: 'center', gap: 8 },
+  bankWarningText: { flex: 1, fontSize: 13, color: "#854D0E", lineHeight: 20 },
+  bankCard: { backgroundColor: "#F9FAFB", borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: "#E5E7EB" },
+  bankName: { fontSize: 15, fontWeight: "700", color: "#111827", marginBottom: 12, borderBottomWidth: 1, borderBottomColor: "#E5E7EB", paddingBottom: 8 },
+  bankRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 6 },
+  bankLabel: { fontSize: 13, color: "#6B7280" },
+  bankVal: { fontSize: 13, color: "#111827", fontWeight: "600" },
 });
