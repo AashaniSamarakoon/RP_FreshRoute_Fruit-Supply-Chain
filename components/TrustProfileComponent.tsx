@@ -1,12 +1,14 @@
 import Header from "@/components/Header";
 import DigitalPassportModal from "@/components/modals/DigitalPassportModal";
 import TransactionReceiptModal from "@/components/modals/TransactionReceiptModal";
-import { BACKEND_URL } from "@/config";
 import { BuyerColors } from "@/constants/theme";
+import api from "@/services/api";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { ArrowRight, MapPin, ShieldCheck, Wallet } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Image,
   SafeAreaView,
   ScrollView,
@@ -38,14 +40,34 @@ interface TransactionItem {
   smartContract: string;
 }
 
+interface ProfileData {
+  name: string;
+  location: string;
+  verified: boolean;
+  trustScore: number;
+  onTimeDelivery: number;
+  qualityGrade: number;
+  successfulOrders: number;
+  image: string;
+  transactions: TransactionItem[];
+}
+
+interface InitialProfileData {
+  name: string;
+  location: string;
+  trustScore: string;
+}
+
 interface TrustProfileProps {
   userType: "farmer" | "buyer"; // 'farmer' or 'buyer'
   userId?: string;
+  initialData?: InitialProfileData; // Data passed from MatchedStocks
 }
 
 export default function TrustProfileComponent({
   userType,
   userId,
+  initialData,
 }: TrustProfileProps) {
   const router = useRouter();
 
@@ -55,6 +77,91 @@ export default function TrustProfileComponent({
   const [selectedTx, setSelectedTx] = useState<TransactionItem | null>(null);
   const [loading, setLoading] = useState(false);
   const [passportData, setPassportData] = useState<PassportData | null>(null);
+  // If initialData is provided, skip loading state
+  const [profileLoading, setProfileLoading] = useState(!initialData);
+  const [profile, setProfile] = useState<ProfileData | null>(null);
+
+  // --- FETCH PROFILE DATA ---
+  useEffect(() => {
+    // If initialData is provided from navigation, use it directly
+    if (initialData) {
+      // Parse trust score from string like "4.5/5" to number
+      const parsedScore = initialData.trustScore?.includes("/")
+        ? parseFloat(initialData.trustScore.split("/")[0]) * 20
+        : 90;
+
+      setProfile({
+        name: initialData.name,
+        location: initialData.location,
+        verified: true,
+        trustScore: parsedScore,
+        onTimeDelivery: 98, // Default values for now
+        qualityGrade: 92,
+        successfulOrders: 10,
+        image: "https://via.placeholder.com/80",
+        transactions: [],
+      });
+      setProfileLoading(false);
+      return;
+    }
+
+    const fetchProfile = async () => {
+      if (!userId) {
+        setProfileLoading(false);
+        return;
+      }
+
+      try {
+        setProfileLoading(true);
+        const token = await AsyncStorage.getItem("token");
+
+        if (!token) {
+          console.warn("No auth token found");
+          setProfileLoading(false);
+          return;
+        }
+
+        // Use trust profile endpoint which is accessible by any authenticated user
+        const path =
+          userType === "buyer"
+            ? `/api/trust/farmer-profile/${userId}`
+            : `/api/trust/buyer-profile/${userId}`;
+
+        console.log("Fetching profile from:", path);
+        const data = await api.get(path);
+        console.log("Profile data:", data);
+
+        // Transform the API response to match our ProfileData structure
+        const profileData = data.farmer || data.buyer || data;
+        const userData = profileData.user || {};
+
+        setProfile({
+          name: userData.name || profileData.name || "Unknown",
+          location:
+            profileData.location || userData.location || "Unknown Location",
+          verified: profileData.verified ?? true,
+          trustScore: profileData.reputation ? profileData.reputation * 20 : 90,
+          onTimeDelivery: profileData.onTimeDelivery || 98,
+          qualityGrade: profileData.qualityGrade || 92,
+          successfulOrders:
+            profileData.successfulOrders || profileData.total_orders || 10,
+          image:
+            userData.avatar ||
+            profileData.image ||
+            "https://via.placeholder.com/80",
+          transactions: profileData.transactions || [],
+        });
+      } catch (error) {
+        console.error("Error fetching profile:", error);
+        // Fall back to default data on error
+        setProfile(null);
+      } finally {
+        setProfileLoading(false);
+      }
+    };
+
+    fetchProfile();
+  }, [userId, userType, initialData]);
 
   // --- ACTIONS ---
   const handleViewPassport = async () => {
@@ -63,10 +170,9 @@ export default function TrustProfileComponent({
 
     try {
       // const API_URL = "http://192.168.1.4:4000";
-      const response = await fetch(
-        `${BACKEND_URL}/api/trust/test-identity/${userId || "user_123"}`
+      const data = await api.get(
+        `/api/trust/test-identity/${userId || "user_123"}`,
       );
-      const data = await response.json();
 
       if (data.success) {
         setPassportData(data.digitalPassport);
@@ -104,9 +210,10 @@ export default function TrustProfileComponent({
     setReceiptModalVisible(true);
   };
 
-  // --- MOCK DATA ---
-  const profile =
-    userType === "buyer"
+  // --- MOCK DATA (fallback when API fails or no userId) ---
+  // When buyer views, show farmer profile; when farmer views, show buyer profile
+  const fallbackProfile: ProfileData =
+    userType === "farmer"
       ? {
           name: "Fresh Mart",
           location: "Colombo",
@@ -220,7 +327,36 @@ export default function TrustProfileComponent({
           ],
         };
 
-  const needleRotation = (profile.trustScore / 100) * 180 - 90;
+  // Use fetched profile or fallback
+  const displayProfile = profile || fallbackProfile;
+
+  // If profile has no transactions, use fallback transactions
+  const displayTransactions =
+    displayProfile.transactions.length > 0
+      ? displayProfile.transactions
+      : fallbackProfile.transactions;
+
+  const needleRotation = (displayProfile.trustScore / 100) * 180 - 90;
+
+  // Show loading state
+  if (profileLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <Header
+          title={
+            userType === "farmer"
+              ? "Buyer Trust Profile"
+              : "Farmer Trust Profile"
+          }
+          onBack={() => router.back()}
+        />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={BuyerColors.primaryGreen} />
+          <Text style={styles.loadingText}>Loading profile...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -239,8 +375,8 @@ export default function TrustProfileComponent({
         <View style={styles.profileCard}>
           <View style={styles.profileCardLeft}>
             <View style={styles.nameRow}>
-              <Text style={styles.profileName}>{profile.name}</Text>
-              {profile.verified && (
+              <Text style={styles.profileName}>{displayProfile.name}</Text>
+              {displayProfile.verified && (
                 <View style={styles.verifiedBadge}>
                   <ShieldCheck size={14} color={BuyerColors.primaryGreen} />
                   <Text style={styles.verifiedText}>Verified</Text>
@@ -249,7 +385,7 @@ export default function TrustProfileComponent({
             </View>
             <View style={styles.locationRow}>
               <MapPin size={16} color={BuyerColors.textGray} />
-              <Text style={styles.locationText}>{profile.location}</Text>
+              <Text style={styles.locationText}>{displayProfile.location}</Text>
             </View>
 
             {/* View Digital ID Button */}
@@ -262,7 +398,10 @@ export default function TrustProfileComponent({
           </View>
 
           <View style={styles.avatarContainer}>
-            <Image source={{ uri: profile.image }} style={styles.avatar} />
+            <Image
+              source={{ uri: displayProfile.image }}
+              style={styles.avatar}
+            />
           </View>
         </View>
 
@@ -270,7 +409,9 @@ export default function TrustProfileComponent({
         <View style={styles.trustScoreCard}>
           <View style={styles.trustScoreLeft}>
             <Text style={styles.trustScoreLabel}>Trust Score</Text>
-            <Text style={styles.trustScoreValue}>{profile.trustScore}%</Text>
+            <Text style={styles.trustScoreValue}>
+              {displayProfile.trustScore}%
+            </Text>
           </View>
           <View style={styles.gaugeContainer}>
             <Svg width={120} height={70} viewBox="0 0 120 70">
@@ -300,13 +441,17 @@ export default function TrustProfileComponent({
             <Text style={styles.metricLabel}>
               {userType === "buyer" ? "On-time Delivery" : "On-time Purchase"}
             </Text>
-            <Text style={styles.metricValue}>{profile.onTimeDelivery}%</Text>
+            <Text style={styles.metricValue}>
+              {displayProfile.onTimeDelivery}%
+            </Text>
           </View>
           <View style={styles.metricCard}>
             <Text style={styles.metricLabel}>
               {userType === "buyer" ? "Quality Grade A" : "Quality Standards"}
             </Text>
-            <Text style={styles.metricValue}>{profile.qualityGrade}%</Text>
+            <Text style={styles.metricValue}>
+              {displayProfile.qualityGrade}%
+            </Text>
           </View>
           <View style={styles.metricCard}>
             <Text style={styles.metricLabel}>
@@ -314,7 +459,9 @@ export default function TrustProfileComponent({
                 ? "Successful Orders"
                 : "Successful Purchases"}
             </Text>
-            <Text style={styles.metricValue}>{profile.successfulOrders}</Text>
+            <Text style={styles.metricValue}>
+              {displayProfile.successfulOrders}
+            </Text>
           </View>
         </View>
 
@@ -327,7 +474,7 @@ export default function TrustProfileComponent({
           </Text>
 
           <View style={styles.transactionsContainer}>
-            {profile.transactions.map((tx, index) => (
+            {displayTransactions.map((tx, index) => (
               <View key={tx.id}>
                 <TouchableOpacity
                   style={styles.transactionItem}
@@ -349,7 +496,7 @@ export default function TrustProfileComponent({
                   </View>
                   <ArrowRight size={20} color={BuyerColors.textGray} />
                 </TouchableOpacity>
-                {index < profile.transactions.length - 1 && (
+                {index < displayTransactions.length - 1 && (
                   <View style={styles.transactionDivider} />
                 )}
               </View>
@@ -384,6 +531,19 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#ffffffff",
+    paddingTop: 40,
+  },
+
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: BuyerColors.textGray,
   },
 
   scrollContent: {
@@ -422,7 +582,7 @@ const styles = StyleSheet.create({
   },
 
   profileName: {
-    fontSize: 28,
+    fontSize: 23,
     fontWeight: "bold",
     color: "#333",
   },
@@ -446,14 +606,15 @@ const styles = StyleSheet.create({
   locationRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: 6,
     marginBottom: 12,
   },
 
   locationText: {
-    fontSize: 17,
+    fontSize: 16,
     color: BuyerColors.textGray,
     fontWeight: "500",
+    // lineHeight: 20,
   },
 
   passportButton: {

@@ -1,3 +1,4 @@
+import api from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -18,7 +19,6 @@ const PRIMARY_GREEN = "#2E7D32";
 const LIGHT_GREEN = "#e8f4f0";
 const LIGHT_GRAY = "#f5f5f5";
 const ORANGE = "#f59e0b";
-const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || "http://192.168.43.45:4000";
 
 const screenWidth = Dimensions.get("window").width;
 
@@ -34,7 +34,7 @@ export default function FruitForecastScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const [selectedFruit, setSelectedFruit] = useState<string>(
-    (Array.isArray(params.fruit) ? params.fruit[0] : params.fruit) || "Mango"
+    (Array.isArray(params.fruit) ? params.fruit[0] : params.fruit) || "Mango",
   );
   const [demandData, setDemandData] = useState<ForecastDay[]>([]);
   const [priceData, setPriceData] = useState<ForecastDay[]>([]);
@@ -58,27 +58,26 @@ export default function FruitForecastScreen() {
         return;
       }
 
-      const demandUrl = `${BACKEND_URL}/api/farmer/forecast/7day?fruit=${encodeURIComponent(selectedFruit)}&target=demand`;
-      const priceUrl = `${BACKEND_URL}/api/farmer/forecast/7day?fruit=${encodeURIComponent(selectedFruit)}&target=price`;
+      // unified forecast endpoint, keep `7day` segment to indicate window
+      const demandPath = `/api/forecast/7day?fruit=${encodeURIComponent(
+        selectedFruit,
+      )}&target=demand`;
+      const pricePath = `/api/forecast/7day?fruit=${encodeURIComponent(
+        selectedFruit,
+      )}&target=price`;
 
-      console.log("[FRUIT-FORECAST] Fetching demand from:", demandUrl);
-      console.log("[FRUIT-FORECAST] Fetching price from:", priceUrl);
+      console.log("[FRUIT-FORECAST] Fetching demand from:", demandPath);
+      console.log("[FRUIT-FORECAST] Fetching price from:", pricePath);
 
       // Fetch demand forecast
-      const demandRes = await fetch(demandUrl, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const demandJson = await demandRes.json();
-      console.log("[FRUIT-FORECAST] Demand response:", demandRes.status, demandJson);
+      const demandJson = await api.get(demandPath);
+      console.log("[FRUIT-FORECAST] Demand response data:", demandJson);
 
       // Fetch price forecast
-      const priceRes = await fetch(priceUrl, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const priceJson = await priceRes.json();
-      console.log("[FRUIT-FORECAST] Price response:", priceRes.status, priceJson);
+      const priceJson = await api.get(pricePath);
+      console.log("[FRUIT-FORECAST] Price response data:", priceJson);
 
-      if (demandRes.ok && demandJson.days) {
+      if (demandJson && demandJson.days) {
         const demandDays: ForecastDay[] = demandJson.days.map((d: any) => ({
           day: d.day,
           demandValue: parseFloat(d.value) || 0,
@@ -90,12 +89,12 @@ export default function FruitForecastScreen() {
 
         // Find peak demand day
         const maxDemandDay = demandDays.reduce((prev, current) =>
-          prev.demandValue > current.demandValue ? prev : current
+          prev.demandValue > current.demandValue ? prev : current,
         );
         setPeakDay(maxDemandDay.day);
       }
 
-      if (priceRes.ok && priceJson.days) {
+      if (priceJson && priceJson.days) {
         const priceDays = priceJson.days.map((d: any) => ({
           day: d.day,
           priceValue: parseFloat(d.value) || 0,
@@ -109,7 +108,9 @@ export default function FruitForecastScreen() {
     } catch (err) {
       console.error("[FRUIT-FORECAST] Error loading data:", err);
       if (err instanceof TypeError) {
-        console.error("[FRUIT-FORECAST] Network error - Check BACKEND_URL and API endpoint");
+        console.error(
+          "[FRUIT-FORECAST] Network error - Check BACKEND_URL and API endpoint",
+        );
       }
     } finally {
       setLoading(false);
@@ -127,8 +128,12 @@ export default function FruitForecastScreen() {
   const maxDemand = Math.max(...demandValues, 1);
   const maxPrice = Math.max(...priceValues, 1);
 
-  const normalizedDemand = demandData.map((d) => normalizeValue(d.demandValue, maxDemand));
-  const normalizedPrice = priceData.map((d) => normalizeValue(d.priceValue, maxPrice));
+  const normalizedDemand = demandData.map((d) =>
+    normalizeValue(d.demandValue, maxDemand),
+  );
+  const normalizedPrice = priceData.map((d) =>
+    normalizeValue(d.priceValue, maxPrice),
+  );
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -138,7 +143,9 @@ export default function FruitForecastScreen() {
           <TouchableOpacity onPress={() => router.back()}>
             <Ionicons name="chevron-back" size={24} color="#000" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>{t("fruitForecast.headerTitle")}</Text>
+          <Text style={styles.headerTitle}>
+            {t("fruitForecast.headerTitle")}
+          </Text>
           <View style={{ width: 24 }} />
         </View>
 
@@ -188,7 +195,7 @@ export default function FruitForecastScreen() {
               {/* Price Forecast Chart with Dots */}
               <View style={styles.graphContainer}>
                 <Text style={styles.chartTitle}>Price Forecast</Text>
-                
+
                 {/* Chart Area */}
                 <View style={styles.chartWrapper}>
                   {/* Y-axis with price labels */}
@@ -206,10 +213,7 @@ export default function FruitForecastScreen() {
                     {[0, 1, 2, 3, 4].map((line) => (
                       <View
                         key={`grid-${line}`}
-                        style={[
-                          styles.gridLine,
-                          { top: line * 50 },
-                        ]}
+                        style={[styles.gridLine, { top: line * 50 }]}
                       />
                     ))}
 
@@ -221,7 +225,7 @@ export default function FruitForecastScreen() {
                       const xPos = idx * segmentWidth;
                       const normalizedValue = normalizedPrice[idx] || 0;
                       const yPos = 220 - (normalizedValue / 100) * 220;
-                      
+
                       return (
                         <React.Fragment key={`dot-${idx}`}>
                           {/* Dot */}
@@ -262,11 +266,17 @@ export default function FruitForecastScreen() {
                       const chartWidth = screenWidth - 24 - 28 - 44 - 20;
                       const segmentWidth = chartWidth / (totalPoints - 1);
                       const xPos = 44 + idx * segmentWidth;
-                      
+
                       return (
-                        <View 
-                          key={`xaxis-${idx}`} 
-                          style={[styles.xAxisLabel, { left: Math.max(xPos - 22, 0), right: idx === totalPoints - 1 ? 16 : 'auto' }]}
+                        <View
+                          key={`xaxis-${idx}`}
+                          style={[
+                            styles.xAxisLabel,
+                            {
+                              left: Math.max(xPos - 22, 0),
+                              right: idx === totalPoints - 1 ? 16 : "auto",
+                            },
+                          ]}
                         >
                           <Text style={styles.xAxisLabelText}>{first3}</Text>
                         </View>
@@ -279,14 +289,16 @@ export default function FruitForecastScreen() {
               {/* Peak Demand Card */}
               <View style={styles.insightCard}>
                 <View style={styles.insightHeader}>
-                  <Text style={styles.insightTitle}>Peak Demand: {peakDay}</Text>
+                  <Text style={styles.insightTitle}>
+                    Peak Demand: {peakDay}
+                  </Text>
                   <TouchableOpacity style={styles.detailsButton}>
                     <Text style={styles.detailsButtonText}>Details</Text>
                   </TouchableOpacity>
                 </View>
                 <Text style={styles.insightDescription}>
-                  The highest demand for {selectedFruit} is expected this {peakDay}, with prices
-                  remaining stable.
+                  The highest demand for {selectedFruit} is expected this{" "}
+                  {peakDay}, with prices remaining stable.
                 </Text>
               </View>
             </>
@@ -402,7 +414,7 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     backgroundColor: LIGHT_GRAY,
     borderRadius: 12,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   chartTitle: {
     fontSize: 15,

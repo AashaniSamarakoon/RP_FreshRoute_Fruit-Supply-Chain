@@ -189,8 +189,8 @@
 //   recenterText: { color: "#2d3748", fontWeight: "600", fontSize: 12 },
 // });
 
+import api from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -201,7 +201,6 @@ import {
   View,
 } from "react-native";
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
-import { BACKEND_URL } from "../../../config";
 
 interface ManifestItem {
   sequence: number;
@@ -228,32 +227,26 @@ export default function JobMap() {
 
   const fetchJobDetails = async () => {
     try {
-      const token = await AsyncStorage.getItem("token");
-      const res = await fetch(`${BACKEND_URL}/api/transporter/jobs/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
+      const data = await api.get(`/api/transporter/jobs/${id}`);
 
-      if (res.ok) {
-        // --- FIX: Ensure lat/lng are Numbers, not Strings ---
-        const rawManifest = data.route_manifest || [];
-        const cleanManifest = rawManifest
-          .map((item: any) => ({
-            ...item,
-            lat: parseFloat(item.lat),
-            lng: parseFloat(item.lng),
-          }))
-          .filter((item: any) => !isNaN(item.lat) && !isNaN(item.lng));
+      // --- FIX: Ensure lat/lng are Numbers, not Strings ---
+      const rawManifest = data.route_manifest || [];
+      const cleanManifest = rawManifest
+        .map((item: any) => ({
+          ...item,
+          lat: parseFloat(item.lat),
+          lng: parseFloat(item.lng),
+        }))
+        .filter((item: any) => !isNaN(item.lat) && !isNaN(item.lng));
 
-        setManifest(cleanManifest);
-        setRouteName(data.route_name);
+      setManifest(cleanManifest);
+      setRouteName(data.route_name);
 
-        // Auto-zoom to fit markers
-        if (cleanManifest.length > 0) {
-          setTimeout(() => {
-            fitMapToMarkers(cleanManifest);
-          }, 500);
-        }
+      // Auto-zoom to fit markers
+      if (cleanManifest.length > 0) {
+        setTimeout(() => {
+          fitMapToMarkers(cleanManifest);
+        }, 500);
       }
     } catch (error) {
       console.error("Failed to load map data", error);

@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { Bell } from "lucide-react-native";
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
@@ -6,6 +7,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 interface HeaderProps {
   title: string;
   onBack?: () => void;
+  showBackButton?: boolean;
   rightComponent?: React.ReactNode;
   showNotification?: boolean;
   onNotificationPress?: () => void;
@@ -14,10 +16,21 @@ interface HeaderProps {
 const Header: React.FC<HeaderProps> = ({
   title,
   onBack,
+  showBackButton,
   rightComponent,
   showNotification,
   onNotificationPress,
 }) => {
+  const router = useRouter();
+
+  const handleBackPress = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      router.back();
+    }
+  };
+
   const renderRight = () => {
     if (rightComponent) return rightComponent;
     if (showNotification) {
@@ -31,10 +44,12 @@ const Header: React.FC<HeaderProps> = ({
     return <View style={{ width: 24 }} />;
   };
 
+  const shouldShowBack = onBack || showBackButton;
+
   return (
     <View style={styles.header}>
-      {onBack ? (
-        <TouchableOpacity onPress={onBack}>
+      {shouldShowBack ? (
+        <TouchableOpacity onPress={handleBackPress}>
           <Ionicons name="chevron-back" size={24} color="#000" />
         </TouchableOpacity>
       ) : (
@@ -56,6 +71,7 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#f0f0f0",
+    backgroundColor: "#fff",
   },
   headerTitle: { fontSize: 18, fontWeight: "600", color: "#000" },
   iconBtn: {

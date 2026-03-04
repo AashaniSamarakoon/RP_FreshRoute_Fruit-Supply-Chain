@@ -1,3 +1,4 @@
+import api from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -11,7 +12,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { BACKEND_URL } from "../../../config";
 import { useTranslation } from "../../../hooks/farmer/useTranslation";
 
 const PRIMARY_GREEN = "#2f855a";
@@ -36,7 +36,9 @@ interface NotificationItem {
 export default function NotificationsScreen() {
   const router = useRouter();
   const { t } = useTranslation();
-  const [selectedFilter, setSelectedFilter] = useState<"All" | "Price Alerts" | "Demand Updates" | "App Notifs">("All");
+  const [selectedFilter, setSelectedFilter] = useState<
+    "All" | "Price Alerts" | "Demand Updates" | "App Notifs"
+  >("All");
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -71,34 +73,29 @@ export default function NotificationsScreen() {
       }
 
       const categorySlug = filterToCategorySlug(selectedFilter);
-      const url = categorySlug
-        ? `${BACKEND_URL}/api/farmer/notifications/category/${categorySlug}`
-        : `${BACKEND_URL}/api/farmer/notifications`;
+      const path = categorySlug
+        ? `/api/farmer/notifications/category/${categorySlug}`
+        : `/api/farmer/notifications`;
+      const data = await api.get(path);
 
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        console.log("[NOTIFICATIONS] Error:", data.message);
-        setNotifications([]);
-        setUnreadCount(0);
-        return;
-      }
-
-      const mapped: NotificationItem[] = (data.notifications || data || []).map((n: any) => {
-        console.log("[NOTIFICATIONS] Raw notification:", { id: n.id, _id: n._id, title: n.title });
-        return {
-          id: n.id || n._id,
-          title: n.title,
-          description: n.body,
-          time: n.created_at,
-          category: n.category,
-          severity: n.severity,
-          read_at: n.read_at,
-        };
-      });
+      const mapped: NotificationItem[] = (data.notifications || data || []).map(
+        (n: any) => {
+          console.log("[NOTIFICATIONS] Raw notification:", {
+            id: n.id,
+            _id: n._id,
+            title: n.title,
+          });
+          return {
+            id: n.id || n._id,
+            title: n.title,
+            description: n.body,
+            time: n.created_at,
+            category: n.category,
+            severity: n.severity,
+            read_at: n.read_at,
+          };
+        },
+      );
 
       setNotifications(mapped);
       setUnreadCount(data.unreadCount || 0);
@@ -115,11 +112,13 @@ export default function NotificationsScreen() {
     try {
       const token = await AsyncStorage.getItem("token");
       if (!token) return;
-      await fetch(`${BACKEND_URL}/api/farmer/notifications/read-all`, {
-        method: "PUT",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setNotifications((prev) => prev.map((n) => ({ ...n, read_at: n.read_at || new Date().toISOString() })));
+      await api.put(`/api/farmer/notifications/read-all`, null);
+      setNotifications((prev) =>
+        prev.map((n) => ({
+          ...n,
+          read_at: n.read_at || new Date().toISOString(),
+        })),
+      );
       setUnreadCount(0);
     } catch (err) {
       console.error("[NOTIFICATIONS] markAllRead error", err);
@@ -128,19 +127,23 @@ export default function NotificationsScreen() {
 
   const markAsReadAndNavigate = async (notification: NotificationItem) => {
     const { id } = notification;
-    console.log("[NOTIFICATIONS] Marking as read - ID:", id, "Full notification:", notification);
+    console.log(
+      "[NOTIFICATIONS] Marking as read - ID:",
+      id,
+      "Full notification:",
+      notification,
+    );
     try {
       const token = await AsyncStorage.getItem("token");
       if (token && id) {
-        const url = `${BACKEND_URL}/api/farmer/notifications/${id}/read`;
-        console.log("[NOTIFICATIONS] Calling URL:", url);
-        await fetch(url, {
-          method: "PUT",
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        await api.put(`/api/farmer/notifications/${id}/read`, null);
       }
       setNotifications((prev) =>
-        prev.map((n) => (n.id === id ? { ...n, read_at: n.read_at || new Date().toISOString() } : n))
+        prev.map((n) =>
+          n.id === id
+            ? { ...n, read_at: n.read_at || new Date().toISOString() }
+            : n,
+        ),
       );
       setUnreadCount((prev) => Math.max(0, prev - 1));
       router.push({
@@ -171,9 +174,12 @@ export default function NotificationsScreen() {
   };
 
   const iconForNotification = (n: NotificationItem) => {
-    if (n.severity === "high") return { name: "alert-circle", color: RED, bg: "#fee2e2" };
-    if (n.category?.toLowerCase().includes("price")) return { name: "trending-up", color: BLUE, bg: "#dbeafe" };
-    if (n.category?.toLowerCase().includes("demand")) return { name: "pulse", color: PRIMARY_GREEN, bg: LIGHT_GREEN };
+    if (n.severity === "high")
+      return { name: "alert-circle", color: RED, bg: "#fee2e2" };
+    if (n.category?.toLowerCase().includes("price"))
+      return { name: "trending-up", color: BLUE, bg: "#dbeafe" };
+    if (n.category?.toLowerCase().includes("demand"))
+      return { name: "pulse", color: PRIMARY_GREEN, bg: LIGHT_GREEN };
     return { name: "notifications", color: ORANGE, bg: "#fef3c7" };
   };
 
@@ -188,7 +194,9 @@ export default function NotificationsScreen() {
           <TouchableOpacity onPress={() => router.back()}>
             <Ionicons name="chevron-back" size={24} color="#000" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>{t("notifications.headerTitle")}</Text>
+          <Text style={styles.headerTitle}>
+            {t("notifications.headerTitle")}
+          </Text>
           <TouchableOpacity onPress={markAllRead} disabled={unreadCount === 0}>
             <Ionicons
               name="checkmark-done"
@@ -206,7 +214,10 @@ export default function NotificationsScreen() {
           contentContainerStyle={styles.filterContainer}
         >
           <TouchableOpacity
-            style={[styles.filterPill, selectedFilter === "All" && styles.filterPillActive]}
+            style={[
+              styles.filterPill,
+              selectedFilter === "All" && styles.filterPillActive,
+            ]}
             onPress={() => setSelectedFilter("All")}
           >
             <Text
@@ -219,7 +230,10 @@ export default function NotificationsScreen() {
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.filterPill, selectedFilter === "Price Alerts" && styles.filterPillActive]}
+            style={[
+              styles.filterPill,
+              selectedFilter === "Price Alerts" && styles.filterPillActive,
+            ]}
             onPress={() => setSelectedFilter("Price Alerts")}
           >
             <Text
@@ -232,7 +246,10 @@ export default function NotificationsScreen() {
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.filterPill, selectedFilter === "Demand Updates" && styles.filterPillActive]}
+            style={[
+              styles.filterPill,
+              selectedFilter === "Demand Updates" && styles.filterPillActive,
+            ]}
             onPress={() => setSelectedFilter("Demand Updates")}
           >
             <Text
@@ -245,7 +262,10 @@ export default function NotificationsScreen() {
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.filterPill, selectedFilter === "App Notifs" && styles.filterPillActive]}
+            style={[
+              styles.filterPill,
+              selectedFilter === "App Notifs" && styles.filterPillActive,
+            ]}
             onPress={() => setSelectedFilter("App Notifs")}
           >
             <Text
@@ -268,7 +288,10 @@ export default function NotificationsScreen() {
           <View style={styles.emptyContainer}>
             <Ionicons name="notifications-off-outline" size={48} color="#ccc" />
             <Text style={styles.emptyText}>{t("notifications.emptyText")}</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={loadNotifications}>
+            <TouchableOpacity
+              style={styles.retryButton}
+              onPress={loadNotifications}
+            >
               <Text style={styles.retryText}>Retry</Text>
             </TouchableOpacity>
           </View>
@@ -280,68 +303,110 @@ export default function NotificationsScreen() {
             >
               {unreadNotifications.length > 0 && (
                 <>
-                  <Text style={styles.sectionTitle}>{t("notifications.sections.unread")}</Text>
+                  <Text style={styles.sectionTitle}>
+                    {t("notifications.sections.unread")}
+                  </Text>
                   {unreadNotifications.map((notification) => {
-                  const icon = iconForNotification(notification);
-                  return (
-                    <TouchableOpacity
-                      key={notification.id}
-                      style={styles.notificationCard}
-                      onPress={() => markAsReadAndNavigate(notification)}
-                    >
-                      <View style={styles.notificationLeft}>
-                        <View style={[styles.iconCircle, { backgroundColor: icon.bg }]}>
-                          <Ionicons name={icon.name as any} size={20} color={icon.color} />
+                    const icon = iconForNotification(notification);
+                    return (
+                      <TouchableOpacity
+                        key={notification.id}
+                        style={styles.notificationCard}
+                        onPress={() => markAsReadAndNavigate(notification)}
+                      >
+                        <View style={styles.notificationLeft}>
+                          <View
+                            style={[
+                              styles.iconCircle,
+                              { backgroundColor: icon.bg },
+                            ]}
+                          >
+                            <Ionicons
+                              name={icon.name as any}
+                              size={20}
+                              color={icon.color}
+                            />
+                          </View>
+                          <View style={styles.unreadDot} />
                         </View>
-                        <View style={styles.unreadDot} />
-                      </View>
-                      <View style={styles.notificationContent}>
-                        <Text style={styles.notificationTitle}>{notification.title}</Text>
-                        <Text style={styles.notificationDescription}>
-                          {notification.description}
-                        </Text>
-                        <Text style={styles.notificationTime}>{notification.time ? new Date(notification.time).toLocaleString() : ""}</Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </>
-            )}
-
-            {earlierNotifications.length > 0 && (
-              <>
-                <Text style={styles.sectionTitle}>{t("notifications.sections.earlier")}</Text>
-                {earlierNotifications.map((notification) => {
-                  const icon = iconForNotification(notification);
-                  return (
-                    <TouchableOpacity
-                      key={notification.id}
-                      style={styles.notificationCard}
-                      onPress={() => markAsReadAndNavigate(notification)}
-                    >
-                      <View style={styles.notificationLeft}>
-                        <View style={[styles.iconCircle, { backgroundColor: icon.bg }]}>
-                          <Ionicons name={icon.name as any} size={20} color={icon.color} />
+                        <View style={styles.notificationContent}>
+                          <Text style={styles.notificationTitle}>
+                            {notification.title}
+                          </Text>
+                          <Text style={styles.notificationDescription}>
+                            {notification.description}
+                          </Text>
+                          <Text style={styles.notificationTime}>
+                            {notification.time
+                              ? new Date(notification.time).toLocaleString()
+                              : ""}
+                          </Text>
                         </View>
-                      </View>
-                      <View style={styles.notificationContent}>
-                        <Text style={styles.notificationTitle}>{notification.title}</Text>
-                        <Text style={styles.notificationDescription}>
-                          {notification.description}
-                        </Text>
-                        <Text style={styles.notificationTime}>{notification.time ? new Date(notification.time).toLocaleString() : ""}</Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </>
-            )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </>
+              )}
 
-            <View style={styles.allCaughtUpContainer}>
-              <Ionicons name="notifications-off-outline" size={48} color="#ccc" />
-              <Text style={styles.allCaughtUpTitle}>{t("notifications.emptyTitle")}</Text>
-              <Text style={styles.allCaughtUpText}>{t("notifications.emptyText")}</Text>
-            </View>
+              {earlierNotifications.length > 0 && (
+                <>
+                  <Text style={styles.sectionTitle}>
+                    {t("notifications.sections.earlier")}
+                  </Text>
+                  {earlierNotifications.map((notification) => {
+                    const icon = iconForNotification(notification);
+                    return (
+                      <TouchableOpacity
+                        key={notification.id}
+                        style={styles.notificationCard}
+                        onPress={() => markAsReadAndNavigate(notification)}
+                      >
+                        <View style={styles.notificationLeft}>
+                          <View
+                            style={[
+                              styles.iconCircle,
+                              { backgroundColor: icon.bg },
+                            ]}
+                          >
+                            <Ionicons
+                              name={icon.name as any}
+                              size={20}
+                              color={icon.color}
+                            />
+                          </View>
+                        </View>
+                        <View style={styles.notificationContent}>
+                          <Text style={styles.notificationTitle}>
+                            {notification.title}
+                          </Text>
+                          <Text style={styles.notificationDescription}>
+                            {notification.description}
+                          </Text>
+                          <Text style={styles.notificationTime}>
+                            {notification.time
+                              ? new Date(notification.time).toLocaleString()
+                              : ""}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </>
+              )}
+
+              <View style={styles.allCaughtUpContainer}>
+                <Ionicons
+                  name="notifications-off-outline"
+                  size={48}
+                  color="#ccc"
+                />
+                <Text style={styles.allCaughtUpTitle}>
+                  {t("notifications.emptyTitle")}
+                </Text>
+                <Text style={styles.allCaughtUpText}>
+                  {t("notifications.emptyText")}
+                </Text>
+              </View>
             </ScrollView>
             <View style={styles.footer} />
           </>

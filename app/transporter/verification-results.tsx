@@ -1,3 +1,4 @@
+import api from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -10,9 +11,8 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
-import { BACKEND_URL } from "../../config";
 
 interface VerificationResult {
   imageUri: string;
@@ -91,7 +91,7 @@ export default function VerificationResults() {
         setFarmerGrade(farmerGradeData);
         setJobId(jobIdParam || "");
         setOrderId(orderIdParam || "");
-        
+
         // Store image URIs for later base64 conversion
         if (imageUrisParam) {
           try {
@@ -124,7 +124,8 @@ export default function VerificationResults() {
 
         // Check if all detected grades match farmer's declared grade
         const allMatch = resultsData.every(
-          (result: VerificationResult) => result.detectedGrade === farmerGradeData
+          (result: VerificationResult) =>
+            result.detectedGrade === farmerGradeData,
         );
         setIsMatch(allMatch);
         paramsProcessed.current = true;
@@ -136,7 +137,16 @@ export default function VerificationResults() {
     };
 
     loadData();
-  }, [isAuthenticated, checkingAuth, params.error, params.results, params.farmerGrade, params.imageUris, params.imagesStorageKey, params.imagesBase64]);
+  }, [
+    isAuthenticated,
+    checkingAuth,
+    params.error,
+    params.results,
+    params.farmerGrade,
+    params.imageUris,
+    params.imagesStorageKey,
+    params.imagesBase64,
+  ]);
 
   const convertUriToBase64 = async (uri: string): Promise<string> => {
     try {
@@ -144,7 +154,7 @@ export default function VerificationResults() {
       if (uri.startsWith("data:image")) {
         return uri;
       }
-      
+
       // Convert file URI to base64 using fetch
       const response = await fetch(uri);
       const blob = await response.blob();
@@ -164,8 +174,16 @@ export default function VerificationResults() {
   };
 
   const saveGradingData = async () => {
-    if (!jobId || !orderId || (imagesBase64.length === 0 && imageUris.length === 0) || results.length === 0) {
-      Alert.alert("Error", "Missing required data to save grading information.");
+    if (
+      !jobId ||
+      !orderId ||
+      (imagesBase64.length === 0 && imageUris.length === 0) ||
+      results.length === 0
+    ) {
+      Alert.alert(
+        "Error",
+        "Missing required data to save grading information.",
+      );
       return;
     }
 
@@ -181,7 +199,7 @@ export default function VerificationResults() {
       // Convert image URIs to base64 if needed
       let base64Images: string[] = [];
       const imagesToProcess = imageUris.length > 0 ? imageUris : imagesBase64;
-      
+
       for (const image of imagesToProcess) {
         if (image.startsWith("data:image")) {
           // Already base64
@@ -207,33 +225,34 @@ export default function VerificationResults() {
       base64Images.forEach((base64, index) => {
         // Append base64 image string
         formData.append(`image_${index}_base64`, base64);
-        formData.append(`image_${index}_predicted_grade`, results[index].detectedGrade);
-        formData.append(`image_${index}_accuracy`, (results[index].confidence || 0).toString());
+        formData.append(
+          `image_${index}_predicted_grade`,
+          results[index].detectedGrade,
+        );
+        formData.append(
+          `image_${index}_accuracy`,
+          (results[index].confidence || 0).toString(),
+        );
         formData.append(`image_${index}_sequence`, (index + 1).toString());
       });
 
       // Call backend API to save grading data using FormData
-      const response = await fetch(`${BACKEND_URL}/api/gradings`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          // Don't set Content-Type - let fetch set it automatically with boundary for FormData
-        },
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || "Failed to save grading data");
-      }
+      await api.postForm(`/api/gradings`, formData);
 
       // Save verified order to AsyncStorage
       try {
-        const verifiedOrdersJson = await AsyncStorage.getItem(`verified_orders_${jobId}`);
-        const verifiedOrders = verifiedOrdersJson ? JSON.parse(verifiedOrdersJson) : [];
+        const verifiedOrdersJson = await AsyncStorage.getItem(
+          `verified_orders_${jobId}`,
+        );
+        const verifiedOrders = verifiedOrdersJson
+          ? JSON.parse(verifiedOrdersJson)
+          : [];
         if (!verifiedOrders.includes(orderId)) {
           verifiedOrders.push(orderId);
-          await AsyncStorage.setItem(`verified_orders_${jobId}`, JSON.stringify(verifiedOrders));
+          await AsyncStorage.setItem(
+            `verified_orders_${jobId}`,
+            JSON.stringify(verifiedOrders),
+          );
         }
       } catch (error) {
         console.error("Error saving verified order:", error);
@@ -245,7 +264,9 @@ export default function VerificationResults() {
       console.error("Error saving grading data:", error);
       Alert.alert(
         "Error",
-        error instanceof Error ? error.message : "Failed to save grading data. Please try again."
+        error instanceof Error
+          ? error.message
+          : "Failed to save grading data. Please try again.",
       );
     } finally {
       setIsSaving(false);
@@ -271,7 +292,10 @@ export default function VerificationResults() {
         },
       });
     } else {
-      Alert.alert("Error", "Missing job or order information. Please go back and try again.");
+      Alert.alert(
+        "Error",
+        "Missing job or order information. Please go back and try again.",
+      );
     }
   };
 
@@ -292,10 +316,7 @@ export default function VerificationResults() {
           <Text style={styles.errorText}>
             An error occurred during verification. Please try again.
           </Text>
-          <TouchableOpacity
-            style={styles.button}
-            onPress={() => router.back()}
-          >
+          <TouchableOpacity style={styles.button} onPress={() => router.back()}>
             <Text style={styles.buttonText}>Go Back</Text>
           </TouchableOpacity>
         </View>
@@ -366,7 +387,8 @@ export default function VerificationResults() {
           <View style={styles.matchContainer}>
             <Ionicons name="checkmark-circle" size={64} color="#2f855a" />
             <Text style={styles.matchText}>
-              All AI-verified grades match the farmer provided grade ({farmerGrade})
+              All AI-verified grades match the farmer provided grade (
+              {farmerGrade})
             </Text>
             <TouchableOpacity
               style={styles.continueButton}
@@ -384,7 +406,8 @@ export default function VerificationResults() {
           <View style={styles.mismatchContainer}>
             <Ionicons name="warning" size={64} color="#e53e3e" />
             <Text style={styles.mismatchText}>
-              Grade mismatch detected. Some AI-verified grades do not match the farmer provided grade ({farmerGrade}).
+              Grade mismatch detected. Some AI-verified grades do not match the
+              farmer provided grade ({farmerGrade}).
             </Text>
             <Text style={styles.mismatchSubText}>
               Please re-verify the fruit quality by capturing images again.
@@ -393,7 +416,12 @@ export default function VerificationResults() {
               style={styles.reverifyButton}
               onPress={handleReverify}
             >
-              <Ionicons name="camera-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+              <Ionicons
+                name="camera-outline"
+                size={20}
+                color="#fff"
+                style={{ marginRight: 8 }}
+              />
               <Text style={styles.continueButtonText}>Re-verify</Text>
             </TouchableOpacity>
           </View>
@@ -613,4 +641,3 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
 });
-

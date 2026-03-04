@@ -1,3 +1,4 @@
+import { supabase } from "@/utils/supabaseClient";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -44,7 +45,18 @@ export default function ProfileScreen() {
         text: "Logout",
         style: "destructive",
         onPress: async () => {
-          await AsyncStorage.clear();
+          try {
+            await supabase.auth.signOut();
+          } catch (e) {
+            console.warn("signOut failed", e);
+          }
+          await AsyncStorage.multiRemove([
+            "token",
+            "user",
+            "onboarded",
+            "onboarding_farmer",
+            "onboarding_buyer",
+          ]);
           router.replace("/login"); // Adjust route to your actual login path
         },
       },

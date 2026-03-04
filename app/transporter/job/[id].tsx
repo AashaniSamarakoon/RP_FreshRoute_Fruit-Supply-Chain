@@ -567,6 +567,7 @@
 //   alertText: { color: "#c53030", fontWeight: "bold", fontSize: 12 },
 // });
 
+import api from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
@@ -589,7 +590,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { BACKEND_URL } from "../../../config";
 
 interface ManifestItem {
   sequence: number;
@@ -636,7 +636,7 @@ export default function JobDetails() {
       const checkVerifiedOrders = async () => {
         try {
           const verifiedOrdersJson = await AsyncStorage.getItem(
-            `verified_orders_${id}`
+            `verified_orders_${id}`,
           );
           if (verifiedOrdersJson) {
             const orders = JSON.parse(verifiedOrdersJson);
@@ -647,29 +647,24 @@ export default function JobDetails() {
         }
       };
       checkVerifiedOrders();
-    }, [id])
+    }, [id]),
   );
 
   const fetchJobDetails = async () => {
     try {
-      const token = await AsyncStorage.getItem("token");
-      const res = await fetch(`${BACKEND_URL}/api/transporter/jobs/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setJob(data);
+      let data: any;
+      data = await api.get(`/api/transporter/jobs/${id}`);
+      setJob(data);
 
-        // IMPORTANT: Ensure coordinates are numbers
-        const cleanManifest = (data.route_manifest || []).map((item: any) => ({
-          ...item,
-          lat: parseFloat(item.lat),
-          lng: parseFloat(item.lng),
-        }));
+      // IMPORTANT: Ensure coordinates are numbers
+      const cleanManifest = (data.route_manifest || []).map((item: any) => ({
+        ...item,
+        lat: parseFloat(item.lat),
+        lng: parseFloat(item.lng),
+      }));
 
-        setManifest(cleanManifest);
-        setOrdersData(data.orders_data || {});
-      }
+      setManifest(cleanManifest);
+      setOrdersData(data.orders_data || {});
     } catch (error) {
       Alert.alert("Error", "Failed to load details");
     } finally {
@@ -707,7 +702,7 @@ export default function JobDetails() {
   // ... (Rest of logic: handleVerifyQuality, handleAction, viewOrderInfo remains same)
   const handleVerifyQuality = (orderId: string) => {
     const pickupStop = manifest.find(
-      (stop) => stop.type === "PICKUP" && stop.order_id === orderId
+      (stop) => stop.type === "PICKUP" && stop.order_id === orderId,
     );
     if (!pickupStop) {
       Alert.alert("Error", "Pickup location not found.");
@@ -727,7 +722,7 @@ export default function JobDetails() {
   const handleAction = (
     type: "PICKUP" | "DROP",
     seq: number,
-    orderId: string
+    orderId: string,
   ) => {
     if (type === "PICKUP" && !verifiedOrders.has(orderId)) {
       Alert.alert("Verification Required", "Please verify the quality first.");

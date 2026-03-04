@@ -39,7 +39,7 @@ export default function BuyerLayout() {
           tabBarIcon: ({ color, size }) => <Home size={size} color={color} />,
         }}
       />
-      <Tabs.Screen
+      {/* <Tabs.Screen
         name="marketPrice"
         options={{
           title: "Market Price",
@@ -47,11 +47,11 @@ export default function BuyerLayout() {
             <Package size={size} color={color} />
           ),
         }}
-      />
+      /> */}
       <Tabs.Screen
         name="freshroutePrices"
         options={{
-          title: "FreshRoute",
+          title: "FreshRoute Price",
           tabBarIcon: ({ color, size }) => (
             <Tag size={size} color={color} />
           ),

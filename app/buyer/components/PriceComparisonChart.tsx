@@ -1,5 +1,5 @@
-import React from "react";
-import { Dimensions, StyleSheet, Text, View } from "react-native";
+import React, { useState } from "react";
+import { Dimensions, StyleSheet, Text, View, TouchableOpacity } from "react-native";
 import Svg, {
   Circle,
   Defs,
@@ -21,24 +21,49 @@ interface PriceData {
 }
 
 interface PriceComparisonChartProps {
-  data?: PriceData[];
   title?: string;
 }
 
-// Default sample data showing FreshRoute prices below market prices (in Sri Lankan Rupees)
-const defaultData: PriceData[] = [
-  { month: "Jul", freshRoutePrice: 320, marketPrice: 350 },
-  { month: "Aug", freshRoutePrice: 355, marketPrice: 365 },
-  { month: "Sep", freshRoutePrice: 340, marketPrice: 355 },
-  { month: "Oct", freshRoutePrice: 365, marketPrice: 380 },
-  { month: "Nov", freshRoutePrice: 360, marketPrice: 375 },
-  { month: "Dec", freshRoutePrice: 380, marketPrice: 395 },
+// Grouped data for the filter
+const fruitPriceData: Record<string, PriceData[]> = {
+  mango: [
+    { month: "Jul", freshRoutePrice: 320, marketPrice: 350 },
+    { month: "Aug", freshRoutePrice: 355, marketPrice: 365 },
+    { month: "Sep", freshRoutePrice: 340, marketPrice: 355 },
+    { month: "Oct", freshRoutePrice: 365, marketPrice: 380 },
+    { month: "Nov", freshRoutePrice: 360, marketPrice: 375 },
+    { month: "Dec", freshRoutePrice: 380, marketPrice: 395 },
+  ],
+  banana: [
+    { month: "Jul", freshRoutePrice: 110, marketPrice: 125 },
+    { month: "Aug", freshRoutePrice: 105, marketPrice: 115 },
+    { month: "Sep", freshRoutePrice: 110, marketPrice: 125 },
+    { month: "Oct", freshRoutePrice: 120, marketPrice: 135 },
+    { month: "Nov", freshRoutePrice: 125, marketPrice: 140 },
+    { month: "Dec", freshRoutePrice: 135, marketPrice: 150 },
+  ],
+  pineapple: [
+    { month: "Jul", freshRoutePrice: 285, marketPrice: 300 },
+    { month: "Aug", freshRoutePrice: 275, marketPrice: 290 },
+    { month: "Sep", freshRoutePrice: 290, marketPrice: 310 },
+    { month: "Oct", freshRoutePrice: 305, marketPrice: 325 },
+    { month: "Nov", freshRoutePrice: 315, marketPrice: 330 },
+    { month: "Dec", freshRoutePrice: 330, marketPrice: 350 },
+  ],
+};
+
+const fruitOptions = [
+  { id: "mango", label: "Mango" },
+  { id: "banana", label: "Banana" },
+  { id: "pineapple", label: "Pineapple" },
 ];
 
-export default function PriceComparisonChart({
-  data = defaultData,
-}: //   title = "Price Comparison",
-PriceComparisonChartProps): React.JSX.Element {
+export default function PriceComparisonChart({}: PriceComparisonChartProps): React.JSX.Element {
+  const [selectedFruit, setSelectedFruit] = useState<string>("mango");
+  
+  // Use the data based on the selected filter
+  const currentData = fruitPriceData[selectedFruit];
+
   const chartWidth = screenWidth - 60;
   const chartHeight = 180;
   const paddingLeft = 40;
@@ -50,14 +75,14 @@ PriceComparisonChartProps): React.JSX.Element {
   const graphHeight = chartHeight - paddingTop - paddingBottom;
 
   // Calculate min and max prices for scaling
-  const allPrices = data.flatMap((d) => [d.freshRoutePrice, d.marketPrice]);
+  const allPrices = currentData.flatMap((d) => [d.freshRoutePrice, d.marketPrice]);
   const minPrice = Math.floor(Math.min(...allPrices) * 10) / 10 - 0.1;
   const maxPrice = Math.ceil(Math.max(...allPrices) * 10) / 10 + 0.1;
   const priceRange = maxPrice - minPrice;
 
   // Convert data to coordinates
   const getX = (index: number) =>
-    paddingLeft + (index / (data.length - 1)) * graphWidth;
+    paddingLeft + (index / (currentData.length - 1)) * graphWidth;
   const getY = (price: number) =>
     paddingTop + graphHeight - ((price - minPrice) / priceRange) * graphHeight;
 
@@ -89,15 +114,15 @@ PriceComparisonChartProps): React.JSX.Element {
     return `${linePath} L ${lastX} ${bottomY} L ${firstX} ${bottomY} Z`;
   };
 
-  const freshRoutePrices = data.map((d) => d.freshRoutePrice);
-  const marketPrices = data.map((d) => d.marketPrice);
+  const freshRoutePrices = currentData.map((d) => d.freshRoutePrice);
+  const marketPrices = currentData.map((d) => d.marketPrice);
 
   // Calculate average savings
   const avgSavings =
-    data.reduce((acc, d) => acc + (d.marketPrice - d.freshRoutePrice), 0) /
-    data.length;
+    currentData.reduce((acc, d) => acc + (d.marketPrice - d.freshRoutePrice), 0) /
+    currentData.length;
   const savingsPercent = (
-    (avgSavings / (data[0]?.marketPrice || 1)) *
+    (avgSavings / (currentData[0]?.marketPrice || 1)) *
     100
   ).toFixed(0);
 
@@ -106,6 +131,29 @@ PriceComparisonChartProps): React.JSX.Element {
 
   return (
     <View style={styles.container}>
+      {/* Fruit Filter */}
+      <View style={styles.filterContainer}>
+        {fruitOptions.map((fruit) => (
+          <TouchableOpacity
+            key={fruit.id}
+            style={[
+              styles.filterButton,
+              selectedFruit === fruit.id && styles.filterButtonActive,
+            ]}
+            onPress={() => setSelectedFruit(fruit.id)}
+          >
+            <Text
+              style={[
+                styles.filterText,
+                selectedFruit === fruit.id && styles.filterTextActive,
+              ]}
+            >
+              {fruit.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       <View style={styles.header}>
         <View style={styles.legend}>
           <View style={styles.legendItem}>
@@ -119,9 +167,9 @@ PriceComparisonChartProps): React.JSX.Element {
           </View>
           <View style={styles.legendItem}>
             <View style={[styles.legendDot, { backgroundColor: "#9CA3AF" }]} />
-            <Text style={styles.legendText}>Market Price</Text>
+            <Text style={styles.legendText}>Pred. Market Price</Text>
           </View>
-        </View>{" "}
+        </View>
         <View style={styles.savingsBadge}>
           <Text style={styles.savingsText}>Save ~{savingsPercent}%</Text>
         </View>
@@ -183,7 +231,7 @@ PriceComparisonChartProps): React.JSX.Element {
         ))}
 
         {/* X-axis labels */}
-        {data.map((d, index) => (
+        {currentData.map((d, index) => (
           <SvgText
             key={`x-label-${index}`}
             x={getX(index)}
@@ -267,7 +315,7 @@ PriceComparisonChartProps): React.JSX.Element {
         </View>
         <View style={styles.infoDivider} />
         <View style={styles.infoItem}>
-          <Text style={styles.infoLabel}>Avg. Market</Text>
+          <Text style={styles.infoLabel}>Avg. Pred. Market</Text>
           <Text style={[styles.infoValue, { color: BuyerColors.textGray }]}>
             Rs.
             {Math.round(
@@ -285,7 +333,6 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: BuyerColors.cardWhite,
     marginHorizontal: 20,
-    // marginTop: 24,
     borderRadius: 16,
     padding: 16,
     shadowColor: "#000",
@@ -294,16 +341,37 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
+  filterContainer: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 16,
+  },
+  filterButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: "#F3F4F6",
+    borderWidth: 1,
+    borderColor: "transparent",
+  },
+  filterButtonActive: {
+    backgroundColor: BuyerColors.primaryLight,
+    borderColor: BuyerColors.primaryGreen,
+  },
+  filterText: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: BuyerColors.textGray,
+  },
+  filterTextActive: {
+    color: BuyerColors.primaryGreen,
+    fontWeight: "700",
+  },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 12,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: BuyerColors.textBlack,
   },
   savingsBadge: {
     backgroundColor: BuyerColors.primaryLight,
