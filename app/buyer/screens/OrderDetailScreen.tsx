@@ -20,6 +20,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import MapView, { Marker } from "react-native-maps";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 // --- Helpers ---
@@ -65,7 +66,10 @@ const getStatusStyles = (status: string) => {
 };
 
 export default function OrderDetailScreen() {
-  const params = useLocalSearchParams<{ orderId: string }>();
+  const params = useLocalSearchParams<{
+    orderId: string;
+    farmerPickup?: string;
+  }>();
   const router = useRouter();
   const [order, setOrder] = useState<PlacedOrder | null>(null);
   const [farmer, setFarmer] = useState<FarmerInfo | null>(null);
@@ -83,6 +87,17 @@ export default function OrderDetailScreen() {
   const [predictedPrice, setPredictedPrice] = useState<number>(0);
   const [isFetchingForecast, setIsFetchingForecast] = useState(false);
 
+  // ── accordion + proof-of-harvest state ──
+  // Start expanded; collapse automatically once the order is paid and in-transit
+  const [productDetailExpanded, setProductDetailExpanded] = useState(true);
+  const [farmerCoords, setFarmerCoords] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+  const [harvestProofImages, setHarvestProofImages] = useState<string[]>([]);
+  const [proofViewerVisible, setProofViewerVisible] = useState(false);
+  const [proofViewerIndex, setProofViewerIndex] = useState(0);
+
   // ── Price-lock key per order ──
   const priceLockKey = params.orderId
     ? `PAYMENT_PRICE_LOCK_${params.orderId}`
@@ -91,6 +106,22 @@ export default function OrderDetailScreen() {
   useEffect(() => {
     if (params.orderId) fetchOrderDetails();
   }, [params.orderId]);
+
+  // Collapse product details accordion once the order moves to IN_TRANSIT or beyond
+  useEffect(() => {
+    if (!order?.status) return;
+    const trackableStatuses = [
+      "PAID_PENDING_DELIVERY",
+      "IN_TRANSIT",
+      "DELIVERED",
+      "COMPLETED",
+    ];
+    if (trackableStatuses.includes(order.status)) {
+      setProductDetailExpanded(false);
+    } else {
+      setProductDetailExpanded(true);
+    }
+  }, [order?.status]);
 
   // Load any previously locked price from AsyncStorage
   useEffect(() => {
@@ -121,6 +152,20 @@ export default function OrderDetailScreen() {
       setFetchError(null);
       if (!params.orderId) throw new Error("No orderId provided");
 
+      // Check if farmerPickup was passed from orders list
+      let passedFarmerPickup: any = null;
+      if (params.farmerPickup) {
+        try {
+          passedFarmerPickup = JSON.parse(params.farmerPickup);
+          console.log(
+            "Using farmerPickup from navigation params:",
+            passedFarmerPickup,
+          );
+        } catch (e) {
+          console.warn("Failed to parse farmerPickup from params:", e);
+        }
+      }
+
       let data: any = await api.get(
         `/api/buyer/place-order/details/${params.orderId}`,
       );
@@ -146,13 +191,24 @@ export default function OrderDetailScreen() {
 
       if (data.farmer) {
         const userData = data.farmer.user || data.farmer.users || {};
+        // Use passed farmerPickup if available, otherwise from API
+        const pickup = passedFarmerPickup ?? data.farmerPickup ?? {};
         setFarmer({
           id: data.farmer.id,
           name: userData?.name || userData?.full_name || "Unknown",
           phone: userData?.phone || "",
           rating: undefined,
-          location: data.farmer.location || undefined,
+          location: pickup.location || data.farmer.location || undefined,
         });
+        // Prefer farmerPickup coords, fall back to farmer-level coords
+        const lat = pickup.latitude ?? data.farmer.latitude;
+        const lng = pickup.longitude ?? data.farmer.longitude;
+        if (lat && lng) {
+          setFarmerCoords({
+            latitude: Number(lat),
+            longitude: Number(lng),
+          });
+        }
       }
 
       if (orderData?.product_images) {
@@ -167,6 +223,16 @@ export default function OrderDetailScreen() {
 
       setHarvestDate(
         orderData?.harvest_date || orderData?.estimated_harvest_date || null,
+      );
+
+      // Harvest proof images
+      const rawProof =
+        orderData.harvest_proof_images ??
+        orderData.proof_images ??
+        orderData.grading_images ??
+        null;
+      setHarvestProofImages(
+        Array.isArray(rawProof) ? rawProof : rawProof ? [rawProof] : [],
       );
 
       // Fetch forecast price when order is awaiting payment
@@ -246,32 +312,35 @@ export default function OrderDetailScreen() {
 
   const getPrimaryAction = () => {
     if (!order) return null;
+    // Once payment is done (PAID_PENDING_DELIVERY and beyond) no action button is shown
+    // — tracking is handled via the inline mini-map section
+    if (
+      [
+        "PAID_PENDING_DELIVERY",
+        "IN_TRANSIT",
+        "DELIVERED",
+        "COMPLETED",
+      ].includes(order.status)
+    ) {
+      return null;
+    }
     switch (order.status) {
       case "AWAITING_PAYMENT":
         return {
           label: "Proceed to Payment",
           onPress: () => setPaymentModalVisible(true),
         };
-      case "IN_TRANSIT":
-        return {
-          label: "Track Delivery",
-          icon: "navigate-circle-outline",
-          onPress: () =>
-            router.push({
-              pathname: "/buyer/track-delivery" as any,
-              params: { orderId: order.id },
-            }),
-        };
-      case "DELIVERED":
-        return {
-          label: "Confirm Receipt",
-          icon: "checkmark-done-circle-outline",
-          onPress: () => {},
-        };
       default:
         return null;
     }
   };
+
+  const isOrderTrackable = [
+    "PAID_PENDING_DELIVERY",
+    "IN_TRANSIT",
+    "DELIVERED",
+    "COMPLETED",
+  ].includes(order?.status ?? "");
 
   if (loading && !refreshing) {
     return (
@@ -304,6 +373,31 @@ export default function OrderDetailScreen() {
   const statusStyle = getStatusStyles(order.status);
   const fruitMeta = getFruitMeta(order.fruit_type);
 
+  // --- Actual map coordinates (fall back to Colombo area if DB has none) ---
+  const farmerMapCoord = farmerCoords ?? {
+    latitude: 6.9271,
+    longitude: 79.8612,
+  };
+  const buyerMapCoord =
+    order.latitude && order.longitude
+      ? { latitude: order.latitude, longitude: order.longitude }
+      : { latitude: 6.8407, longitude: 79.993 };
+  const driverMapCoord =
+    transporter?.current_latitude && transporter?.current_longitude
+      ? {
+          latitude: transporter.current_latitude,
+          longitude: transporter.current_longitude,
+        }
+      : null;
+  const miniMapCenter = {
+    latitude: (farmerMapCoord.latitude + buyerMapCoord.latitude) / 2,
+    longitude: (farmerMapCoord.longitude + buyerMapCoord.longitude) / 2,
+  };
+  const miniMapLatDelta =
+    Math.abs(farmerMapCoord.latitude - buyerMapCoord.latitude) * 2.5 + 0.06;
+  const miniMapLngDelta =
+    Math.abs(farmerMapCoord.longitude - buyerMapCoord.longitude) * 2.5 + 0.06;
+
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
       <Header title="Order Summary" showBackButton />
@@ -321,6 +415,102 @@ export default function OrderDetailScreen() {
           }
           showsVerticalScrollIndicator={false}
         >
+          {/* Section: Track Your Order — shown when order is paid and being fulfilled */}
+          {isOrderTrackable && (
+            <>
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Track Your Order</Text>
+                <TouchableOpacity
+                  style={styles.miniMapContainer}
+                  activeOpacity={0.85}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/buyer/track-delivery" as any,
+                      params: {
+                        orderId: order.id,
+                        farmerLat: String(farmerMapCoord.latitude),
+                        farmerLng: String(farmerMapCoord.longitude),
+                        buyerLat: String(buyerMapCoord.latitude),
+                        buyerLng: String(buyerMapCoord.longitude),
+                        ...(driverMapCoord
+                          ? {
+                              driverLat: String(driverMapCoord.latitude),
+                              driverLng: String(driverMapCoord.longitude),
+                            }
+                          : {}),
+                      },
+                    })
+                  }
+                >
+                  <MapView
+                    style={styles.miniMap}
+                    pointerEvents="none"
+                    initialRegion={{
+                      latitude: miniMapCenter.latitude,
+                      longitude: miniMapCenter.longitude,
+                      latitudeDelta: miniMapLatDelta,
+                      longitudeDelta: miniMapLngDelta,
+                    }}
+                    scrollEnabled={false}
+                    zoomEnabled={false}
+                    rotateEnabled={false}
+                    pitchEnabled={false}
+                  >
+                    <Marker coordinate={farmerMapCoord} title="Pickup">
+                      <View
+                        style={[
+                          styles.miniMarker,
+                          { backgroundColor: "#F59E0B" },
+                        ]}
+                      >
+                        <Ionicons name="storefront" size={10} color="#FFF" />
+                      </View>
+                    </Marker>
+                    <Marker coordinate={buyerMapCoord} title="Delivery">
+                      <View
+                        style={[
+                          styles.miniMarker,
+                          { backgroundColor: BuyerColors.primaryGreen },
+                        ]}
+                      >
+                        <Ionicons name="location" size={10} color="#FFF" />
+                      </View>
+                    </Marker>
+                    {driverMapCoord && (
+                      <Marker coordinate={driverMapCoord} title="Driver">
+                        <View
+                          style={[
+                            styles.miniMarker,
+                            {
+                              backgroundColor: "#3B82F6",
+                              width: 26,
+                              height: 26,
+                              borderRadius: 13,
+                            },
+                          ]}
+                        >
+                          <Ionicons name="car" size={13} color="#FFF" />
+                        </View>
+                      </Marker>
+                    )}
+                  </MapView>
+
+                  {/* Overlay tap-to-track button */}
+                  <View style={styles.miniMapOverlay}>
+                    <View style={styles.miniMapTrackBtn}>
+                      <Ionicons name="navigate" size={14} color="#FFF" />
+                      <Text style={styles.miniMapTrackText}>
+                        Tap to Track Live
+                      </Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.solidSeparator} />
+            </>
+          )}
+
           {/* Section: Order Status & ID */}
           <View style={styles.section}>
             <View style={styles.statusRow}>
@@ -357,80 +547,157 @@ export default function OrderDetailScreen() {
 
           <View style={styles.solidSeparator} />
 
-          {/* Section: Product Detail */}
+          {/* Section: Product Detail — collapsible accordion */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Product Details</Text>
-            <View style={styles.productRow}>
-              <TouchableOpacity
-                style={styles.imageWrapper}
-                onPress={() => {
-                  if (productImages.length > 0) {
-                    setSelectedImageIndex(0);
-                    setImageViewerVisible(true);
-                  }
-                }}
-                disabled={productImages.length === 0}
-              >
-                {productImages.length > 0 ? (
-                  <>
-                    <Image
-                      source={{ uri: productImages[0] }}
-                      style={styles.productImage}
-                    />
-                    {productImages.length > 1 && (
-                      <View style={styles.imageBadge}>
-                        <Text style={styles.imageBadgeText}>
-                          +{productImages.length - 1}
-                        </Text>
-                      </View>
-                    )}
-                  </>
-                ) : (
-                  <View
-                    style={[
-                      styles.avatarFallback,
-                      { backgroundColor: fruitMeta.bg },
-                    ]}
-                  >
-                    <Text style={styles.avatarEmoji}>{fruitMeta.emoji}</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.accordionHeader}
+              onPress={() => setProductDetailExpanded((v) => !v)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>
+                Product Details
+              </Text>
+              <Ionicons
+                name={productDetailExpanded ? "chevron-up" : "chevron-down"}
+                size={20}
+                color="#6B7280"
+              />
+            </TouchableOpacity>
 
-              <View style={styles.productInfo}>
-                <Text style={styles.productName}>
-                  {order.fruit_type}{" "}
-                  <Text style={styles.productVariant}>• {order.variant}</Text>
-                </Text>
+            {productDetailExpanded && (
+              <View style={[styles.productRow, { marginTop: 16 }]}>
+                <TouchableOpacity
+                  style={styles.imageWrapper}
+                  onPress={() => {
+                    if (productImages.length > 0) {
+                      setSelectedImageIndex(0);
+                      setImageViewerVisible(true);
+                    }
+                  }}
+                  disabled={productImages.length === 0}
+                >
+                  {productImages.length > 0 ? (
+                    <>
+                      <Image
+                        source={{ uri: productImages[0] }}
+                        style={styles.productImage}
+                      />
+                      {productImages.length > 1 && (
+                        <View style={styles.imageBadge}>
+                          <Text style={styles.imageBadgeText}>
+                            +{productImages.length - 1}
+                          </Text>
+                        </View>
+                      )}
+                    </>
+                  ) : (
+                    <View
+                      style={[
+                        styles.avatarFallback,
+                        { backgroundColor: fruitMeta.bg },
+                      ]}
+                    >
+                      <Text style={styles.avatarEmoji}>{fruitMeta.emoji}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
 
-                <View style={styles.chipContainer}>
-                  <View style={styles.chip}>
-                    <Text style={styles.chipText}>{order.quantity} kg</Text>
-                  </View>
-                  <View style={styles.chip}>
-                    <Text style={styles.chipText}>Grade {order.grade}</Text>
-                  </View>
-                </View>
-
-                {harvestDate && (
-                  <Text style={styles.harvestText}>
-                    Est. Harvest:{" "}
-                    <Text style={{ fontWeight: "600", color: "#374151" }}>
-                      {formatDate(harvestDate)}
-                    </Text>
+                <View style={styles.productInfo}>
+                  <Text style={styles.productName}>
+                    {order.fruit_type}{" "}
+                    <Text style={styles.productVariant}>• {order.variant}</Text>
                   </Text>
-                )}
+
+                  <View style={styles.chipContainer}>
+                    <View style={styles.chip}>
+                      <Text style={styles.chipText}>{order.quantity} kg</Text>
+                    </View>
+                    <View style={styles.chip}>
+                      <Text style={styles.chipText}>Grade {order.grade}</Text>
+                    </View>
+                  </View>
+
+                  {harvestDate && (
+                    <Text style={styles.harvestText}>
+                      Est. Harvest:{" "}
+                      <Text style={{ fontWeight: "600", color: "#374151" }}>
+                        {formatDate(harvestDate)}
+                      </Text>
+                    </Text>
+                  )}
+                </View>
               </View>
-            </View>
+            )}
           </View>
 
           <View style={styles.solidSeparator} />
+
+          {/* Section: Proof of Harvest — visible from IN_TRANSIT onwards */}
+          {isOrderTrackable && (
+            <>
+              <View style={styles.section}>
+                <View style={styles.accordionHeader}>
+                  <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>
+                    Proof of Harvest
+                  </Text>
+                  <View style={styles.verifiedBadge}>
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={13}
+                      color="#16A34A"
+                    />
+                    <Text style={styles.verifiedBadgeText}>Verified</Text>
+                  </View>
+                </View>
+
+                {harvestProofImages.length > 0 ? (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.proofImagesRow}
+                  >
+                    {harvestProofImages.map((uri, idx) => (
+                      <TouchableOpacity
+                        key={idx}
+                        style={styles.proofThumb}
+                        activeOpacity={0.8}
+                        onPress={() => {
+                          setProofViewerIndex(idx);
+                          setProofViewerVisible(true);
+                        }}
+                      >
+                        <Image source={{ uri }} style={styles.proofThumbImg} />
+                        {idx === 0 && (
+                          <View style={styles.proofVerifiedPin}>
+                            <Ionicons
+                              name="checkmark-circle"
+                              size={16}
+                              color="#16A34A"
+                            />
+                          </View>
+                        )}
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                ) : (
+                  <View style={styles.proofEmptyState}>
+                    <Ionicons name="images-outline" size={36} color="#D1D5DB" />
+                    <Text style={styles.proofEmptyText}>
+                      Harvest proof images will appear here
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              <View style={styles.solidSeparator} />
+            </>
+          )}
 
           {/* Section: Logistics */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Location</Text>
             <View style={styles.logisticsContainer}>
-              {farmer && order.status === "AWAITING_PAYMENT" && (
+              {farmer && (
                 <View style={styles.logisticsRow}>
                   <View style={styles.iconColumn}>
                     <Ionicons name="storefront" size={20} color="#6B7280" />
@@ -438,7 +705,9 @@ export default function OrderDetailScreen() {
                   </View>
                   <View style={styles.addressBlock}>
                     <Text style={styles.addressLabel}>Pickup Location</Text>
-                    <Text style={styles.addressValue}>{farmer.location}</Text>
+                    <Text style={styles.addressValue}>
+                      {farmer.location ?? "—"}
+                    </Text>
                   </View>
                 </View>
               )}
@@ -563,7 +832,7 @@ export default function OrderDetailScreen() {
         />
       )}
 
-      {/* Image Viewer Modal */}
+      {/* Product Image Viewer Modal */}
       <Modal
         visible={imageViewerVisible}
         transparent={true}
@@ -600,6 +869,54 @@ export default function OrderDetailScreen() {
             <View style={styles.imageCounter}>
               <Text style={styles.imageCounterText}>
                 {selectedImageIndex + 1} / {productImages.length}
+              </Text>
+            </View>
+          )}
+        </View>
+      </Modal>
+
+      {/* Proof of Harvest Image Viewer Modal */}
+      <Modal
+        visible={proofViewerVisible}
+        transparent={true}
+        animationType="fade"
+      >
+        <View style={styles.modalBg}>
+          <TouchableOpacity
+            style={styles.modalClose}
+            onPress={() => setProofViewerVisible(false)}
+          >
+            <Ionicons name="close" size={28} color="#fff" />
+          </TouchableOpacity>
+          {/* Verified overlay badge */}
+          <View style={styles.proofModalBadge}>
+            <Ionicons name="checkmark-circle" size={16} color="#16A34A" />
+            <Text style={styles.proofModalBadgeText}>Harvest Verified</Text>
+          </View>
+          <ScrollView
+            horizontal
+            pagingEnabled
+            onMomentumScrollEnd={(e) => {
+              const idx = Math.round(
+                e.nativeEvent.contentOffset.x / Dimensions.get("window").width,
+              );
+              setProofViewerIndex(idx);
+            }}
+          >
+            {harvestProofImages.map((uri, index) => (
+              <View key={index} style={styles.fullImageContainer}>
+                <Image
+                  source={{ uri }}
+                  style={styles.fullImage}
+                  resizeMode="contain"
+                />
+              </View>
+            ))}
+          </ScrollView>
+          {harvestProofImages.length > 1 && (
+            <View style={styles.imageCounter}>
+              <Text style={styles.imageCounterText}>
+                {proofViewerIndex + 1} / {harvestProofImages.length}
               </Text>
             </View>
           )}
@@ -837,4 +1154,132 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   imageCounterText: { color: "#fff", fontSize: 14, fontWeight: "bold" },
+
+  // --- Accordion Header ---
+  accordionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 4,
+  },
+
+  // --- Proof of Harvest ---
+  verifiedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F0FDF4",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: "#BBF7D0",
+  },
+  verifiedBadgeText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#16A34A",
+  },
+  proofImagesRow: {
+    gap: 10,
+    paddingVertical: 16,
+  },
+  proofThumb: {
+    width: 100,
+    height: 100,
+    borderRadius: 12,
+    overflow: "hidden",
+    backgroundColor: "#F3F4F6",
+  },
+  proofThumbImg: {
+    width: "100%",
+    height: "100%",
+    resizeMode: "cover",
+  },
+  proofVerifiedPin: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    padding: 1,
+  },
+  proofEmptyState: {
+    alignItems: "center",
+    paddingVertical: 24,
+    gap: 8,
+  },
+  proofEmptyText: {
+    fontSize: 13,
+    color: "#9CA3AF",
+    textAlign: "center",
+  },
+  proofModalBadge: {
+    position: "absolute",
+    top: 50,
+    left: 20,
+    zIndex: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(240,253,244,0.95)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: "#BBF7D0",
+  },
+  proofModalBadgeText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#16A34A",
+  },
+
+  // --- Mini Map (Track Your Order) ---
+  miniMapContainer: {
+    borderRadius: 16,
+    overflow: "hidden",
+    height: 160,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  miniMap: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  miniMarker: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: "#FFF",
+  },
+  miniMapOverlay: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 12,
+    alignItems: "flex-end",
+  },
+  miniMapTrackBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: BuyerColors.primaryGreen,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  miniMapTrackText: {
+    color: "#FFF",
+    fontSize: 12,
+    fontWeight: "700",
+  },
 });

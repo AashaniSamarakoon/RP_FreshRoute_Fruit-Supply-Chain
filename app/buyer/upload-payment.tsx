@@ -243,7 +243,7 @@ export default function PaymentSlipUploadScreen() {
   const handleSuccessClose = useCallback(() => {
     setSuccessModalVisible(false);
     router.push({
-      pathname: "/buyer/track-delivery" as any,
+      pathname: "/buyer/screens/OrderDetailScreen" as any,
       params: { orderId: params.orderId },
     });
   }, [router, params.orderId]);

@@ -1,6 +1,6 @@
 import Header from "@/components/Header";
 import ProgressTimeline, {
-    TimelineStep,
+  TimelineStep,
 } from "@/components/ui/ProgressTimeline";
 import { BuyerColors } from "@/constants/theme";
 import { formatCurrency } from "@/utils/formatters";
@@ -9,13 +9,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Dimensions,
-    Linking,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Dimensions,
+  Linking,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import MapView, { Marker, Polyline } from "react-native-maps";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -25,7 +25,15 @@ import BottomSheet, { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 const { width, height } = Dimensions.get("window");
 
 export default function TrackDeliveryScreen() {
-  const params = useLocalSearchParams<{ orderId: string }>();
+  const params = useLocalSearchParams<{
+    orderId: string;
+    farmerLat?: string;
+    farmerLng?: string;
+    buyerLat?: string;
+    buyerLng?: string;
+    driverLat?: string;
+    driverLng?: string;
+  }>();
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
@@ -34,7 +42,7 @@ export default function TrackDeliveryScreen() {
   // Bottom Sheet Ref and Snap Points
   const bottomSheetRef = useRef<BottomSheet>(null);
   // Snaps to 45% of screen height, or 85% of screen height
-  const snapPoints = useMemo(() => ["15%", "45%"], []);
+  const snapPoints = useMemo(() => ["45%", "15%"], []);
 
   // For Demo purposes, let's say the current status is IN_TRANSIT if not found
   const currentStatus = order?.status || "IN_TRANSIT";
@@ -66,10 +74,36 @@ export default function TrackDeliveryScreen() {
     }
   };
 
-  // Map mock coordinates (Colombo area generally)
-  const farmerLocation = { latitude: 6.9271, longitude: 79.8612 };
-  const buyerLocation = { latitude: 6.8407, longitude: 79.993 };
-  const driverLocation = { latitude: 6.8906, longitude: 79.915 };
+  // Map coordinates — use passed params if available, fall back to Colombo-area defaults
+  const farmerLocation = {
+    latitude: params.farmerLat ? Number(params.farmerLat) : 6.9271,
+    longitude: params.farmerLng ? Number(params.farmerLng) : 79.8612,
+  };
+  const buyerLocation = {
+    latitude: params.buyerLat ? Number(params.buyerLat) : 6.8407,
+    longitude: params.buyerLng ? Number(params.buyerLng) : 79.993,
+  };
+  const driverLocation =
+    params.driverLat && params.driverLng
+      ? {
+          latitude: Number(params.driverLat),
+          longitude: Number(params.driverLng),
+        }
+      : {
+          // Midpoint between farmer and buyer as a sensible in-transit default
+          latitude: (farmerLocation.latitude + buyerLocation.latitude) / 2,
+          longitude: (farmerLocation.longitude + buyerLocation.longitude) / 2,
+        };
+
+  // Compute map region to fit both endpoints
+  const mapCenter = {
+    latitude: (farmerLocation.latitude + buyerLocation.latitude) / 2,
+    longitude: (farmerLocation.longitude + buyerLocation.longitude) / 2,
+  };
+  const latDelta =
+    Math.abs(farmerLocation.latitude - buyerLocation.latitude) * 2.5 + 0.06;
+  const lngDelta =
+    Math.abs(farmerLocation.longitude - buyerLocation.longitude) * 2.5 + 0.06;
 
   const getTimelineSteps = (): TimelineStep[] => {
     const statuses = [
@@ -152,10 +186,10 @@ export default function TrackDeliveryScreen() {
         <MapView
           style={styles.map}
           initialRegion={{
-            latitude: 6.885,
-            longitude: 79.93,
-            latitudeDelta: 0.15,
-            longitudeDelta: 0.15,
+            latitude: mapCenter.latitude,
+            longitude: mapCenter.longitude,
+            latitudeDelta: latDelta,
+            longitudeDelta: lngDelta,
           }}
           // Ensure map padding so logos/buttons aren't hidden behind the bottom sheet
           mapPadding={{ top: 0, right: 0, bottom: height * 0.45, left: 0 }}
@@ -489,6 +523,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     marginBottom: 24,
+    marginTop: 24,
     borderWidth: 1,
     borderColor: "#E5E7EB",
   },

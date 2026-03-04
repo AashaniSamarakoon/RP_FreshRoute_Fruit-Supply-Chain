@@ -6,6 +6,7 @@ import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,6 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "../../../components/Header";
 import ErrorModal from "../../../components/modals/ErrorModal";
 import SuccessModal from "../../../components/modals/SuccessModal";
+import { PillTabBar } from "../../../components/ui/PillTabBar";
 import { BuyerColors } from "../../../constants/theme";
 
 const PRIMARY_GREEN = BuyerColors.primaryGreen || "#2E7D32";
@@ -59,11 +61,12 @@ const FRUIT_IMAGES: Record<string, string> = {
 export default function FreshroutePricesForBuyer() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [fruits, setFruits] = useState<FruitEntry[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>(
     new Date().toISOString().split("T")[0],
   );
-  const [selectedFruitIdx, setSelectedFruitIdx] = useState(0);
+  const [selectedFruitId, setSelectedFruitId] = useState("");
   const [errorModal, setErrorModal] = useState({
     visible: false,
     title: "",
@@ -162,7 +165,7 @@ export default function FreshroutePricesForBuyer() {
           : mapFromFlatPrices(pricesData);
 
       setFruits(mapped);
-      setSelectedFruitIdx(0);
+      setSelectedFruitId(mapped[0]?.fruit_id ?? "");
     } catch (err) {
       let msg = err instanceof Error ? err.message : String(err);
       // if we see a role-related response, make it more user friendly
@@ -179,6 +182,9 @@ export default function FreshroutePricesForBuyer() {
       setLoading(false);
     }
   };
+
+  const selectedFruit =
+    fruits.find((f) => f.fruit_id === selectedFruitId) ?? fruits[0];
 
   return (
     <>
@@ -204,35 +210,14 @@ export default function FreshroutePricesForBuyer() {
 
         {/* Fruit tabs */}
         {fruits.length > 0 && (
-          <View style={styles.fruitTabsContainer}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.fruitTabsRow}
-            >
-              {fruits.map((fruit, idx) => {
-                const selected = idx === selectedFruitIdx;
-                const label = (fruit.name || "Fruit").trim() || "Fruit";
-                return (
-                  <TouchableOpacity
-                    key={fruit.fruit_id}
-                    style={[styles.fruitTab, selected && styles.fruitTabActive]}
-                    onPress={() => setSelectedFruitIdx(idx)}
-                  >
-                    <Text
-                      style={[
-                        styles.fruitTabText,
-                        selected && styles.fruitTabTextActive,
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
+          <PillTabBar
+            tabs={fruits.map((f) => ({
+              key: f.fruit_id,
+              label: (f.name || "Fruit").trim() || "Fruit",
+            }))}
+            activeKey={selectedFruitId}
+            onPress={setSelectedFruitId}
+          />
         )}
 
         {loading ? (
@@ -252,24 +237,29 @@ export default function FreshroutePricesForBuyer() {
             style={{ flex: 1 }}
             contentContainerStyle={{ padding: 16, paddingBottom: 140 }}
             showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={async () => {
+                  setRefreshing(true);
+                  await loadPrices();
+                  setRefreshing(false);
+                }}
+                colors={[PRIMARY_GREEN]}
+                tintColor={PRIMARY_GREEN}
+              />
+            }
           >
-            {fruits.length > 0 && (
-              <View
-                key={fruits[selectedFruitIdx]?.fruit_id || selectedFruitIdx}
-                style={styles.fruitCard}
-              >
+            {fruits.length > 0 && selectedFruit && (
+              <View key={selectedFruit.fruit_id} style={styles.fruitCard}>
                 <View style={styles.fruitHeader}>
                   <View style={styles.fruitTitleRow}>
-                    <Text style={styles.fruitEmoji}>
-                      {fruits[selectedFruitIdx].emoji}
-                    </Text>
+                    <Text style={styles.fruitEmoji}>{selectedFruit.emoji}</Text>
                     <View>
-                      <Text style={styles.fruitName}>
-                        {fruits[selectedFruitIdx].name}
-                      </Text>
-                      {fruits[selectedFruitIdx].variety ? (
+                      <Text style={styles.fruitName}>{selectedFruit.name}</Text>
+                      {selectedFruit.variety ? (
                         <Text style={styles.fruitVariety}>
-                          {fruits[selectedFruitIdx].variety}
+                          {selectedFruit.variety}
                         </Text>
                       ) : null}
                     </View>
@@ -277,7 +267,7 @@ export default function FreshroutePricesForBuyer() {
                 </View>
 
                 <View style={styles.gradesList}>
-                  {fruits[selectedFruitIdx].grades.map((grade) => {
+                  {selectedFruit.grades.map((grade) => {
                     const color = GRADE_COLORS[grade.grade] || GRADE_COLORS.A;
                     return (
                       <View key={grade.grade} style={styles.gradeRow}>
@@ -397,38 +387,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
     color: PRIMARY_GREEN,
-  },
-  fruitTabsContainer: {
-    marginBottom: 16,
-    height: 56,
-  },
-  fruitTabsRow: {
-    paddingHorizontal: 16,
-    gap: 10,
-    paddingVertical: 8,
-  },
-  fruitTab: {
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-    backgroundColor: "#f0f0f0",
-    borderRadius: 8,
-    marginRight: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    minWidth: 100,
-  },
-  fruitTabActive: {
-    backgroundColor: PRIMARY_GREEN,
-  },
-  fruitTabText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#111",
-    textAlign: "center",
-  },
-  fruitTabTextActive: {
-    color: "#fff",
-    fontWeight: "700",
   },
   fruitCard: {
     backgroundColor: LIGHT_GREEN,
