@@ -469,22 +469,29 @@ export default function OrderDetailScreen() {
           <View style={styles.receiptItems}>
             {order.unitPrice != null && (
               <View style={styles.receiptRow}>
-                <Text style={styles.receiptLabel}>
-                  Unit Price ({order.quantity}kg)
-                </Text>
+                <Text style={styles.receiptLabel}>Unit Price</Text>
                 <Text style={styles.receiptValue}>
                   Rs. {formatCurrency(order.unitPrice)}
                 </Text>
               </View>
             )}
-            {order.basePrice != null && (
-              <View style={styles.receiptRow}>
-                <Text style={styles.receiptLabel}>Base Price</Text>
-                <Text style={styles.receiptValue}>
-                  Rs. {formatCurrency(order.basePrice)}
-                </Text>
-              </View>
-            )}
+            {(() => {
+              const basePrice =
+                order.basePrice ??
+                (order.unitPrice != null
+                  ? order.unitPrice * order.quantity
+                  : null);
+              return basePrice != null ? (
+                <View style={styles.receiptRow}>
+                  <Text style={styles.receiptLabel}>
+                    Base Price ({order.quantity}kg)
+                  </Text>
+                  <Text style={styles.receiptValue}>
+                    Rs. {formatCurrency(basePrice)}
+                  </Text>
+                </View>
+              ) : null;
+            })()}
             {order.serviceCharge != null && (
               <View style={styles.receiptRow}>
                 <Text style={styles.receiptLabel}>Service Charge</Text>

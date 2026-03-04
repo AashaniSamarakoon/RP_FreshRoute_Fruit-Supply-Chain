@@ -1,7 +1,7 @@
 import {
-  DarkTheme,
-  DefaultTheme,
-  ThemeProvider,
+    DarkTheme,
+    DefaultTheme,
+    ThemeProvider,
 } from "@react-navigation/native";
 import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -13,6 +13,7 @@ import api from "@/services/api";
 import { supabase } from "@/utils/supabaseClient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect } from "react";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 export const unstable_settings = {
   // anchor: '(tabs)',
 };
@@ -112,27 +113,31 @@ export default function RootLayout() {
   }, [router]);
 
   return (
-    <TranslationProvider>
-      <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-        <Stack initialRouteName="index">
-          <Stack.Screen name="index" options={{ headerShown: false }} />
-          {/* root-level placeholder for the onboarding folder; prevents the
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <TranslationProvider>
+        <ThemeProvider
+          value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
+        >
+          <Stack initialRouteName="index">
+            <Stack.Screen name="index" options={{ headerShown: false }} />
+            {/* root-level placeholder for the onboarding folder; prevents the
               parent stack from drawing its own header when navigating into the
               flow (matches login/signup approach). */}
-          <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-          {/* <Stack.Screen name="(tabs)" options={{ headerShown: false }} /> */}
-          <Stack.Screen
-            name="modal"
-            options={{ presentation: "modal", title: "Modal" }}
-          />
-          <Stack.Screen name="login" options={{ headerShown: false }} />
-          <Stack.Screen name="signup" options={{ headerShown: false }} />
-          <Stack.Screen name="farmer" options={{ headerShown: false }} />
-          <Stack.Screen name="buyer" options={{ headerShown: false }} />
-          <Stack.Screen name="transporter" options={{ headerShown: false }} />
-        </Stack>
-        <StatusBar style="inverted" />
-      </ThemeProvider>
-    </TranslationProvider>
+            <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+            {/* <Stack.Screen name="(tabs)" options={{ headerShown: false }} /> */}
+            <Stack.Screen
+              name="modal"
+              options={{ presentation: "modal", title: "Modal" }}
+            />
+            <Stack.Screen name="login" options={{ headerShown: false }} />
+            <Stack.Screen name="signup" options={{ headerShown: false }} />
+            <Stack.Screen name="farmer" options={{ headerShown: false }} />
+            <Stack.Screen name="buyer" options={{ headerShown: false }} />
+            <Stack.Screen name="transporter" options={{ headerShown: false }} />
+          </Stack>
+          <StatusBar style="inverted" />
+        </ThemeProvider>
+      </TranslationProvider>
+    </GestureHandlerRootView>
   );
 }
