@@ -1,3 +1,4 @@
+import api from "@/services/api";
 import { MaterialIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Audio } from "expo-av";
@@ -16,7 +17,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { BACKEND_URL } from "../../config";
 import {
   openGoogleMapsToLocation,
   verifyLocation,
@@ -29,13 +29,19 @@ export default function FruitGrading() {
   const params = useLocalSearchParams();
   const jobId = params.job_id as string;
   const orderId = params.order_id as string;
-  const pickupLat = params.pickup_lat ? parseFloat(params.pickup_lat as string) : null;
-  const pickupLng = params.pickup_lng ? parseFloat(params.pickup_lng as string) : null;
-  
+  const pickupLat = params.pickup_lat
+    ? parseFloat(params.pickup_lat as string)
+    : null;
+  const pickupLng = params.pickup_lng
+    ? parseFloat(params.pickup_lng as string)
+    : null;
+
   const [facing, setFacing] = useState<CameraType>("back");
   const [permission, requestPermission] = useCameraPermissions();
   const [capturedImages, setCapturedImages] = useState<string[]>([]);
-  const [capturedImagesBase64, setCapturedImagesBase64] = useState<string[]>([]);
+  const [capturedImagesBase64, setCapturedImagesBase64] = useState<string[]>(
+    [],
+  );
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
@@ -53,13 +59,14 @@ export default function FruitGrading() {
   const [classifyErrorMessage, setClassifyErrorMessage] = useState<string | null>(null);
   
   // Location verification state
-  const [showLocationVerification, setShowLocationVerification] = useState(false);
+  const [showLocationVerification, setShowLocationVerification] =
+    useState(false);
   const [isVerifyingLocation, setIsVerifyingLocation] = useState(false);
   const [locationVerified, setLocationVerified] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [locationDistance, setLocationDistance] = useState<number | null>(null);
   const locationScanAnimation = useRef(new Animated.Value(0)).current;
-  
+
   const trayAnimation = useRef(new Animated.Value(0)).current;
   const scanAnimation = useRef(new Animated.Value(0)).current;
   const cameraRef = useRef<CameraView>(null);
@@ -80,11 +87,11 @@ export default function FruitGrading() {
           return;
         }
         setIsAuthenticated(true);
-        
+
         // Get farmer's declared grade (mock for now - in real app, fetch from order data)
         // TODO: Fetch from order data using orderId
         setFarmerDeclaredGrade("Grade A");
-        
+
         // Start location verification if pickup location is provided
         if (pickupLat !== null && pickupLng !== null) {
           setShowLocationVerification(true);
@@ -125,7 +132,7 @@ export default function FruitGrading() {
             duration: 0,
             useNativeDriver: true,
           }),
-        ])
+        ]),
       ).start();
     } else {
       scanAnimation.setValue(0);
@@ -172,7 +179,7 @@ export default function FruitGrading() {
             duration: 0,
             useNativeDriver: true,
           }),
-        ])
+        ]),
       ).start();
     } else {
       locationScanAnimation.setValue(0);
@@ -238,8 +245,12 @@ export default function FruitGrading() {
   const takePicture = async () => {
     if (!cameraRef.current || capturedImages.length >= TOTAL_IMAGES) return;
 
+    // Prevent capture if location not verified
     if (!locationVerified) {
-      Alert.alert("Location Not Verified", "Please verify your location first before capturing images.");
+      Alert.alert(
+        "Location Not Verified",
+        "Please verify your location first before capturing images.",
+      );
       return;
     }
 
@@ -323,7 +334,7 @@ export default function FruitGrading() {
   const toggleSound = async () => {
     const newValue = !soundEnabled;
     setSoundEnabled(newValue);
-    
+
     // Update audio mode immediately
     try {
       if (newValue) {
@@ -340,7 +351,7 @@ export default function FruitGrading() {
     } catch (error) {
       console.log("Audio mode update error:", error);
     }
-    
+
     // Note: Camera shutter sound is typically controlled by device system settings
     // This toggle provides haptic feedback when muted as an alternative
   };
@@ -368,7 +379,7 @@ export default function FruitGrading() {
     if (capturedImages.length !== TOTAL_IMAGES) {
       Alert.alert(
         "Incomplete",
-        `Please capture all ${TOTAL_IMAGES} images before verifying.`
+        `Please capture all ${TOTAL_IMAGES} images before verifying.`,
       );
       return;
     }
@@ -383,7 +394,7 @@ export default function FruitGrading() {
       setShowVerifyingPopup(false);
       Alert.alert(
         "Timeout",
-        "Verification is taking too long. Please try again."
+        "Verification is taking too long. Please try again.",
       );
     }, 30000);
 
@@ -408,28 +419,9 @@ export default function FruitGrading() {
       });
 
       // Call the fruit grading API endpoint
-      console.log("📤 Sending request to:", `${BACKEND_URL}/api/fruit-grading/predict`);
       console.log("📤 Number of images:", capturedImages.length);
-
-      const response = await fetch(`${BACKEND_URL}/api/fruit-grading/predict`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
-      });
-
-      console.log("📥 Response status:", response.status, response.statusText);
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error("❌ API Error Response:", errorData);
-        throw new Error(
-          errorData.message || `API error: ${response.status} ${response.statusText}`
-        );
-      }
-
-      const data = await response.json();
+      const data = await api.postForm(`/api/fruit-grading/predict`, formData);
+      console.log("✅ Backend Response:", JSON.stringify(data, null, 2));
       console.log("✅ Backend Response:", JSON.stringify(data, null, 2));
       console.log("✅ Predictions count:", data.predictions?.length || 0);
 
@@ -482,7 +474,7 @@ export default function FruitGrading() {
         };
 
         console.log("🚀 Navigating to verification results...");
-        
+
         // Navigate to results page
         router.push({
           pathname: "/transporter/verification-results",
@@ -492,7 +484,7 @@ export default function FruitGrading() {
         console.error("❌ Navigation error:", navError);
         Alert.alert(
           "Navigation Error",
-          "Failed to navigate to results page. Please try again."
+          "Failed to navigate to results page. Please try again.",
         );
       }
     } catch (error) {
@@ -507,7 +499,7 @@ export default function FruitGrading() {
         "Error",
         error instanceof Error
           ? error.message
-          : "Failed to verify images. Please try again."
+          : "Failed to verify images. Please try again.",
       );
     }
   };
@@ -535,7 +527,9 @@ export default function FruitGrading() {
   if (!permission.granted) {
     return (
       <View style={styles.centerContainer}>
-        <Text style={styles.message}>We need your permission to use the camera</Text>
+        <Text style={styles.message}>
+          We need your permission to use the camera
+        </Text>
         <TouchableOpacity style={styles.button} onPress={requestPermission}>
           <Text style={styles.buttonText}>Grant Permission</Text>
         </TouchableOpacity>
@@ -658,7 +652,8 @@ export default function FruitGrading() {
       >
         <View style={styles.progressContainer}>
           <Text style={styles.progressText}>
-            Capture {TOTAL_IMAGES} fruit images - {capturedImages.length}/{TOTAL_IMAGES}
+            Capture {TOTAL_IMAGES} fruit images - {capturedImages.length}/
+            {TOTAL_IMAGES}
           </Text>
         </View>
       </View>
@@ -678,7 +673,9 @@ export default function FruitGrading() {
               >
                 <Text style={styles.removeButtonText}>×</Text>
               </TouchableOpacity>
-              <Text style={styles.thumbnailLabel}>{index + 1}/{TOTAL_IMAGES}</Text>
+              <Text style={styles.thumbnailLabel}>
+                {index + 1}/{TOTAL_IMAGES}
+              </Text>
             </View>
           ))}
         </ScrollView>
@@ -687,7 +684,8 @@ export default function FruitGrading() {
           <TouchableOpacity
             style={[
               styles.captureButton,
-              capturedImages.length >= TOTAL_IMAGES && styles.captureButtonDisabled,
+              capturedImages.length >= TOTAL_IMAGES &&
+                styles.captureButtonDisabled,
             ]}
             onPress={takePicture}
             disabled={capturedImages.length >= TOTAL_IMAGES}
@@ -702,7 +700,8 @@ export default function FruitGrading() {
           <TouchableOpacity
             style={[
               styles.verifyButton,
-              capturedImages.length !== TOTAL_IMAGES && styles.verifyButtonDisabled,
+              capturedImages.length !== TOTAL_IMAGES &&
+                styles.verifyButtonDisabled,
             ]}
             onPress={handleVerify}
             disabled={capturedImages.length !== TOTAL_IMAGES}
@@ -754,7 +753,11 @@ export default function FruitGrading() {
                         },
                       ]}
                     >
-                      <MaterialIcons name="location-on" size={40} color="#2f855a" />
+                      <MaterialIcons
+                        name="location-on"
+                        size={40}
+                        color="#2f855a"
+                      />
                     </Animated.View>
                   </View>
                 </View>
@@ -767,8 +770,9 @@ export default function FruitGrading() {
                 <Text style={styles.locationErrorText}>{locationError}</Text>
                 {locationDistance !== null && (
                   <Text style={styles.distanceText}>
-                    Distance: {locationDistance < 1000 
-                      ? `${locationDistance.toFixed(0)}m` 
+                    Distance:{" "}
+                    {locationDistance < 1000
+                      ? `${locationDistance.toFixed(0)}m`
                       : `${(locationDistance / 1000).toFixed(2)} km`}
                   </Text>
                 )}
@@ -778,7 +782,9 @@ export default function FruitGrading() {
                     onPress={handleOpenGoogleMaps}
                   >
                     <View style={styles.goToLocationButtonContent}>
-                      <Text style={styles.buttonText}>Go to Correct Location</Text>
+                      <Text style={styles.buttonText}>
+                        Go to Correct Location
+                      </Text>
                     </View>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -851,7 +857,11 @@ export default function FruitGrading() {
                     },
                   ]}
                 >
-                  <MaterialIcons name="image-search" size={40} color="#2f855a" />
+                  <MaterialIcons
+                    name="image-search"
+                    size={40}
+                    color="#2f855a"
+                  />
                 </Animated.View>
               </View>
             </View>
@@ -1338,4 +1348,3 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
 });
-

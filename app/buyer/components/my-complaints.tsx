@@ -9,7 +9,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
 
 interface Complaint {
@@ -28,7 +28,9 @@ export default function MyComplaints() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [complaints, setComplaints] = useState<Complaint[]>([]);
-  const [selectedComplaint, setSelectedComplaint] = useState<Complaint | null>(null);
+  const [selectedComplaint, setSelectedComplaint] = useState<Complaint | null>(
+    null,
+  );
   const [showDetailsModal, setShowDetailsModal] = useState(false);
 
   useEffect(() => {
@@ -211,19 +213,21 @@ export default function MyComplaints() {
                     <View style={styles.imagesSection}>
                       <Text style={styles.imagesTitle}>Verified Images</Text>
                       <View style={styles.imagesGrid}>
-                        {selectedComplaint.verifiedResults.map((result, idx) => (
-                          <View key={idx} style={styles.imageCard}>
-                            <Image
-                              source={{ uri: result.imageUri }}
-                              style={styles.resultImage}
-                            />
-                            {result.detectedGrade && (
-                              <Text style={styles.gradeText}>
-                                {result.detectedGrade}
-                              </Text>
-                            )}
-                          </View>
-                        ))}
+                        {selectedComplaint.verifiedResults.map(
+                          (result, idx) => (
+                            <View key={idx} style={styles.imageCard}>
+                              <Image
+                                source={{ uri: result.imageUri }}
+                                style={styles.resultImage}
+                              />
+                              {result.detectedGrade && (
+                                <Text style={styles.gradeText}>
+                                  {result.detectedGrade}
+                                </Text>
+                              )}
+                            </View>
+                          ),
+                        )}
                       </View>
                     </View>
                   )}
@@ -444,4 +448,3 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
 });
-

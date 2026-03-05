@@ -1,24 +1,17 @@
-import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { useEffect, useRef, useState } from 'react';
-import {
-  Dimensions,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import { BACKEND_URL } from '../../../config';
-import { useTranslationContext } from '../../../context/TranslationContext';
+import api from "@/services/api";
+import { Ionicons } from "@expo/vector-icons";
+import React, { useEffect, useRef, useState } from "react";
+import { Dimensions, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useTranslationContext } from "../../../context/TranslationContext";
 
-const { width } = Dimensions.get('window');
+const { width } = Dimensions.get("window");
 
 interface FruitDemandData {
   id: string;
   name: string;
   demand: number;
   price: number;
-  trend: 'up' | 'down' | 'stable';
+  trend: "up" | "down" | "stable";
   image: string;
   dayLabel?: string;
 }
@@ -28,35 +21,35 @@ const demandLevel = (score: number) => {
   // Near 1 = High demand
   // Near 0.5 = Medium demand
   // Near 0 = Low demand
-  if (score >= 0.65) return 'High';
-  if (score >= 0.35) return 'Medium';
-  return 'Low';
+  if (score >= 0.65) return "High";
+  if (score >= 0.35) return "Medium";
+  return "Low";
 };
 
 const SAMPLE_FRUIT_DATA: FruitDemandData[] = [
   {
-    id: '1',
-    name: 'Mango',
+    id: "1",
+    name: "Mango",
     demand: 85,
     price: 120,
-    trend: 'up',
-    image: '🥭',
+    trend: "up",
+    image: "🥭",
   },
   {
-    id: '2', 
-    name: 'Banana',
+    id: "2",
+    name: "Banana",
     demand: 92,
     price: 45,
-    trend: 'stable',
-    image: '🍌',
+    trend: "stable",
+    image: "🍌",
   },
   {
-    id: '3',
-    name: 'Pineapple',
+    id: "3",
+    name: "Pineapple",
     demand: 78,
     price: 80,
-    trend: 'down',
-    image: '🍍',
+    trend: "down",
+    image: "🍍",
   },
 ];
 
@@ -85,38 +78,32 @@ export default function FruitDemandCards() {
   useEffect(() => {
     const loadForecastCards = async () => {
       try {
-        const token = await AsyncStorage.getItem('token');
-        if (!token) return;
-
         const fruits = [
-          { id: '1', name: 'Mango', image: '🥭' },
-          { id: '2', name: 'Banana', image: '🍌' },
-          { id: '3', name: 'Pineapple', image: '🍍' },
+          { id: "1", name: "Mango", image: "🥭" },
+          { id: "2", name: "Banana", image: "🍌" },
+          { id: "3", name: "Pineapple", image: "🍍" },
         ];
 
         const fetchForecast = async (fruitName: string) => {
-          const demandUrl = `${BACKEND_URL}/api/farmer/forecast/7day?fruit=${encodeURIComponent(fruitName)}&target=demand`;
-          const priceUrl = `${BACKEND_URL}/api/farmer/forecast/7day?fruit=${encodeURIComponent(fruitName)}&target=price`;
+          const demandPath = `/api/forecast/7day?fruit=${encodeURIComponent(fruitName)}&target=demand`;
+          const pricePath = `/api/forecast/7day?fruit=${encodeURIComponent(fruitName)}&target=price`;
 
-          const [demandRes, priceRes] = await Promise.all([
-            fetch(demandUrl, { headers: { Authorization: `Bearer ${token}` } }),
-            fetch(priceUrl, { headers: { Authorization: `Bearer ${token}` } }),
+          const [demandJson, priceJson] = await Promise.all([
+            api.get(demandPath),
+            api.get(pricePath),
           ]);
-
-          const demandJson = await demandRes.json();
-          const priceJson = await priceRes.json();
 
           const firstDemand = demandJson?.days?.[0];
           const firstPrice = priceJson?.days?.[0];
 
           // Determine trend based on demand level
-          let trend: 'up' | 'down' | 'stable' = 'stable';
+          let trend: "up" | "down" | "stable" = "stable";
           const demandScore = Number(firstDemand?.value) || 0;
-          
+
           if (demandScore >= 0.65) {
-            trend = 'up';    // High demand
+            trend = "up"; // High demand
           } else if (demandScore < 0.35) {
-            trend = 'down';  // Low demand
+            trend = "down"; // Low demand
           }
           // else stable for medium demand (0.35-0.65)
 
@@ -124,7 +111,7 @@ export default function FruitDemandCards() {
             demand: Number(firstDemand?.value) || 0,
             price: Number(firstPrice?.value) || 0,
             trend: trend,
-            dayLabel: firstDemand?.day || firstPrice?.day || 'Today',
+            dayLabel: firstDemand?.day || firstPrice?.day || "Today",
           };
         };
 
@@ -140,12 +127,12 @@ export default function FruitDemandCards() {
               image: fruit.image,
               dayLabel: data.dayLabel,
             } as FruitDemandData;
-          })
+          }),
         );
 
         setCards(results);
       } catch (err) {
-        console.error('[FruitDemandCards] Failed to load forecasts', err);
+        console.error("[FruitDemandCards] Failed to load forecasts", err);
       }
     };
 
@@ -154,9 +141,9 @@ export default function FruitDemandCards() {
 
   const getTrendIcon = (trend: string) => {
     switch (trend) {
-      case 'up':
+      case "up":
         return <Ionicons name="trending-up" size={32} color="#22c55e" />;
-      case 'down':
+      case "down":
         return <Ionicons name="trending-down" size={32} color="#ef4444" />;
       default:
         return <Ionicons name="remove" size={32} color="#6b7280" />;
@@ -181,16 +168,21 @@ export default function FruitDemandCards() {
               <View style={styles.emojiContainer}>
                 <Text style={styles.fruitEmoji}>{fruit.image}</Text>
               </View>
-              
+
               <View style={styles.cardRight}>
                 <Text style={styles.fruitName}>{fruit.name}</Text>
-                
+
                 <View style={styles.cardContent}>
                   <View style={styles.demandRow}>
-                    <Text style={styles.demandText}>{t("farmer.demandLabel")}: {demandLevel(fruit.demand)}</Text>
+                    <Text style={styles.demandText}>
+                      {t("farmer.demandLabel")}: {demandLevel(fruit.demand)}
+                    </Text>
                     {getTrendIcon(fruit.trend)}
                   </View>
-                  <Text style={styles.priceText}>Rs. {fruit.price}{t("farmer.perKg")}</Text>
+                  <Text style={styles.priceText}>
+                    Rs. {fruit.price}
+                    {t("farmer.perKg")}
+                  </Text>
                   {fruit.dayLabel ? (
                     <Text style={styles.dateText}>{fruit.dayLabel}</Text>
                   ) : null}
@@ -219,7 +211,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 20,
     marginRight: 16,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
@@ -227,8 +219,8 @@ const styles = StyleSheet.create({
     minHeight: 150,
   },
   cardBody: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 16,
     gap: 16,
   },
@@ -236,8 +228,8 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   fruitEmoji: {
     fontSize: 48,
@@ -250,41 +242,41 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   demandRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 32,
   },
   fruitName: {
     fontSize: 20,
-    fontWeight: '700',
-    color: '#000',
+    fontWeight: "700",
+    color: "#000",
     flex: 1,
   },
   demandText: {
     fontSize: 14,
     color: PRIMARY_GREEN,
-    fontWeight: '600',
+    fontWeight: "600",
     marginBottom: 4,
   },
   priceText: {
     fontSize: 16,
-    color: '#000',
-    fontWeight: '600',
+    color: "#000",
+    fontWeight: "600",
   },
   dateText: {
     fontSize: 12,
-    color: '#4b5563',
-    fontWeight: '600',
+    color: "#4b5563",
+    fontWeight: "600",
     marginTop: 4,
   },
   progressBar: {
     height: 6,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: "#f3f4f6",
     borderRadius: 3,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   progressFill: {
-    height: '100%',
+    height: "100%",
     backgroundColor: PRIMARY_GREEN,
     borderRadius: 3,
   },

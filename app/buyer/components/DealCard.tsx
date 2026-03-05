@@ -17,22 +17,26 @@ const DealCard: React.FC<{ deal: DealData }> = ({ deal }) => (
     <View style={styles.dealHeader}>
       <Text style={styles.dealTitle}>{deal.title}</Text>
     </View>
-    <View style={styles.priceContainer}>
-      <Text style={styles.priceText}>{deal.price}</Text>
-      <Text style={styles.unitText}>{deal.unit}</Text>
-    </View>
+    {deal.price ? (
+      <View style={styles.priceContainer}>
+        <Text style={styles.priceText}>{deal.price}</Text>
+        <Text style={styles.unitText}>{deal.unit}</Text>
+      </View>
+    ) : null}
     <View style={styles.dealDetails}>
       <View style={styles.detailRow}>
         <Text style={styles.detailLabel}>Farm Location:</Text>
-        <Text style={styles.detailValue}>{deal.location}</Text>
+        <Text style={styles.detailValue}>
+          {deal.location.split(",").pop()?.trim() || deal.location}
+        </Text>
       </View>
       <View style={styles.detailRow}>
         <Text style={styles.detailLabel}>Grade:</Text>
         <Text style={styles.detailValue}>{deal.grade}</Text>
       </View>
       <View style={styles.detailRow}>
-        <Text style={styles.detailLabel}>Quality:</Text>
-        <Text style={styles.detailValue}>{deal.quality}</Text>
+        <Text style={styles.detailLabel}>Quantity:</Text>
+        <Text style={styles.detailValue}>{deal.quantity_proposed} kg</Text>
       </View>
     </View>
     <TouchableOpacity style={styles.linkRow}>

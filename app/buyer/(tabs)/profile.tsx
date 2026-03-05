@@ -1,17 +1,42 @@
+import { supabase } from "@/utils/supabaseClient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import React from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import React, { useState } from "react";
+import {
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "../../../components/Header";
 import { BuyerColors } from "../../../constants/theme";
 
 export default function BuyerProfile() {
   const router = useRouter();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    // Nothing to reload on the static profile page yet
+    setRefreshing(false);
+  };
 
   const handleLogout = async () => {
-    await AsyncStorage.removeItem("token");
-    await AsyncStorage.removeItem("user");
+    try {
+      // sign out from Supabase (clears session storage)
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.warn("Supabase signOut failed", e);
+    }
+    // clear any local keys we set during onboarding or auth
+    await AsyncStorage.multiRemove([
+      "token",
+      "user",
+      "onboarded",
+      "onboarding_buyer",
+    ]);
     router.replace("/login");
   };
 
@@ -24,13 +49,23 @@ export default function BuyerProfile() {
           console.log("Notifications pressed");
         }}
       />
-      <View style={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[BuyerColors?.primaryGreen || "#2E7D32"]}
+            tintColor={BuyerColors?.primaryGreen || "#2E7D32"}
+          />
+        }
+      >
         <Text style={styles.title}>Profile</Text>
         <Text style={styles.subtitle}>Manage your account settings here.</Text>
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Text style={styles.logoutButtonText}>Logout</Text>
         </TouchableOpacity>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }

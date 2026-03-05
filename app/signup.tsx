@@ -1,171 +1,415 @@
-// app/signup.tsx
+import api from "@/services/api";
+import { supabase } from "@/utils/supabaseClient";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useRouter } from "expo-router";
+import { Link, useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
-import { BACKEND_URL } from "../config";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-type Role = "farmer" | "transporter" | "buyer";
+type Role = "FARMER" | "TRANSPORTER" | "BUYER";
 
 export default function Signup() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<Role>("farmer");
+  const [phone, setPhone] = useState(""); // Capturing phone for unified login
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [role, setRole] = useState<Role>("FARMER");
   const [loading, setLoading] = useState(false);
-
+  const [showPassword, setShowPassword] = useState(false);
+  // Inside app/signup.tsx -> handleSignup
   const handleSignup = async () => {
-    if (!name || !email || !password) {
-      return Alert.alert("Error", "Please fill all fields");
+    if (!name || !email || !password || !phone || !confirmPassword) {
+      return Alert.alert("Required", "Please fill in all details.");
+    }
+    if (password !== confirmPassword) {
+      return Alert.alert("Password Mismatch", "Passwords must match.");
     }
 
     setLoading(true);
+
     try {
-      const res = await fetch(`${BACKEND_URL}/api/auth/signup`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password, role }),
+      // Split name for your backend controller
+      const [first_name, ...lastNameArr] = name.trim().split(" ");
+      const last_name = lastNameArr.join(" ");
+
+      const data = await api.post("/api/auth/signup", {
+        first_name,
+        last_name,
+        email,
+        phone,
+        password,
+        role: role.toLowerCase(),
       });
 
-      const data = await res.json();
+      // backend responded; store token and optional user record
+      await AsyncStorage.setItem("token", data.token);
 
-      if (!res.ok) {
-        return Alert.alert("Signup failed", data.message || "Unknown error");
+      // backend may return the user record as well; store it so later
+      // onboarding steps that depend on `user.id` don't break.
+      if (data.user) {
+        await AsyncStorage.setItem("user", JSON.stringify(data.user));
       }
 
-      const { token, user } = data;
+      // ensure Supabase client has a session; attempt to log in
+      // using the just‑created credentials.
+      try {
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (error)
+          console.warn("supabase sign-in after signup failed", error.message);
+      } catch (e) {
+        console.warn("error signing in after signup", e);
+      }
 
-      await AsyncStorage.setItem("token", token);
-      await AsyncStorage.setItem("user", JSON.stringify(user));
-
-      const route = getDashboardRoute(user.role as Role);
-      router.replace(route as any);
-    } catch (err) {
-      console.error(err);
-      Alert.alert("Error", "Could not connect to backend");
+      const onboarded = data.isOnboarded || false;
+      // route depending on role and onboarding state
+      if (role === "FARMER") {
+        if (onboarded) router.replace("/farmer" as any);
+        else router.replace("/onboarding/farmer/farm-info" as any);
+      } else if (role === "BUYER") {
+        if (onboarded) router.replace("/buyer" as any);
+        else router.replace("/onboarding/buyer/business" as any);
+      } else {
+        router.replace(`/${role.toLowerCase()}` as any);
+      }
+    } catch (err: any) {
+      Alert.alert("Signup Error", err?.message || String(err));
     } finally {
       setLoading(false);
     }
   };
-
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Create FreshRoute Account</Text>
-
-      <TextInput
-        style={styles.input}
-        placeholder="Full name"
-        value={name}
-        onChangeText={setName}
-      />
-
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        autoCapitalize="none"
-        keyboardType="email-address"
-        value={email}
-        onChangeText={setEmail}
-      />
-
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
-
-      <Text style={styles.label}>Select role</Text>
-      <View style={styles.roleRow}>
-        {(["farmer", "transporter", "buyer"] as Role[]).map((r) => (
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView style={styles.container}>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={[styles.scrollContent, { flexGrow: 1 }]}
+          showsVerticalScrollIndicator={false}
+        >
           <TouchableOpacity
-            key={r}
-            style={[styles.roleButton, role === r && styles.roleButtonActive]}
-            onPress={() => setRole(r)}
+            style={styles.backButton}
+            onPress={() => router.back()}
           >
-            <Text style={role === r ? styles.roleTextActive : styles.roleText}>
-              {r.charAt(0).toUpperCase() + r.slice(1)}
-            </Text>
+            <Ionicons name="chevron-back" size={24} color="#1F2937" />
           </TouchableOpacity>
-        ))}
-      </View>
 
-      <TouchableOpacity
-        style={styles.button}
-        onPress={handleSignup}
-        disabled={loading}
-      >
-        <Text style={styles.buttonText}>
-          {loading ? "Creating account..." : "Sign Up"}
-        </Text>
-      </TouchableOpacity>
-    </View>
+          <View style={styles.header}>
+            <Text style={styles.title}>Create an Account</Text>
+            <Text style={styles.subtitle}>
+              Join the FreshRoute network and streamline your supply chain
+              journey.
+            </Text>
+          </View>
+
+          <View style={styles.form}>
+            <InputGroup
+              label="Full Name"
+              value={name}
+              onChangeText={setName}
+              placeholder="Enter your name.."
+              icon="person-outline"
+            />
+            <InputGroup
+              label="Email"
+              value={email}
+              onChangeText={setEmail}
+              placeholder="Email address.."
+              keyboardType="email-address"
+              icon="mail-outline"
+            />
+            <InputGroup
+              label="Phone Number"
+              value={phone}
+              onChangeText={setPhone}
+              placeholder="07x xxxxxxx"
+              keyboardType="phone-pad"
+              icon="call-outline"
+            />
+
+            <View style={styles.inputWrapper}>
+              <Text style={styles.label}>Password</Text>
+              <View style={styles.passwordContainer}>
+                <TextInput
+                  style={[
+                    styles.input,
+                    { flex: 1, borderBottomWidth: 0, marginBottom: 0 },
+                  ]}
+                  placeholder="Secure password"
+                  secureTextEntry={!showPassword}
+                  placeholderTextColor="#9CA3AF"
+                  value={password}
+                  onChangeText={setPassword}
+                />
+                <TouchableOpacity
+                  onPress={() => setShowPassword(!showPassword)}
+                >
+                  <Ionicons
+                    name={showPassword ? "eye-off-outline" : "eye-outline"}
+                    size={20}
+                    color="#6B7280"
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
+            <View style={styles.inputWrapper}>
+              <Text style={styles.label}>Confirm Password</Text>
+              <View style={styles.passwordContainer}>
+                <TextInput
+                  style={[
+                    styles.input,
+                    { flex: 1, borderBottomWidth: 0, marginBottom: 0 },
+                  ]}
+                  placeholder="Re-enter password"
+                  secureTextEntry={!showPassword}
+                  placeholderTextColor="#9CA3AF"
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                />
+                <TouchableOpacity
+                  onPress={() => setShowPassword(!showPassword)}
+                >
+                  <Ionicons
+                    name={showPassword ? "eye-off-outline" : "eye-outline"}
+                    size={20}
+                    color="#6B7280"
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+
+          <Text style={styles.label}>I am a...</Text>
+          <View style={styles.roleRow}>
+            <RoleItem
+              label="Farmer"
+              value="FARMER"
+              icon="leaf"
+              active={role === "FARMER"}
+              onSelect={setRole}
+            />
+            <RoleItem
+              label="Driver"
+              value="TRANSPORTER"
+              icon="truck"
+              active={role === "TRANSPORTER"}
+              onSelect={setRole}
+            />
+            <RoleItem
+              label="Buyer"
+              value="BUYER"
+              icon="shopping"
+              active={role === "BUYER"}
+              onSelect={setRole}
+            />
+          </View>
+
+          <TouchableOpacity
+            style={styles.signupButton}
+            onPress={handleSignup}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.signupButtonText}>Sign Up</Text>
+            )}
+          </TouchableOpacity>
+
+          {/* <View style={styles.dividerRow}>
+          <View style={styles.divider} />
+          <Text style={styles.dividerText}>Or continue with</Text>
+          <View style={styles.divider} />
+        </View>
+
+        <View style={styles.socialRow}>
+          <SocialButton icon="google" color="#DB4437" />
+          <SocialButton icon="apple" color="#000000" />
+          <SocialButton icon="facebook" color="#4267B2" />
+        </View> */}
+
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>Already have an account? </Text>
+            <Link href="/login" asChild>
+              <TouchableOpacity>
+                <Text style={styles.footerLink}>Sign In</Text>
+              </TouchableOpacity>
+            </Link>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
-function getDashboardRoute(role: Role) {
-  switch (role) {
-    case "farmer":
-      return "/farmer";
-    case "transporter":
-      return "/transporter";
-    case "buyer":
-      return "/buyer";
-    default:
-      return "/login";
-  }
-}
+// Optimized Sub-components
+const InputGroup = ({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  keyboardType = "default",
+  icon,
+}: any) => (
+  <View style={styles.inputWrapper}>
+    <Text style={styles.label}>{label}</Text>
+    <View style={styles.passwordContainer}>
+      <Ionicons
+        name={icon}
+        size={18}
+        color="#6B7280"
+        style={{ marginRight: 10 }}
+      />
+      <TextInput
+        style={[
+          styles.input,
+          {
+            flex: 1,
+            borderBottomWidth: 0,
+            marginBottom: 0,
+            backgroundColor: "transparent",
+            paddingLeft: 0,
+          },
+        ]}
+        placeholder={placeholder}
+        placeholderTextColor="#9CA3AF"
+        keyboardType={keyboardType}
+        value={value}
+        onChangeText={onChangeText}
+      />
+    </View>
+  </View>
+);
+
+const RoleItem = ({ label, value, icon, active, onSelect }: any) => (
+  <TouchableOpacity
+    style={[styles.roleCard, active && styles.roleCardActive]}
+    onPress={() => onSelect(value)}
+  >
+    <MaterialCommunityIcons
+      name={icon}
+      size={24}
+      color={active ? "#2E7D32" : "#6B7280"}
+    />
+    <Text style={[styles.roleCardText, active && styles.roleCardTextActive]}>
+      {label}
+    </Text>
+  </TouchableOpacity>
+);
+
+const SocialButton = ({ icon, color }: { icon: any; color: string }) => (
+  <TouchableOpacity
+    style={[styles.socialCircle, { borderColor: color + "33" }]}
+  >
+    <MaterialCommunityIcons name={icon} size={26} color={color} />
+  </TouchableOpacity>
+);
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 24, backgroundColor: "#fff" },
+  container: { flex: 1, backgroundColor: "#fff" },
+  scrollContent: { padding: 24 },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#F3F4F6",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  header: { marginBottom: 32 },
   title: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: "bold",
-    marginBottom: 24,
-    textAlign: "center",
+    color: "#111827",
+    marginBottom: 8,
   },
+  subtitle: { fontSize: 14, color: "#6B7280", lineHeight: 20 },
+  form: { marginBottom: 20 },
+  inputWrapper: { marginBottom: 16 },
+  label: { fontSize: 14, fontWeight: "600", color: "#374151", marginBottom: 8 },
   input: {
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 12,
+    padding: 16,
+    fontSize: 15,
+    color: "#111827",
   },
-  label: { marginTop: 8, marginBottom: 4, fontWeight: "500" },
+  passwordContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F9FAFB",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+  },
   roleRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 16,
+    marginBottom: 32,
   },
-  roleButton: {
+  roleCard: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: "#4a5568",
-    borderRadius: 10,
-    padding: 8,
     marginHorizontal: 4,
+    paddingVertical: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
     alignItems: "center",
+    backgroundColor: "#F9FAFB",
   },
-  roleButtonActive: {
-    backgroundColor: "#4a5568",
-  },
-  roleText: { color: "#4a5568" },
-  roleTextActive: { color: "#fff", fontWeight: "bold" },
-  button: {
-    backgroundColor: "#2E7D32",
-    padding: 14,
-    borderRadius: 10,
-    alignItems: "center",
+  roleCardActive: { borderColor: "#2E7D32", backgroundColor: "#E8F5E9" },
+  roleCardText: {
     marginTop: 8,
+    fontSize: 12,
+    color: "#6B7280",
+    fontWeight: "500",
   },
-  buttonText: { color: "#fff", fontWeight: "bold" },
+  roleCardTextActive: { color: "#2E7D32", fontWeight: "700" },
+  signupButton: {
+    backgroundColor: "#2E7D32",
+    paddingVertical: 18,
+    borderRadius: 16,
+    alignItems: "center",
+    elevation: 5,
+  },
+  signupButtonText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
+  dividerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 32,
+  },
+  divider: { flex: 1, height: 1, backgroundColor: "#E5E7EB" },
+  dividerText: { marginHorizontal: 16, color: "#9CA3AF", fontSize: 12 },
+  socialRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 20,
+    marginBottom: 32,
+  },
+  socialCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    borderWidth: 1.5,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#fff",
+  },
+  footer: { flexDirection: "row", justifyContent: "center", marginTop: 32 },
+  footerText: { color: "#6B7280" },
+  footerLink: { color: "#2E7D32", fontWeight: "bold" },
 });

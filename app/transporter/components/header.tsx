@@ -1,4 +1,5 @@
 // components/Header.tsx
+import api from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -10,7 +11,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { BACKEND_URL } from "../../../config"; // Adjust path if needed
 // Assuming you have this context, otherwise you can remove the hook and hardcode text
 import { useTranslationContext } from "../../../context/TranslationContext";
 
@@ -45,16 +45,11 @@ export default function Header({ onSearch }: HeaderProps) {
         if (!token) return;
 
         // 2. Get Notifications (Switched to transporter endpoint)
-        const res = await fetch(
-          `${BACKEND_URL}/api/transporter/notifications`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
-
-        if (res.ok) {
-          const data = await res.json();
+        try {
+          const data = await api.get(`/api/transporter/notifications`);
           setUnreadCount(data.unreadCount || 0);
+        } catch (_e) {
+          // ignore
         }
       } catch (err) {
         console.error("[Header] Failed to load header data", err);

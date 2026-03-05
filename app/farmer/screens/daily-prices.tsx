@@ -1,3 +1,4 @@
+import api from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -10,9 +11,8 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
-import { BACKEND_URL } from "../../../config";
 import { useTranslation } from "../../../hooks/farmer/useTranslation";
 
 const PRIMARY_GREEN = "#2E7D32";
@@ -35,7 +35,10 @@ const FRUIT_IMAGES: Record<string, string> = {
 };
 
 // Grade styling
-const GRADE_COLORS: Record<string, { bg: string; text: string; badge: string }> = {
+const GRADE_COLORS: Record<
+  string,
+  { bg: string; text: string; badge: string }
+> = {
   A: { bg: "#dcfce7", text: "#15803d", badge: "#86efac" },
   B: { bg: "#fef3c7", text: "#b45309", badge: "#fcd34d" },
   C: { bg: "#fed7aa", text: "#92400e", badge: "#fdba74" },
@@ -71,7 +74,10 @@ export default function DailyPricesScreen() {
   const [selectedFruitIdx, setSelectedFruitIdx] = useState(0);
   const fruitsPerPage = 3;
   const currentPage = Math.floor(selectedFruitIdx / fruitsPerPage);
-  const visibleFruits = fruits.slice(currentPage * fruitsPerPage, (currentPage + 1) * fruitsPerPage);
+  const visibleFruits = fruits.slice(
+    currentPage * fruitsPerPage,
+    (currentPage + 1) * fruitsPerPage,
+  );
 
   useEffect(() => {
     loadFreshRoutePrices();
@@ -90,36 +96,17 @@ export default function DailyPricesScreen() {
         return;
       }
 
-      const url = `${BACKEND_URL}/api/farmer/prices/freshroute`;
-      console.log("[FRESHROUTE-PRICES] Fetching from:", url);
-      console.log("[FRESHROUTE-PRICES] Authorization token:", token ? "✓ Present" : "✗ Missing");
-      
-      const res = await fetch(url, {
-        method: "GET",
-        headers: { 
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      console.log("[FRESHROUTE-PRICES] Response status:", res.status);
-      
+      console.log("[FRESHROUTE-PRICES] Fetching freshroute prices");
       let data;
       try {
-        data = await res.json();
-        console.log("[FRESHROUTE-PRICES] Response data:", JSON.stringify(data, null, 2));
-      } catch (parseErr) {
-        console.error("[FRESHROUTE-PRICES] Failed to parse response:", parseErr);
-        Alert.alert("Error", "Invalid response format from server");
-        setFruits([]);
-        setLoading(false);
-        return;
-      }
-
-      if (!res.ok) {
-        const errorMsg = data?.message || data?.error || "Failed to load FreshRoute prices";
-        console.log("[FRESHROUTE-PRICES] HTTP Error:", res.status, errorMsg);
-        Alert.alert("Error", errorMsg);
+        data = await api.get("/api/farmer/prices/freshroute");
+        console.log(
+          "[FRESHROUTE-PRICES] Response data:",
+          JSON.stringify(data, null, 2),
+        );
+      } catch (err: any) {
+        console.error("[FRESHROUTE-PRICES] Error loading data:", err);
+        Alert.alert("Error", err.message || "Failed to load FreshRoute prices");
         setFruits([]);
         setLoading(false);
         return;
@@ -128,11 +115,11 @@ export default function DailyPricesScreen() {
       // Parse API response with new structure: fruits array with nested grades
       const fruitsData = data.fruits || [];
       console.log("[FRESHROUTE-PRICES] Found", fruitsData.length, "fruits");
-      
+
       if (fruitsData.length === 0) {
         console.log("[FRESHROUTE-PRICES] No fruits available");
         setFruits([]);
-        setTargetDate(new Date().toISOString().split('T')[0]);
+        setTargetDate(new Date().toISOString().split("T")[0]);
         setLoading(false);
         return;
       }
@@ -142,20 +129,24 @@ export default function DailyPricesScreen() {
       fruitsData.forEach((fruit: any) => {
         const fruitKey = fruit.name.toLowerCase();
         const gradesObj = fruit.grades || {};
-        
+
         // Convert grades object to prices array
-        const prices: FreshRoutePrice[] = Object.values(gradesObj).map((gradeData: any) => ({
-          id: `${fruit.fruit_id}-${gradeData.grade}`,
-          fruit_id: fruit.fruit_id,
-          fruit_name: fruit.name,
-          variety: fruit.variety,
-          grade: gradeData.grade,
-          target_date: data.date || new Date().toISOString().split('T')[0],
-          price: gradeData.price || 0,
-          source_min_price: fruit.economicCenterRange?.min,
-          source_max_price: fruit.economicCenterRange?.max,
-          margin_pct: data.marginPercentage ? data.marginPercentage / 100 : 0.02,
-        }));
+        const prices: FreshRoutePrice[] = Object.values(gradesObj).map(
+          (gradeData: any) => ({
+            id: `${fruit.fruit_id}-${gradeData.grade}`,
+            fruit_id: fruit.fruit_id,
+            fruit_name: fruit.name,
+            variety: fruit.variety,
+            grade: gradeData.grade,
+            target_date: data.date || new Date().toISOString().split("T")[0],
+            price: gradeData.price || 0,
+            source_min_price: fruit.economicCenterRange?.min,
+            source_max_price: fruit.economicCenterRange?.max,
+            margin_pct: data.marginPercentage
+              ? data.marginPercentage / 100
+              : 0.02,
+          }),
+        );
 
         groupedByFruit.push({
           fruit_name: fruit.name,
@@ -166,9 +157,12 @@ export default function DailyPricesScreen() {
       });
 
       setFruits(groupedByFruit);
-      setTargetDate(data.date || new Date().toISOString().split('T')[0]);
-      console.log("[FRESHROUTE-PRICES] Loaded", groupedByFruit.length, "fruit groups");
-
+      setTargetDate(data.date || new Date().toISOString().split("T")[0]);
+      console.log(
+        "[FRESHROUTE-PRICES] Loaded",
+        groupedByFruit.length,
+        "fruit groups",
+      );
     } catch (err) {
       console.error("[FRESHROUTE-PRICES] Error:", err);
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -192,7 +186,12 @@ export default function DailyPricesScreen() {
           </TouchableOpacity>
           <Text style={styles.headerTitle}>FreshRoute Prices</Text>
           <TouchableOpacity>
-            <Ionicons name="refresh" size={22} color={PRIMARY_GREEN} onPress={loadFreshRoutePrices} />
+            <Ionicons
+              name="refresh"
+              size={22}
+              color={PRIMARY_GREEN}
+              onPress={loadFreshRoutePrices}
+            />
           </TouchableOpacity>
         </View>
 
@@ -200,7 +199,14 @@ export default function DailyPricesScreen() {
         <View style={styles.dateInfo}>
           <Ionicons name="calendar" size={18} color={PRIMARY_GREEN} />
           <Text style={styles.dateText}>
-            {targetDate ? new Date(targetDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : 'Loading...'}
+            {targetDate
+              ? new Date(targetDate).toLocaleDateString("en-US", {
+                  weekday: "short",
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })
+              : "Loading..."}
           </Text>
         </View>
 
@@ -214,7 +220,10 @@ export default function DailyPricesScreen() {
           <View style={styles.emptyContainer}>
             <Ionicons name="file-tray-outline" size={64} color="#ccc" />
             <Text style={styles.emptyText}>No FreshRoute prices available</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={loadFreshRoutePrices}>
+            <TouchableOpacity
+              style={styles.retryButton}
+              onPress={loadFreshRoutePrices}
+            >
               <Text style={styles.retryText}>Retry</Text>
             </TouchableOpacity>
           </View>
@@ -248,18 +257,29 @@ export default function DailyPricesScreen() {
 
             {/* Grade Details for Selected Fruit */}
             {selectedFruit && (
-              <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+              <ScrollView
+                style={styles.scroll}
+                showsVerticalScrollIndicator={false}
+              >
                 {/* Selected Fruit Header */}
                 <View style={styles.selectedFruitDisplayHeader}>
-                  <Text style={styles.selectedFruitDisplayEmoji}>{selectedFruit.emoji}</Text>
+                  <Text style={styles.selectedFruitDisplayEmoji}>
+                    {selectedFruit.emoji}
+                  </Text>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.selectedFruitDisplayName}>{selectedFruit.fruit_name}</Text>
+                    <Text style={styles.selectedFruitDisplayName}>
+                      {selectedFruit.fruit_name}
+                    </Text>
                     {selectedFruit.variety && (
-                      <Text style={styles.selectedFruitDisplayVariety}>{selectedFruit.variety}</Text>
+                      <Text style={styles.selectedFruitDisplayVariety}>
+                        {selectedFruit.variety}
+                      </Text>
                     )}
                   </View>
                   <View style={styles.gradeCountBadge}>
-                    <Text style={styles.gradeCountText}>{selectedFruit.prices.length}</Text>
+                    <Text style={styles.gradeCountText}>
+                      {selectedFruit.prices.length}
+                    </Text>
                     <Text style={styles.gradeCountLabel}>Grades</Text>
                   </View>
                 </View>
@@ -267,17 +287,32 @@ export default function DailyPricesScreen() {
                 {/* Grades Grid */}
                 <View style={styles.gradesContainer}>
                   {selectedFruit.prices.map((price, priceIdx) => {
-                    const gradeColor = GRADE_COLORS[price.grade] || GRADE_COLORS.A;
+                    const gradeColor =
+                      GRADE_COLORS[price.grade] || GRADE_COLORS.A;
                     return (
                       <View key={priceIdx} style={styles.gradeCard}>
                         <View style={styles.gradeHeader}>
-                          <View style={[styles.gradeBadge, { backgroundColor: gradeColor.badge }]}>
-                            <Text style={[styles.gradeBadgeText, { color: gradeColor.text }]}>
+                          <View
+                            style={[
+                              styles.gradeBadge,
+                              { backgroundColor: gradeColor.badge },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.gradeBadgeText,
+                                { color: gradeColor.text },
+                              ]}
+                            >
                               Grade {price.grade}
                             </Text>
                           </View>
                           <Text style={styles.gradePrice}>
-                            Rs. {price.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            Rs.{" "}
+                            {price.price.toLocaleString("en-US", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
                           </Text>
                         </View>
 
@@ -286,14 +321,21 @@ export default function DailyPricesScreen() {
                           <View style={styles.priceRangeRow}>
                             <Text style={styles.rangeLabel}>Market Range:</Text>
                             <Text style={styles.rangeValue}>
-                              Rs. {(price.source_min_price || 0).toLocaleString()} - Rs. {(price.source_max_price || 0).toLocaleString()}
+                              Rs.{" "}
+                              {(price.source_min_price || 0).toLocaleString()} -
+                              Rs.{" "}
+                              {(price.source_max_price || 0).toLocaleString()}
                             </Text>
                           </View>
                         )}
 
                         {/* Margin Info */}
                         <View style={styles.marginRow}>
-                          <Ionicons name="information-circle" size={14} color={PRIMARY_GREEN} />
+                          <Ionicons
+                            name="information-circle"
+                            size={14}
+                            color={PRIMARY_GREEN}
+                          />
                           <Text style={styles.marginText}>
                             {(price.margin_pct * 100).toFixed(1)}% margin
                           </Text>
@@ -661,4 +703,3 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 });
-

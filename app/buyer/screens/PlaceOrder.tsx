@@ -1,9 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { useRouter } from "expo-router";
+import * as Location from "expo-location";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
-  Alert,
+  ActivityIndicator,
   Animated,
   Platform,
   SafeAreaView,
@@ -14,10 +16,12 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import RNPickerSelect from "react-native-picker-select";
+import RNPickerSelect, { PickerSelectProps } from "react-native-picker-select";
 import Header from "../../../components/Header";
 import SuccessModal from "../../../components/modals/SuccessModal";
 import { useOrderForm } from "../forms/useOrderForm";
+
+const PickerSelect = RNPickerSelect as React.ComponentType<PickerSelectProps>;
 
 const PRIMARY_GREEN = "#2E7D32";
 const LIGHT_GRAY = "#f5f5f5";
@@ -38,7 +42,7 @@ const SkeletonLoader = () => {
           duration: 800,
           useNativeDriver: true,
         }),
-      ])
+      ]),
     );
     pulse.start();
     return () => pulse.stop();
@@ -116,11 +120,20 @@ export const options = {
 
 export default function AddStock() {
   const router = useRouter();
+  const {
+    location: paramLocation,
+    latitude: paramLatitude,
+    longitude: paramLongitude,
+  } = useLocalSearchParams<{
+    location?: string;
+    latitude?: string;
+    longitude?: string;
+  }>();
   const [showModal, setShowModal] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [modalData, setModalData] = useState({
     title: "",
     message: "",
-    farmersFound: false,
   });
 
   const {
@@ -134,42 +147,140 @@ export default function AddStock() {
     setDatePickerVisible,
     handleSubmit: originalHandleSubmit,
     handleDateChange,
+    // expose method to rehydrate - we can call internal effect indirectly by
+    // setting state via updateField after reading storage
   } = useOrderForm();
 
-  const handleSubmit = async () => {
-    // Submit the form using the hook's handler
-    const result = await originalHandleSubmit();
+  // when screen gains focus, re-read persisted form and apply
+  useFocusEffect(
+    React.useCallback(() => {
+      const restore = async () => {
+        try {
+          const saved = await AsyncStorage.getItem("order_form");
+          console.log("[PlaceOrder] focusEffect fired, saved=", saved);
+          if (saved) {
+            const obj = JSON.parse(saved);
+            console.log("[PlaceOrder] focus restore obj", obj);
+            Object.entries(obj).forEach(([key, value]) => {
+              console.log("[PlaceOrder] restoring field", key, value);
+              updateField(key as any, value);
+            });
+          }
+        } catch (e) {
+          console.warn("[PlaceOrder] focus restore failed", e);
+        }
+      };
+      restore();
+    }, []),
+  );
 
-    if (result?.success) {
-      // Show success modal with appropriate message
-      setModalData({
-        title: "Order Submitted",
-        message: result.farmersFound
-          ? "We've found matching suppliers for your order. Let's explore your options."
-          : "Your order has been submitted successfully. We're searching for the best suppliers and will notify you shortly.",
-        farmersFound: result.farmersFound || false,
-      });
-      setShowModal(true);
+  // apply returned location params after coming back from picker
+  // debug incoming params and update state
+  useEffect(() => {
+    console.log("[PlaceOrder] params", {
+      paramLocation,
+      paramLatitude,
+      paramLongitude,
+    });
+    console.log("[PlaceOrder] before update formData", formData);
 
-      // Auto-navigate if farmers found, after a delay
-      if (result.farmersFound) {
-        setTimeout(() => {
-          setShowModal(false);
-          router.push("/buyer/screens/MatchedStocks");
-        }, 1500);
+    if (paramLocation && paramLocation !== formData.deliveryLocation) {
+      console.log("[PlaceOrder] updating deliveryLocation to", paramLocation);
+      updateField("deliveryLocation", String(paramLocation));
+    }
+    if (paramLatitude) {
+      const lat = parseFloat(String(paramLatitude));
+      if (!isNaN(lat) && lat !== formData.latitude) {
+        console.log("[PlaceOrder] updating latitude to", lat);
+        updateField("latitude", lat);
       }
+    }
+    if (paramLongitude) {
+      const lng = parseFloat(String(paramLongitude));
+      if (!isNaN(lng) && lng !== formData.longitude) {
+        console.log("[PlaceOrder] updating longitude to", lng);
+        updateField("longitude", lng);
+      }
+    }
+
+    console.log("[PlaceOrder] after update formData", formData);
+    // if latitude/longitude changed, compute human-readable address
+    if (paramLatitude || paramLongitude) {
+      const lat = parseFloat(String(paramLatitude || formData.latitude));
+      const lng = parseFloat(String(paramLongitude || formData.longitude));
+      if (!isNaN(lat) && !isNaN(lng)) {
+        (async () => {
+          try {
+            const rev = await Location.reverseGeocodeAsync({
+              latitude: lat,
+              longitude: lng,
+            });
+            if (rev && rev.length > 0) {
+              const { name, street, district, city } = rev[0];
+              const addr =
+                `${name || ""} ${street || ""}, ${city || district || ""}`
+                  .replace(/^[ ,]+/, "")
+                  .trim();
+              if (addr && addr !== formData.deliveryLocation) {
+                console.log("[PlaceOrder] reverse geocoded address", addr);
+                updateField("deliveryLocation", addr);
+              }
+            }
+          } catch (e) {
+            console.warn("[PlaceOrder] reverse geocode failed", e);
+          }
+        })();
+      }
+    }
+  }, [paramLocation, paramLatitude, paramLongitude]);
+
+  const handleNavigateToHome = () => {
+    setShowModal(false);
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/buyer/(tabs)");
+    }
+  };
+
+  const handleSubmit = async () => {
+    setSubmitting(true);
+    try {
+      // Submit the form using the hook's handler
+      const result = await originalHandleSubmit();
+
+      if (result?.success) {
+        // remove saved data after successful submit
+        AsyncStorage.removeItem("order_form");
+
+        // First navigate to home
+        if (router.canGoBack()) {
+          router.back();
+        } else {
+          router.replace("/buyer/(tabs)");
+        }
+
+        // Then show success modal after a small delay
+        setTimeout(() => {
+          setModalData({
+            title: "Order Placed Successfully!",
+            message: result.farmersFound
+              ? "We've found matching suppliers for your order. Check the Best Matching Deals section to explore your options."
+              : "Your order has been submitted. We're searching for the best suppliers and will notify you when matches are found.",
+          });
+          setShowModal(true);
+        }, 300);
+      }
+    } catch (error) {
+      console.error("Error placing order:", error);
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <Header
-        title="Place Order"
-        showNotification={true}
-        onNotificationPress={() => {
-          console.log("Notifications pressed");
-        }}
-      />
+      <Header title="Place Order" onBack={() => router.back()} />
 
       {/* Success Modal */}
       {showModal && (
@@ -177,14 +288,9 @@ export default function AddStock() {
           visible={showModal}
           title={modalData.title}
           message={modalData.message}
-          onClose={() => {
-            setShowModal(false);
-            if (!modalData.farmersFound) {
-              // If no suppliers found, navigate to home page
-              router.push("/buyer/(tabs)");
-            }
-          }}
-          buttonText={modalData.farmersFound ? "View Matches" : "Done"}
+          buttonText="OK"
+          onButtonPress={() => setShowModal(false)}
+          onClose={() => setShowModal(false)}
         />
       )}
 
@@ -199,7 +305,7 @@ export default function AddStock() {
             >
               <View style={styles.formCard}>
                 <Text style={styles.label}>Fruit type</Text>
-                <RNPickerSelect
+                <PickerSelect
                   onValueChange={(val) => updateField("fruit", val)}
                   value={formData.fruit}
                   placeholder={{ label: "Select fruit", value: null }}
@@ -213,7 +319,7 @@ export default function AddStock() {
                 />
 
                 <Text style={styles.label}>Category (variant)</Text>
-                <RNPickerSelect
+                <PickerSelect
                   onValueChange={(val) => updateField("category", val)}
                   value={formData.category}
                   placeholder={{ label: "Select category", value: null }}
@@ -292,6 +398,9 @@ export default function AddStock() {
                 </View>
 
                 <Text style={styles.label}>Required Delivery Date</Text>
+                <Text style={styles.helperText}>
+                  Select a date from tomorrow up to 7 days
+                </Text>
                 <TouchableOpacity
                   style={styles.selectInput}
                   onPress={() => setDatePickerVisible(true)}
@@ -336,9 +445,21 @@ export default function AddStock() {
                     {formData.deliveryLocation}
                   </Text>
                   <TouchableOpacity
-                    onPress={() =>
-                      Alert.alert("Change Location", "Feature coming soon")
-                    }
+                    onPress={() => {
+                      console.log("[PlaceOrder] navigating to change with", {
+                        lat: formData.latitude,
+                        lng: formData.longitude,
+                        location: formData.deliveryLocation,
+                      });
+                      router.push({
+                        pathname: "/buyer/change-location",
+                        params: {
+                          latitude: String(formData.latitude),
+                          longitude: String(formData.longitude),
+                          location: formData.deliveryLocation,
+                        },
+                      });
+                    }}
                   >
                     <Text style={styles.changeText}>Change</Text>
                   </TouchableOpacity>
@@ -349,10 +470,27 @@ export default function AddStock() {
             {/* Fixed footer submit */}
             <View style={styles.footer} pointerEvents="box-none">
               <TouchableOpacity
-                style={styles.submitButtonFixed}
+                style={[
+                  styles.submitButtonFixed,
+                  submitting && { opacity: 0.7 },
+                ]}
                 onPress={handleSubmit}
+                disabled={submitting}
               >
-                <Text style={styles.submitText}>Place Order</Text>
+                {submitting ? (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <ActivityIndicator size="small" color="#fff" />
+                    <Text style={styles.submitText}>Submitting...</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.submitText}>Place Order</Text>
+                )}
               </TouchableOpacity>
             </View>
           </>
@@ -363,7 +501,7 @@ export default function AddStock() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#fff", paddingTop: 20 },
+  safeArea: { flex: 1, backgroundColor: "#fff", paddingTop: 40 },
   container: { flex: 1, backgroundColor: "#fff" },
 
   formCard: {
@@ -373,6 +511,12 @@ const styles = StyleSheet.create({
     // margin: 16,
   },
   label: { fontSize: 16, color: "#333", marginBottom: 8, marginTop: 12 },
+  helperText: {
+    fontSize: 12,
+    color: "#999",
+    marginBottom: 8,
+    fontStyle: "italic",
+  },
   selectInput: {
     backgroundColor: LIGHT_GRAY,
     borderRadius: 10,

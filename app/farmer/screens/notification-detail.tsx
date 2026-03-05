@@ -1,5 +1,5 @@
+import api from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -13,7 +13,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { BACKEND_URL } from "../../../config";
 import { useTranslation } from "../../../hooks/farmer/useTranslation";
 
 const PRIMARY_GREEN = "#2E7D32";
@@ -50,7 +49,9 @@ export default function NotificationDetailScreen() {
     : null;
   const { t } = useTranslation();
 
-  const [notification, setNotification] = useState<NotificationDetail | null>(initialFromParams);
+  const [notification, setNotification] = useState<NotificationDetail | null>(
+    initialFromParams,
+  );
   const [loading, setLoading] = useState(!initialFromParams);
   const [error, setError] = useState<string | null>(null);
 
@@ -67,37 +68,13 @@ export default function NotificationDetailScreen() {
       }
       setError(null);
       try {
-        const token = await AsyncStorage.getItem("token");
-        if (!token) {
-          setError("Not authenticated");
-          setLoading(false);
-          return;
-        }
-
-        const res = await fetch(`${BACKEND_URL}/api/farmer/notifications/${notificationId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        // Safely handle non-JSON responses from the server (e.g., HTML error pages).
-        const raw = await res.text();
-        let data: any = null;
+        // fetch notification detail, api helper adds auth header
+        let data: any;
         try {
-          data = raw ? JSON.parse(raw) : {};
-        } catch (parseErr) {
-          setError(`Failed to parse response (status ${res.status})`);
-          console.log("[NOTIFICATION-DETAIL] parse error", parseErr, raw?.slice(0, 200));
-          if (!notification) {
-            setNotification(null);
-          }
-          setLoading(false);
-          return;
-        }
-
-        if (!res.ok) {
-          setError(data?.message || `Failed to load notification (status ${res.status})`);
-          if (!notification) {
-            setNotification(null);
-          }
+          data = await api.get(`/api/farmer/notifications/${notificationId}`);
+        } catch (err: any) {
+          setError(err.message || "Failed to load notification");
+          if (!notification) setNotification(null);
           setLoading(false);
           return;
         }
@@ -115,13 +92,13 @@ export default function NotificationDetailScreen() {
           action_url: n.action_url || n.actionButtonUrl,
         });
 
-        // Ensure it is marked as read if still unread.
+        // mark as read
         if (!n.read_at) {
           try {
-            await fetch(`${BACKEND_URL}/api/farmer/notifications/${n.id || n._id}/read`, {
-              method: "PUT",
-              headers: { Authorization: `Bearer ${token}` },
-            });
+            await api.put(
+              `/api/farmer/notifications/${n.id || n._id}/read`,
+              null,
+            );
           } catch (markErr) {
             console.log("[NOTIFICATION-DETAIL] mark read failed", markErr);
           }
@@ -139,10 +116,14 @@ export default function NotificationDetailScreen() {
   }, [notificationId, notification]);
 
   const iconMeta = useMemo(() => {
-    if (!notification) return { name: "notifications", color: PRIMARY_GREEN, bg: LIGHT_GREEN };
-    if (notification.severity === "high") return { name: "alert-circle", color: RED, bg: "#fee2e2" };
-    if (notification.category?.toLowerCase().includes("price")) return { name: "trending-up", color: BLUE, bg: "#dbeafe" };
-    if (notification.category?.toLowerCase().includes("demand")) return { name: "pulse", color: PRIMARY_GREEN, bg: LIGHT_GREEN };
+    if (!notification)
+      return { name: "notifications", color: PRIMARY_GREEN, bg: LIGHT_GREEN };
+    if (notification.severity === "high")
+      return { name: "alert-circle", color: RED, bg: "#fee2e2" };
+    if (notification.category?.toLowerCase().includes("price"))
+      return { name: "trending-up", color: BLUE, bg: "#dbeafe" };
+    if (notification.category?.toLowerCase().includes("demand"))
+      return { name: "pulse", color: PRIMARY_GREEN, bg: LIGHT_GREEN };
     return { name: "notifications", color: ORANGE, bg: "#fef3c7" };
   }, [notification]);
 
@@ -167,7 +148,9 @@ export default function NotificationDetailScreen() {
           <TouchableOpacity onPress={() => router.back()}>
             <Ionicons name="chevron-back" size={24} color="#000" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>{t("notificationDetail.headerTitle")}</Text>
+          <Text style={styles.headerTitle}>
+            {t("notificationDetail.headerTitle")}
+          </Text>
           <TouchableOpacity>
             <Ionicons name="share-social" size={24} color="#000" />
           </TouchableOpacity>
@@ -176,7 +159,9 @@ export default function NotificationDetailScreen() {
         {loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={PRIMARY_GREEN} />
-            <Text style={styles.loadingText}>{t("notifications.loading" as any) || "Loading..."}</Text>
+            <Text style={styles.loadingText}>
+              {t("notifications.loading" as any) || "Loading..."}
+            </Text>
           </View>
         ) : error && !notification ? (
           <View style={styles.loadingContainer}>
@@ -186,7 +171,9 @@ export default function NotificationDetailScreen() {
         ) : !notification ? (
           <View style={styles.loadingContainer}>
             <Ionicons name="notifications-off-outline" size={40} color="#ccc" />
-            <Text style={styles.loadingText}>{t("notifications.emptyText")}</Text>
+            <Text style={styles.loadingText}>
+              {t("notifications.emptyText")}
+            </Text>
           </View>
         ) : (
           <ScrollView
@@ -195,8 +182,17 @@ export default function NotificationDetailScreen() {
           >
             {/* Notification Icon */}
             <View style={styles.iconContainer}>
-              <View style={[styles.largeIconCircle, { backgroundColor: iconMeta.bg }]}>
-                <Ionicons name={iconMeta.name as any} size={40} color={iconMeta.color} />
+              <View
+                style={[
+                  styles.largeIconCircle,
+                  { backgroundColor: iconMeta.bg },
+                ]}
+              >
+                <Ionicons
+                  name={iconMeta.name as any}
+                  size={40}
+                  color={iconMeta.color}
+                />
               </View>
             </View>
 
@@ -218,7 +214,9 @@ export default function NotificationDetailScreen() {
                 onPress={onActionPress}
                 disabled={!notification.action_url}
               >
-                <Text style={styles.actionButtonText}>{notification.action_button_text}</Text>
+                <Text style={styles.actionButtonText}>
+                  {notification.action_button_text}
+                </Text>
               </TouchableOpacity>
             )}
 
@@ -227,7 +225,9 @@ export default function NotificationDetailScreen() {
               <View style={styles.infoRow}>
                 <Ionicons name="time-outline" size={16} color="#999" />
                 <Text style={styles.infoText}>
-                  {t("notificationDetail.received", { time: formattedTime || "" })}
+                  {t("notificationDetail.received", {
+                    time: formattedTime || "",
+                  })}
                 </Text>
               </View>
               {notification.category && (

@@ -1,25 +1,32 @@
+import api from "@/services/api";
+import { supabase } from "@/utils/supabaseClient";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "../../../components/Header";
-import { BACKEND_URL } from "../../../config";
+import ErrorModal from "../../../components/modals/ErrorModal";
+import SuccessModal from "../../../components/modals/SuccessModal";
+import { PillTabBar } from "../../../components/ui/PillTabBar";
 import { BuyerColors } from "../../../constants/theme";
 
 const PRIMARY_GREEN = BuyerColors.primaryGreen || "#2E7D32";
 const LIGHT_GREEN = "#e8f4f0";
 
-const GRADE_COLORS: Record<string, { bg: string; text: string; badge: string }> = {
+const GRADE_COLORS: Record<
+  string,
+  { bg: string; text: string; badge: string }
+> = {
   A: { bg: "#dcfce7", text: "#15803d", badge: "#86efac" },
   B: { bg: "#fef3c7", text: "#b45309", badge: "#fcd34d" },
   C: { bg: "#fed7aa", text: "#92400e", badge: "#fdba74" },
@@ -54,11 +61,22 @@ const FRUIT_IMAGES: Record<string, string> = {
 export default function FreshroutePricesForBuyer() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [fruits, setFruits] = useState<FruitEntry[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>(
-    new Date().toISOString().split("T")[0]
+    new Date().toISOString().split("T")[0],
   );
-  const [selectedFruitIdx, setSelectedFruitIdx] = useState(0);
+  const [selectedFruitId, setSelectedFruitId] = useState("");
+  const [errorModal, setErrorModal] = useState({
+    visible: false,
+    title: "",
+    message: "",
+  });
+  const [successModal, setSuccessModal] = useState({
+    visible: false,
+    title: "",
+    message: "",
+  });
 
   useEffect(() => {
     loadPrices();
@@ -67,59 +85,42 @@ export default function FreshroutePricesForBuyer() {
   const loadPrices = async () => {
     setLoading(true);
     try {
+      // log the current session so we can troubleshoot role issues
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      console.log(
+        "[FreshroutePrices] session metadata",
+        session?.user?.user_metadata,
+      );
+
       const token = await AsyncStorage.getItem("token");
       if (!token) {
-        Alert.alert("Error", "Authentication required. Please log in again.");
-        setLoading(false);
-        return;
-      }
-
-      const candidateUrls = [
-        `${BACKEND_URL}/api/buyer/prices/freshroute?date=${selectedDate}`,
-        `${BACKEND_URL}/api/farmer/prices/freshroute?date=${selectedDate}`,
-      ];
-
-      let data: any = null;
-      let ok = false;
-      let lastErrorMsg = "";
-
-      for (const url of candidateUrls) {
-        const res = await fetch(url, {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
+        setErrorModal({
+          visible: true,
+          title: "Authentication Error",
+          message: "Authentication required. Please log in again.",
         });
-        const body = await res.json().catch(() => null);
-        if (res.ok) {
-          data = body;
-          ok = true;
-          break;
-        }
-        lastErrorMsg = body?.message || body?.error || `Request failed (${res.status})`;
-        // If forbidden, try next URL
-        if (res.status === 403) {
-          continue;
-        } else {
-          break;
-        }
-      }
-
-      if (!ok) {
-        Alert.alert("Error", lastErrorMsg || "Failed to load FreshRoute prices");
         setLoading(false);
         return;
       }
+
+      // we only use the canonical endpoint. earlier code tried fallbacks,
+      // but the backend has settled on this single path.
+      const path = `/api/prices/freshroute?date=${selectedDate}`;
+      const data = await api.get(path);
+      console.log("[FreshroutePrices] fetched", path);
 
       const mapFromFruits = (fruitsArr: any[]): FruitEntry[] =>
         fruitsArr.map((fruit: any) => {
           const fruitKey = (fruit.name || "").toLowerCase();
           const gradesObj = fruit.grades || {};
-          const grades: GradePrice[] = Object.values(gradesObj).map((g: any) => ({
-            grade: g.grade,
-            price: g.price || 0,
-          }));
+          const grades: GradePrice[] = Object.values(gradesObj).map(
+            (g: any) => ({
+              grade: g.grade,
+              price: g.price || 0,
+            }),
+          );
 
           return {
             fruit_id: fruit.fruit_id || fruit.id || fruit.name,
@@ -158,130 +159,185 @@ export default function FreshroutePricesForBuyer() {
       const fruitsData = data.fruits || data.data?.fruits || null;
       const pricesData = Array.isArray(data.prices) ? data.prices : [];
 
-      const mapped: FruitEntry[] = Array.isArray(fruitsData) && fruitsData.length > 0
-        ? mapFromFruits(fruitsData)
-        : mapFromFlatPrices(pricesData);
+      const mapped: FruitEntry[] =
+        Array.isArray(fruitsData) && fruitsData.length > 0
+          ? mapFromFruits(fruitsData)
+          : mapFromFlatPrices(pricesData);
 
       setFruits(mapped);
-      setSelectedFruitIdx(0);
+      setSelectedFruitId(mapped[0]?.fruit_id ?? "");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      Alert.alert("Error", msg);
+      let msg = err instanceof Error ? err.message : String(err);
+      // if we see a role-related response, make it more user friendly
+      if (/role/i.test(msg)) {
+        msg =
+          "Your account does not have buyer permissions. Please log in with a buyer profile or contact support.";
+      }
+      setErrorModal({
+        visible: true,
+        title: "Error",
+        message: msg,
+      });
     } finally {
       setLoading(false);
     }
   };
 
+  const selectedFruit =
+    fruits.find((f) => f.fruit_id === selectedFruitId) ?? fruits[0];
+
   return (
-    <SafeAreaView style={styles.container}>
-      <Header
-        title="FreshRoute Prices"
-        showNotification={true}
-        onNotificationPress={() => router.push("/buyer/(tabs)/profile")}
-      />
+    <>
+      <SafeAreaView style={styles.container}>
+        <Header
+          title="FreshRoute Prices"
+          showNotification={true}
+          onNotificationPress={() => router.push("/buyer/(tabs)/profile")}
+        />
 
-      {/* Date pill */}
-      <View style={styles.datePill}>
-        <Ionicons name="calendar" size={16} color={PRIMARY_GREEN} />
-        <Text style={styles.datePillText}>
-          {new Date(selectedDate).toLocaleDateString("en-US", {
-            weekday: "short",
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-          })}
-        </Text>
-      </View>
+        {/* Date pill */}
+        <View style={styles.datePill}>
+          <Ionicons name="calendar" size={16} color={PRIMARY_GREEN} />
+          <Text style={styles.datePillText}>
+            {new Date(selectedDate).toLocaleDateString("en-US", {
+              weekday: "short",
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            })}
+          </Text>
+        </View>
 
-      {/* Fruit tabs */}
-      {fruits.length > 0 && (
-        <View style={styles.fruitTabsContainer}>
+        {/* Fruit tabs */}
+        {fruits.length > 0 && (
+          <PillTabBar
+            tabs={fruits.map((f) => ({
+              key: f.fruit_id,
+              label: (f.name || "Fruit").trim() || "Fruit",
+            }))}
+            activeKey={selectedFruitId}
+            onPress={setSelectedFruitId}
+          />
+        )}
+
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={PRIMARY_GREEN} />
+            <Text style={styles.loadingText}>Loading prices...</Text>
+          </View>
+        ) : fruits.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyTitle}>No prices found</Text>
+            <Text style={styles.emptySubtitle}>
+              FreshRoute prices are not available right now.
+            </Text>
+          </View>
+        ) : (
           <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.fruitTabsRow}
+            style={{ flex: 1 }}
+            contentContainerStyle={{ padding: 16, paddingBottom: 140 }}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={async () => {
+                  setRefreshing(true);
+                  await loadPrices();
+                  setRefreshing(false);
+                }}
+                colors={[PRIMARY_GREEN]}
+                tintColor={PRIMARY_GREEN}
+              />
+            }
           >
-            {fruits.map((fruit, idx) => {
-            const selected = idx === selectedFruitIdx;
-            const label = (fruit.name || "Fruit").trim() || "Fruit";
-            return (
-              <TouchableOpacity
-                key={fruit.fruit_id}
-                style={[styles.fruitTab, selected && styles.fruitTabActive]}
-                onPress={() => setSelectedFruitIdx(idx)}
-              >
-                <Text style={[styles.fruitTabText, selected && styles.fruitTabTextActive]} numberOfLines={1}>
-                  {label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-        </View>
-      )}
-
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={PRIMARY_GREEN} />
-          <Text style={styles.loadingText}>Loading prices...</Text>
-        </View>
-      ) : fruits.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyTitle}>No prices found</Text>
-          <Text style={styles.emptySubtitle}>FreshRoute prices are not available right now.</Text>
-        </View>
-      ) : (
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{ padding: 16, paddingBottom: 140 }}
-          showsVerticalScrollIndicator={false}
-        >
-          {fruits.length > 0 && (
-            <View key={fruits[selectedFruitIdx]?.fruit_id || selectedFruitIdx} style={styles.fruitCard}>
-              <View style={styles.fruitHeader}>
-                <View style={styles.fruitTitleRow}>
-                  <Text style={styles.fruitEmoji}>{fruits[selectedFruitIdx].emoji}</Text>
-                  <View>
-                    <Text style={styles.fruitName}>{fruits[selectedFruitIdx].name}</Text>
-                    {fruits[selectedFruitIdx].variety ? (
-                      <Text style={styles.fruitVariety}>{fruits[selectedFruitIdx].variety}</Text>
-                    ) : null}
+            {fruits.length > 0 && selectedFruit && (
+              <View key={selectedFruit.fruit_id} style={styles.fruitCard}>
+                <View style={styles.fruitHeader}>
+                  <View style={styles.fruitTitleRow}>
+                    <Text style={styles.fruitEmoji}>{selectedFruit.emoji}</Text>
+                    <View>
+                      <Text style={styles.fruitName}>{selectedFruit.name}</Text>
+                      {selectedFruit.variety ? (
+                        <Text style={styles.fruitVariety}>
+                          {selectedFruit.variety}
+                        </Text>
+                      ) : null}
+                    </View>
                   </View>
                 </View>
-              </View>
 
-              <View style={styles.gradesList}>
-                {fruits[selectedFruitIdx].grades.map((grade) => {
-                  const color = GRADE_COLORS[grade.grade] || GRADE_COLORS.A;
-                  return (
-                    <View key={grade.grade} style={styles.gradeRow}>
-                      <View style={[styles.gradeBadge, { backgroundColor: color.badge }]}>                    
-                        <Text style={[styles.gradeBadgeText, { color: color.text }]}>Grade {grade.grade}</Text>
+                <View style={styles.gradesList}>
+                  {selectedFruit.grades.map((grade) => {
+                    const color = GRADE_COLORS[grade.grade] || GRADE_COLORS.A;
+                    return (
+                      <View key={grade.grade} style={styles.gradeRow}>
+                        <View
+                          style={[
+                            styles.gradeBadge,
+                            { backgroundColor: color.badge },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.gradeBadgeText,
+                              { color: color.text },
+                            ]}
+                          >
+                            Grade {grade.grade}
+                          </Text>
+                        </View>
+                        <Text style={styles.gradePrice}>
+                          Rs.{" "}
+                          {grade.price.toLocaleString("en-US", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                          <Text style={styles.logisticText}>
+                            {" "}
+                            + Logistic Cost
+                          </Text>
+                        </Text>
                       </View>
-                      <Text style={styles.gradePrice}>
-                        Rs. {grade.price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        <Text style={styles.logisticText}> + Logistic Cost</Text>
-                      </Text>
-                    </View>
-                  );
-                })}
+                    );
+                  })}
+                </View>
               </View>
-            </View>
-          )}
-        </ScrollView>
-      )}
+            )}
+          </ScrollView>
+        )}
 
-      {!loading && fruits.length > 0 && (
-        <View style={styles.placeOrderContainer}>
-          <TouchableOpacity
-            style={styles.placeOrderButton}
-            onPress={() => router.push("/buyer/screens/PlaceOrder")}
-          >
-            <Text style={styles.placeOrderText}>Place Order</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-    </SafeAreaView>
+        {!loading && fruits.length > 0 && (
+          <View style={styles.placeOrderContainer}>
+            <TouchableOpacity
+              style={styles.placeOrderButton}
+              onPress={() => router.push("/buyer/screens/PlaceOrder")}
+            >
+              <Text style={styles.placeOrderText}>Place Order</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </SafeAreaView>
+
+      {/* Error Modal - positioned outside SafeAreaView to cover notification bar */}
+      <ErrorModal
+        visible={errorModal.visible}
+        onClose={() =>
+          setErrorModal({ visible: false, title: "", message: "" })
+        }
+        title={errorModal.title}
+        message={errorModal.message}
+      />
+
+      {/* Success Modal - positioned outside SafeAreaView to cover notification bar */}
+      <SuccessModal
+        visible={successModal.visible}
+        onClose={() =>
+          setSuccessModal({ visible: false, title: "", message: "" })
+        }
+        title={successModal.title}
+        message={successModal.message}
+      />
+    </>
   );
 }
 
@@ -331,38 +387,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
     color: PRIMARY_GREEN,
-  },
-  fruitTabsContainer: {
-    marginBottom: 16,
-    height: 56,
-  },
-  fruitTabsRow: {
-    paddingHorizontal: 16,
-    gap: 10,
-    paddingVertical: 8,
-  },
-  fruitTab: {
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-    backgroundColor: "#f0f0f0",
-    borderRadius: 8,
-    marginRight: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    minWidth: 100,
-  },
-  fruitTabActive: {
-    backgroundColor: PRIMARY_GREEN,
-  },
-  fruitTabText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#111",
-    textAlign: "center",
-  },
-  fruitTabTextActive: {
-    color: "#fff",
-    fontWeight: "700",
   },
   fruitCard: {
     backgroundColor: LIGHT_GREEN,

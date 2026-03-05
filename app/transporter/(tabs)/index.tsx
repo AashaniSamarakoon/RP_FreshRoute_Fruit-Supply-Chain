@@ -1,6 +1,6 @@
 // app/transporter/index.tsx
+import api from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
@@ -12,7 +12,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { BACKEND_URL } from "../../../config";
 import Header from "../components/header";
 
 // Types
@@ -35,16 +34,13 @@ export default function TransporterDashboard() {
 
   const fetchData = async () => {
     try {
-      const token = await AsyncStorage.getItem("token");
-      if (!token) return;
-      const res = await fetch(`${BACKEND_URL}/api/transporter/jobs`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (res.ok) {
+      try {
+        const data = await api.get(`/api/transporter/jobs`);
         setJobs(data.jobs || []);
         setFilteredJobs(data.jobs || []);
         setVehicleInfo(data.vehicle);
+      } catch (err) {
+        console.error("Failed to load dashboard data", err);
       }
     } catch (error) {
       console.error("Failed to load dashboard data", error);
@@ -72,7 +68,7 @@ export default function TransporterDashboard() {
     const filtered = jobs.filter(
       (job) =>
         job.route_name.toLowerCase().includes(lowerText) ||
-        job.status.toLowerCase().includes(lowerText)
+        job.status.toLowerCase().includes(lowerText),
     );
     setFilteredJobs(filtered);
   };
