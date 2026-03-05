@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { Alert } from "react-native";
-import { supabase } from "../utils/supabaseClient"; // Your standard supabase client export
+import { supabase } from "../utils/supabaseClient";
 
 export function useRealtimeAlerts() {
   useEffect(() => {
@@ -18,9 +18,6 @@ export function useRealtimeAlerts() {
           Alert.alert("⚠️ SHIPMENT ALERT", newAlert.message, [
             { text: "Check Details" },
           ]);
-
-          // Note: In a real app, you would check if this alert
-          // belongs to the logged-in user (by comparing order_id)
         }
       )
       .subscribe();

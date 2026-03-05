@@ -201,7 +201,7 @@ export default function GlobalTelemetry() {
 const styles = StyleSheet.create({
   statusBar: {
     position: "absolute",
-    bottom: 30, // Adjust based on your tab bar height
+    bottom: 70,
     right: 20,
     flexDirection: "row",
     alignItems: "center",

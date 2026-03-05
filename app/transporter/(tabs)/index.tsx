@@ -12,7 +12,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { BACKEND_URL } from "../../config";
+import { BACKEND_URL } from "../../../config";
+import Header from "../components/header";
 
 // Types
 interface Job {
@@ -27,6 +28,7 @@ interface Job {
 export default function TransporterDashboard() {
   const router = useRouter();
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [filteredJobs, setFilteredJobs] = useState<Job[]>([]); // For search
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [vehicleInfo, setVehicleInfo] = useState<any>(null);
@@ -35,15 +37,13 @@ export default function TransporterDashboard() {
     try {
       const token = await AsyncStorage.getItem("token");
       if (!token) return;
-
       const res = await fetch(`${BACKEND_URL}/api/transporter/jobs`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-
       if (res.ok) {
         setJobs(data.jobs || []);
-        // Note: We ignore data.alerts here now, handled by GlobalTelemetry
+        setFilteredJobs(data.jobs || []);
         setVehicleInfo(data.vehicle);
       }
     } catch (error) {
@@ -61,6 +61,20 @@ export default function TransporterDashboard() {
   const onRefresh = () => {
     setRefreshing(true);
     fetchData();
+  };
+
+  const handleSearch = (text: string) => {
+    if (!text) {
+      setFilteredJobs(jobs);
+      return;
+    }
+    const lowerText = text.toLowerCase();
+    const filtered = jobs.filter(
+      (job) =>
+        job.route_name.toLowerCase().includes(lowerText) ||
+        job.status.toLowerCase().includes(lowerText)
+    );
+    setFilteredJobs(filtered);
   };
 
   const renderJobCard = ({ item }: { item: Job }) => (
@@ -99,50 +113,109 @@ export default function TransporterDashboard() {
     </TouchableOpacity>
   );
 
-  const ListHeader = () => (
-    <View style={styles.header}>
-      <Text style={styles.welcomeText}>My Jobs</Text>
-      {vehicleInfo && (
-        <Text style={styles.subHeader}>
-          Vehicle: {vehicleInfo.vehicle_license_plate}
-        </Text>
-      )}
-    </View>
+  // --- TESTING ONLY: quick open fruit grading with mock IDs. Remove this block when not testing. ---
+  const openFruitGradingTest = () => {
+    router.push({
+      pathname: "/transporter/fruit-grading",
+      params: {
+        job_id: "test-job-mock",
+        order_id: "test-order-mock",
+        pickup_lat: "6.9271",
+        pickup_lng: "79.8612",
+      },
+    });
+  };
+  // --- END TESTING ONLY ---
+
+  const SubHeader = () => (
+    <>
+      <View style={styles.subHeaderContainer}>
+        <Text style={styles.sectionTitle}>My Jobs</Text>
+        {vehicleInfo && (
+          <View style={styles.vehicleTag}>
+            <Ionicons name="bus-outline" size={14} color="#718096" />
+            <Text style={styles.vehicleText}>
+              {vehicleInfo.vehicle_license_plate}
+            </Text>
+          </View>
+        )}
+      </View>
+      {/* TESTING ONLY - remove this block and openFruitGradingTest + test styles */}
+      <TouchableOpacity
+        style={styles.testGradingBtn}
+        onPress={openFruitGradingTest}
+      >
+        <Ionicons name="camera-outline" size={16} color="#fff" />
+        <Text style={styles.testGradingBtnText}>Test grading</Text>
+      </TouchableOpacity>
+    </>
   );
 
   return (
     <View style={styles.container}>
-      {loading ? (
-        <ActivityIndicator
-          size="large"
-          color="#2f855a"
-          style={{ marginTop: 50 }}
-        />
-      ) : (
-        <FlatList
-          data={jobs}
-          keyExtractor={(item) => item.id}
-          renderItem={renderJobCard}
-          ListHeaderComponent={ListHeader}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
-          ListEmptyComponent={
-            <Text style={styles.emptyText}>No active jobs assigned.</Text>
-          }
-          contentContainerStyle={{ paddingBottom: 20 }}
-        />
-      )}
+      {/* New Header (No props needed for name) */}
+      <Header onSearch={handleSearch} />
+
+      <View style={styles.content}>
+        {loading ? (
+          <ActivityIndicator
+            size="large"
+            color="#2f855a"
+            style={{ marginTop: 50 }}
+          />
+        ) : (
+          <FlatList
+            data={filteredJobs}
+            keyExtractor={(item) => item.id}
+            renderItem={renderJobCard}
+            ListHeaderComponent={SubHeader}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            }
+            ListEmptyComponent={
+              <Text style={styles.emptyText}>No active jobs assigned.</Text>
+            }
+            contentContainerStyle={{ paddingBottom: 20 }}
+            showsVerticalScrollIndicator={false}
+          />
+        )}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f5f7fa", padding: 16 },
-  header: { marginBottom: 20, marginTop: 40 },
-  welcomeText: { fontSize: 28, fontWeight: "bold", color: "#2d3748" },
-  subHeader: { fontSize: 14, color: "#718096", marginTop: 4 },
+  container: { flex: 1, backgroundColor: "#fff" },
+  content: { flex: 1, backgroundColor: "#f5f7fa", paddingHorizontal: 16 },
 
+  // Sub Header Styles
+  subHeaderContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginVertical: 16,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#2d3748",
+  },
+  vehicleTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#e2e8f0",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  vehicleText: {
+    fontSize: 13,
+    color: "#4a5568",
+    marginLeft: 4,
+    fontWeight: "600",
+  },
+
+  // Card Styles
   card: {
     backgroundColor: "#fff",
     borderRadius: 12,
@@ -159,15 +232,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   routeTitle: { fontSize: 18, fontWeight: "bold", color: "#2d3748" },
-
   badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   badgeBlue: { backgroundColor: "#bee3f8" },
   badgeGreen: { backgroundColor: "#c6f6d5" },
   badgeText: { fontSize: 12, fontWeight: "bold", color: "#2c5282" },
-
   row: { flexDirection: "row", alignItems: "center", marginBottom: 8 },
   infoText: { marginLeft: 8, color: "#4a5568", fontSize: 14 },
-
   footer: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -178,4 +248,18 @@ const styles = StyleSheet.create({
   },
   clickHint: { fontSize: 12, color: "#a0aec0" },
   emptyText: { textAlign: "center", marginTop: 50, color: "#a0aec0" },
+
+  // TESTING ONLY - remove with the testing block in JSX
+  testGradingBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#805ad5",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 6,
+    alignSelf: "flex-start",
+    marginBottom: 12,
+  },
+  testGradingBtnText: { fontSize: 12, color: "#fff", fontWeight: "600" },
 });

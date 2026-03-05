@@ -1,29 +1,34 @@
-import { Stack } from "expo-router";
+import { Stack, usePathname } from "expo-router"; // 1. Import usePathname
 import React from "react";
-import GlobalTelemetry from "../../components/GlobalTelemetry"; // Adjust path if needed
-import { useRealtimeAlerts } from "../../hooks/useRealtimeAlerts"; // Adjust path if needed
+import GlobalTelemetry from "../../components/GlobalTelemetry";
+import { useRealtimeAlerts } from "../../hooks/useRealtimeAlerts";
 
 export default function TransporterLayout() {
-  // 1. Activate the Hook (Optional if GlobalTelemetry handles logic internally)
-  // If GlobalTelemetry has its own logic, you might not need this hook here.
-  // But if the hook handles distinct global alerts (like native toasts), keep it.
   useRealtimeAlerts();
+
+  // 2. Get current path
+  const pathname = usePathname();
+
+  const showWidget =
+    pathname === "/transporter" ||
+    // pathname.includes("/map") ||
+    pathname.includes("/job");
 
   return (
     <>
       <Stack
         screenOptions={{
-          headerShown: false, // Hides "transporter/index" header
+          headerShown: false,
           animation: "slide_from_right",
         }}
       >
-        <Stack.Screen name="index" />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="job/[id]" />
         <Stack.Screen name="map/[id]" />
       </Stack>
 
-      {/* 2. Add the Floating Widget here so it sits on top of all Transporter screens */}
-      <GlobalTelemetry />
+      {/* 4. Conditionally Render */}
+      {showWidget && <GlobalTelemetry />}
     </>
   );
 }

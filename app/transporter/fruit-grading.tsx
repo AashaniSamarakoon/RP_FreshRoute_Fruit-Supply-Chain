@@ -46,6 +46,11 @@ export default function FruitGrading() {
   const [showVerifyingPopup, setShowVerifyingPopup] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [farmerDeclaredGrade, setFarmerDeclaredGrade] = useState<string>("Grade A");
+
+  // Fruit classification (mango vs non-mango) state
+  const [showClassifyingPopup, setShowClassifyingPopup] = useState(false);
+  const [showNotMangoPopup, setShowNotMangoPopup] = useState(false);
+  const [classifyErrorMessage, setClassifyErrorMessage] = useState<string | null>(null);
   
   // Location verification state
   const [showLocationVerification, setShowLocationVerification] = useState(false);
@@ -108,7 +113,6 @@ export default function FruitGrading() {
 
   useEffect(() => {
     if (showVerifyingPopup) {
-      // Start scanning animation
       Animated.loop(
         Animated.sequence([
           Animated.timing(scanAnimation, {
@@ -127,6 +131,31 @@ export default function FruitGrading() {
       scanAnimation.setValue(0);
     }
   }, [showVerifyingPopup, scanAnimation]);
+
+  const classifScanAnimation = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (showClassifyingPopup) {
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(classifScanAnimation, {
+            toValue: 1,
+            duration: 2000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(classifScanAnimation, {
+            toValue: 0,
+            duration: 0,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      loop.start();
+      return () => {
+        loop.stop();
+        classifScanAnimation.setValue(0);
+      };
+    }
+  }, [showClassifyingPopup, classifScanAnimation]);
 
   useEffect(() => {
     if (isVerifyingLocation) {
@@ -208,21 +237,17 @@ export default function FruitGrading() {
 
   const takePicture = async () => {
     if (!cameraRef.current || capturedImages.length >= TOTAL_IMAGES) return;
-    
-    // Prevent capture if location not verified
+
     if (!locationVerified) {
       Alert.alert("Location Not Verified", "Please verify your location first before capturing images.");
       return;
     }
 
     try {
-      // Provide haptic feedback when sound is muted
       if (!soundEnabled) {
         try {
           await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        } catch (e) {
-          // Silent fail if haptics not available
-        }
+        } catch (e) {}
       }
 
       const photo = await cameraRef.current.takePictureAsync({
@@ -231,15 +256,67 @@ export default function FruitGrading() {
         skipProcessing: false,
       });
 
-      if (photo?.uri) {
+      if (!photo?.uri) return;
+
+      setShowClassifyingPopup(true);
+      setClassifyErrorMessage(null);
+      setShowNotMangoPopup(false);
+
+      const token = await AsyncStorage.getItem("token");
+      if (!token) {
+        setShowClassifyingPopup(false);
+        router.replace("/login");
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("images", {
+        uri: photo.uri,
+        type: "image/jpeg",
+        name: `photo_${capturedImages.length + 1}.jpg`,
+      } as any);
+
+      let response: Response;
+      try {
+        response = await fetch(`${BACKEND_URL}/api/fruit-classification/predict`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        });
+      } catch (err) {
+        setShowClassifyingPopup(false);
+        setClassifyErrorMessage("Network error. Please try again.");
+        setShowNotMangoPopup(true);
+        return;
+      }
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        setShowClassifyingPopup(false);
+        setClassifyErrorMessage(data.message || `Request failed (${response.status}). Please try again.`);
+        setShowNotMangoPopup(true);
+        return;
+      }
+
+      const pred = data.predictions?.[0];
+      const isFruit = pred?.isFruit === true;
+
+      setShowClassifyingPopup(false);
+
+      if (isFruit) {
         setCapturedImages([...capturedImages, photo.uri]);
-        // Store base64 for later use
         if (photo.base64) {
           setCapturedImagesBase64([...capturedImagesBase64, photo.base64]);
         }
+      } else {
+        setClassifyErrorMessage(null);
+        setShowNotMangoPopup(true);
       }
     } catch (error) {
-      Alert.alert("Error", "Failed to capture image");
+      setShowClassifyingPopup(false);
+      setClassifyErrorMessage("Failed to capture or classify image.");
+      setShowNotMangoPopup(true);
     }
   };
 
@@ -798,6 +875,82 @@ export default function FruitGrading() {
           </View>
         </View>
       )}
+
+      {/* Classifying image popup (mango vs non-mango) */}
+      {showClassifyingPopup && (
+        <View style={styles.verifyingOverlay}>
+          <View style={styles.verifyingPopup}>
+            <View style={styles.scanningContainer}>
+              <View style={styles.scanningFrame}>
+                <Animated.View
+                  style={[
+                    styles.scanningBeam,
+                    {
+                      opacity: classifScanAnimation.interpolate({
+                        inputRange: [0, 0.5, 1],
+                        outputRange: [0.4, 1, 0.4],
+                      }),
+                      transform: [
+                        {
+                          translateY: classifScanAnimation.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [-50, 50],
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
+                />
+                <Animated.View
+                  style={[
+                    styles.scanningCircle,
+                    {
+                      transform: [
+                        {
+                          rotate: classifScanAnimation.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: ["0deg", "360deg"],
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
+                >
+                  <MaterialIcons name="image-search" size={40} color="#2f855a" />
+                </Animated.View>
+              </View>
+            </View>
+            <Text style={styles.verifyingText}>Classifying image…</Text>
+          </View>
+        </View>
+      )}
+
+      {/* Not a mango / classification error popup */}
+      {showNotMangoPopup && (
+        <View style={styles.verifyingOverlay}>
+          <View style={styles.verifyingPopup}>
+            <MaterialIcons name="warning" size={64} color="#e53e3e" />
+            <Text style={styles.verifyingText}>
+              {classifyErrorMessage
+                ? "Classification failed"
+                : "Not a mango"}
+            </Text>
+            <Text style={styles.locationErrorText}>
+              {classifyErrorMessage ||
+                "The captured image is not a mango. Try another image or try by rotating the fruit."}
+            </Text>
+            <TouchableOpacity
+              style={styles.recaptureButton}
+              onPress={() => {
+                setShowNotMangoPopup(false);
+                setClassifyErrorMessage(null);
+              }}
+            >
+              <Text style={styles.buttonText}>Recapture</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -1174,6 +1327,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     width: "100%",
+  },
+  recaptureButton: {
+    backgroundColor: "#2f855a",
+    padding: 16,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+    marginTop: 20,
   },
 });
 
