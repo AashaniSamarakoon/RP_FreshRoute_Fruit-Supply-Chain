@@ -86,19 +86,19 @@ export async function startPayHerePayment(
 // ─── Preapproval (Pay Later / Tokenization) ───────────────────────────────────
 
 export interface PreapprovalParams {
-  orderId: string;
-  fruitType: string;
-  variant?: string | null;
-  quantity: number;
-  /**
-   * The AI-forecasted unit price shown to the buyer as an estimate.
-   * The ACTUAL charge amount is determined by the backend on deliveryDate
-   * by fetching the real market price for that day — same source as order.unitPrice.
-   */
-  estimatedUnitPrice?: number | null;
-  /** ISO date string — the day the buyer will be auto-charged at that day's market price. */
-  deliveryDate?: string | null;
-  deliveryLocation?: string | null;
+    orderId: string;
+    fruitType: string;
+    variant?: string | null;
+    quantity: number;
+    /**
+     * The AI-forecasted unit price shown to the buyer as an estimate.
+     * The ACTUAL charge amount is determined by the backend on deliveryDate
+     * by fetching the real market price for that day — same source as order.unitPrice.
+     */
+    estimatedUnitPrice?: number | null;
+    /** ISO date string — the day the buyer will be auto-charged at that day's market price. */
+    deliveryDate?: string | null;
+    deliveryLocation?: string | null;
 }
 
 /**
@@ -108,7 +108,7 @@ export interface PreapprovalParams {
  * the PayHere preapproval form. Open it with expo-web-browser.
  */
 export async function initiatePreapproval(
-  params: PreapprovalParams,
+    params: PreapprovalParams,
 ): Promise<{ url: string }> {
-  return api.post("/api/payhere/preapproval-init", params);
+    return api.post("/api/payhere/preapproval-init", params);
 }
