@@ -149,7 +149,6 @@ export default function TransporterDashboard() {
 
   return (
     <View style={styles.container}>
-      {/* New Header (No props needed for name) */}
       <Header onSearch={handleSearch} />
 
       <View style={styles.content}>
