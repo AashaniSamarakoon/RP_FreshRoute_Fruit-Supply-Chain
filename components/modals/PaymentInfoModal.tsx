@@ -21,6 +21,7 @@ interface PaymentInfoModalProps {
   requestedDate?: string;
   isPriceLocked: boolean;
   onPayNow: () => void;
+  onPayLater?: () => void;
 }
 
 export default function PaymentInfoModal({
@@ -34,6 +35,7 @@ export default function PaymentInfoModal({
   requestedDate,
   isPriceLocked,
   onPayNow,
+  onPayLater,
 }: PaymentInfoModalProps) {
   const formatPrice = (price: number | null) =>
     price != null ? `Rs. ${price.toLocaleString()}` : "N/A";
@@ -179,8 +181,8 @@ export default function PaymentInfoModal({
 
           {/* Actions */}
           <View style={styles.actions}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
-              <Text style={styles.cancelBtnText}>Cancel</Text>
+            <TouchableOpacity style={styles.cancelBtn} onPress={onPayLater ?? onClose}>
+              <Text style={styles.cancelBtnText}>Pay Later</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.payBtn} onPress={onPayNow}>
               <Ionicons name="card-outline" size={18} color="#fff" />

@@ -1,13 +1,15 @@
 import Header from "@/components/Header";
 import PaymentInfoModal from "@/components/modals/PaymentInfoModal";
+import PreapprovalConsentModal from "@/components/modals/PreapprovalConsentModal";
 import { BuyerColors } from "@/constants/theme";
 import api from "@/services/api";
-import { startPayHerePayment } from "@/services/payhereService";
+import { initiatePreapproval, startPayHerePayment } from "@/services/payhereService";
 import { FarmerInfo, PlacedOrder, TransporterInfo } from "@/types";
 import { formatCurrency, formatDate } from "@/utils/formatters";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -84,10 +86,13 @@ export default function OrderDetailScreen() {
   const [harvestDate, setHarvestDate] = useState<string | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
+  const [preapprovalConsentVisible, setPreapprovalConsentVisible] = useState(false);
+  const [preapprovalLoading, setPreapprovalLoading] = useState(false);
   const [isPriceLocked, setIsPriceLocked] = useState(false);
   const [lockedUnitPrice, setLockedUnitPrice] = useState<number | null>(null);
   const [predictedPrice, setPredictedPrice] = useState<number>(0);
   const [isFetchingForecast, setIsFetchingForecast] = useState(false);
+  const [payherePaymentId, setPayherePaymentId] = useState<string | null>(null);
 
   // ── accordion + proof-of-harvest state ──
   // Start expanded; collapse automatically once the order is paid and in-transit
@@ -292,6 +297,65 @@ export default function OrderDetailScreen() {
     }
   };
 
+  /** "Pay Later" — show preapproval consent; actual charge will be real
+   * market unit price fetched by the backend on the requested delivery date. */
+  const handlePayLater = () => {
+    if (!order) return;
+    setPaymentModalVisible(false);
+    setPreapprovalConsentVisible(true);
+  };
+
+  /** User confirmed consent — call backend, open PayHere preapproval in-app browser */
+  const handlePreapprovalConfirm = async () => {
+    if (!order) return;
+    // No price is locked here. The backend will fetch the actual market unit price
+    // on the delivery date (order.required_date) and charge that amount.
+    // predictedPrice is only passed as an estimate for display/record purposes.
+
+    setPreapprovalLoading(true);
+    try {
+      const { url } = await initiatePreapproval({
+        orderId: order.id,
+        fruitType: order.fruit_type,
+        variant: order.variant ?? null,
+        quantity: order.quantity,
+        estimatedUnitPrice: predictedPrice > 0 ? predictedPrice : null,
+        deliveryDate: order.required_date ?? null,
+        deliveryLocation: order.delivery_location ?? null,
+      });
+
+      setPreapprovalConsentVisible(false);
+
+      // ── DEBUG: log the URL so we can verify return_url is HTTPS, not a deep link ──
+      console.log("[Preapproval] opening URL:", url);
+
+      const result = await WebBrowser.openAuthSessionAsync(
+        url,
+        "freshroutemobile://preapproval-success",
+      );
+
+      if (result.type === "success") {
+        Alert.alert(
+          "Auto-Payment Scheduled",
+          "Your card has been authorized. We\u2019ll automatically charge you on delivery day \u2014 no action needed.",
+          [{ text: "OK", onPress: () => fetchOrderDetails() }],
+        );
+      } else if (result.type === "cancel") {
+        Alert.alert(
+          "Authorization Cancelled",
+          "You can authorize auto-payment at any time before delivery.",
+        );
+      }
+    } catch (error: any) {
+      Alert.alert(
+        "Authorization Failed",
+        error?.message || "Unable to start authorization. Please try again.",
+      );
+    } finally {
+      setPreapprovalLoading(false);
+    }
+  };
+
   /** Called when user taps Pay Now inside the info modal */
   const handlePayNow = async () => {
     if (!order || !priceLockKey) return;
@@ -319,6 +383,7 @@ export default function OrderDetailScreen() {
         deliveryLocation: order.delivery_location ?? null,
       },
       (paymentId) => {
+        setPayherePaymentId(paymentId);
         Alert.alert(
           "Payment Successful",
           `Your payment has been received. We'll notify you once it's verified.\n\nPayment ID: ${paymentId}`,
@@ -547,6 +612,14 @@ export default function OrderDetailScreen() {
                   #{order.id.substring(0, 8).toUpperCase()}
                 </Text>
               </View>
+              {(order.payhere_payment_id ?? payherePaymentId) ? (
+                <View>
+                  <Text style={styles.orderIdLabel}>PAYMENT REF</Text>
+                  <Text style={styles.paymentRefValue}>
+                    {order.payhere_payment_id ?? payherePaymentId}
+                  </Text>
+                </View>
+              ) : null}
               <View style={[styles.badge, { backgroundColor: statusStyle.bg }]}>
                 <Text style={[styles.badgeText, { color: statusStyle.text }]}>
                   {statusStyle.label}
@@ -856,6 +929,23 @@ export default function OrderDetailScreen() {
           }
           isPriceLocked={isPriceLocked}
           onPayNow={handlePayNow}
+          onPayLater={handlePayLater}
+        />
+      )}
+
+      {/* Preapproval Consent Modal (Pay Later) */}
+      {order && (
+        <PreapprovalConsentModal
+          visible={preapprovalConsentVisible}
+          onClose={() => setPreapprovalConsentVisible(false)}
+          onConfirm={handlePreapprovalConfirm}
+          fruitType={order.fruit_type}
+          quantity={order.quantity}
+          estimatedUnitPrice={predictedPrice > 0 ? predictedPrice : null}
+          deliveryDate={
+            order.required_date ? formatDate(order.required_date) : null
+          }
+          loading={preapprovalLoading}
         />
       )}
 
@@ -1005,6 +1095,12 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   orderIdValue: { fontSize: 20, fontWeight: "800", color: "#111827" },
+  paymentRefValue: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#16A34A",
+    letterSpacing: 0.2,
+  },
   badge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
   badgeText: { fontSize: 12, fontWeight: "700", textTransform: "uppercase" },
 

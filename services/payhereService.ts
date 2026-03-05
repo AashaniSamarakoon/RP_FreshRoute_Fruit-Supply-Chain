@@ -1,4 +1,5 @@
 import { BACKEND_URL } from "@/config";
+import api from "@/services/api";
 import { supabase } from "@/utils/supabaseClient";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -40,20 +41,31 @@ export async function startPayHerePayment(
     const phone = meta.phone || "0700000000";
 
     const rawAmount = params.totalPrice ? Number(params.totalPrice) : 0;
+    // In sandbox mode use a small fixed amount to stay within free-tier limits.
+    const amount = PAYHERE_IS_SANDBOX ? "100.00" : rawAmount.toFixed(2);
+    const currency = "LKR";
     const items = `${params.fruitType}${params.variant ? ` (${params.variant})` : ""
         } - ${params.quantity}kg`;
 
+    // Fetch the server-generated hash — merchant_secret MUST stay on the backend only.
+    // Passing merchant_secret="" tells the SDK to skip its own client-side check;
+    // PayHere's server validates the hash field we supply instead.
+    const { hash, merchantId } = await api.post("/api/payhere/hash", {
+        orderId: params.orderId,
+        amount,
+        currency,
+    });
+
     const paymentObject = {
         sandbox: PAYHERE_IS_SANDBOX,
-        merchant_id: process.env.EXPO_PUBLIC_PAYHERE_MERCHANT_ID || "1228619",
-        merchant_secret: process.env.EXPO_PUBLIC_PAYHERE_MERCHANT_SECRET || "",
+        merchant_id: merchantId,
+        merchant_secret: "",   // intentionally blank — server hash field is used
         notify_url: `${BACKEND_URL}/api/payhere/notify`,
         order_id: params.orderId,
         items,
-        // In sandbox mode use a small fixed amount to stay within free-tier limits.
-        // The real amount is stored in the backend; PayHere sandbox only validates flow.
-        amount: PAYHERE_IS_SANDBOX ? "100.00" : rawAmount.toFixed(2),
-        currency: "LKR",
+        amount,
+        currency,
+        hash,
         first_name: firstName,
         last_name: lastName,
         email,
@@ -69,4 +81,34 @@ export async function startPayHerePayment(
     };
 
     PayHere.startPayment(paymentObject, onSuccess, onError, onDismiss);
+}
+
+// ─── Preapproval (Pay Later / Tokenization) ───────────────────────────────────
+
+export interface PreapprovalParams {
+  orderId: string;
+  fruitType: string;
+  variant?: string | null;
+  quantity: number;
+  /**
+   * The AI-forecasted unit price shown to the buyer as an estimate.
+   * The ACTUAL charge amount is determined by the backend on deliveryDate
+   * by fetching the real market price for that day — same source as order.unitPrice.
+   */
+  estimatedUnitPrice?: number | null;
+  /** ISO date string — the day the buyer will be auto-charged at that day's market price. */
+  deliveryDate?: string | null;
+  deliveryLocation?: string | null;
+}
+
+/**
+ * Asks the backend to create a PayHere preapproval session.
+ * The backend generates the hash (merchant_secret never leaves the server).
+ * Returns a URL pointing to a backend-hosted HTML page that auto-submits
+ * the PayHere preapproval form. Open it with expo-web-browser.
+ */
+export async function initiatePreapproval(
+  params: PreapprovalParams,
+): Promise<{ url: string }> {
+  return api.post("/api/payhere/preapproval-init", params);
 }
