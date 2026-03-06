@@ -50,6 +50,7 @@ export default function Login() {
       }
       if (user) {
         await AsyncStorage.setItem("user", JSON.stringify(user));
+        console.log("[Login] User data stored in AsyncStorage", user);
       }
 
       const userRole = (

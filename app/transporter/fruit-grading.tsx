@@ -76,8 +76,13 @@ export default function FruitGrading() {
           router.replace("/login");
           return;
         }
+        // New code for FruitGrading.tsx
         const user = JSON.parse(userJson);
-        if (user.role !== "transporter") {
+
+        // Safely extract and format the role just like in Login.tsx
+        const userRole = user.user_metadata?.role?.toLowerCase();
+
+        if (userRole !== "transporter") {
           Alert.alert("Access Denied", "This page is only for transporters");
           router.back();
           return;

@@ -39,7 +39,15 @@ export default function Header({ onSearch }: HeaderProps) {
         // 1. Get Name from Local Storage
         if (userStr) {
           const user = JSON.parse(userStr);
-          setUserName(user.name || "Transporter");
+          // Extracting from user_metadata based on your specific log
+          const firstName = user.user_metadata?.first_name;
+          const lastName = user.user_metadata?.last_name;
+
+          if (firstName) {
+            setUserName(`${firstName} ${lastName || ""}`.trim());
+          } else {
+            setUserName("Transporter");
+          }
         }
 
         if (!token) return;

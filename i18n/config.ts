@@ -1,12 +1,12 @@
-
 import * as Localization from "expo-localization";
 import { I18n } from "i18n-js";
 
 export type AppLocale = "en" | "si";
 
-
 const deviceLocale: AppLocale =
-  Localization.getLocales?.()[0]?.languageCode?.toLowerCase() === "si" ? "si" : "en";
+  Localization.getLocales?.()[0]?.languageCode?.toLowerCase() === "si"
+    ? "si"
+    : "en";
 
 const translations = {
   en: {
@@ -27,7 +27,8 @@ const translations = {
       priceLabel: "Price",
       perKg: "/kg",
       featuredTitle: "Mango prices are predicted to rise!",
-      featuredDescription: "The average price is expected to increase by 2.5% this week.",
+      featuredDescription:
+        "The average price is expected to increase by 2.5% this week.",
       updatedTime: "Updated 5 mins ago",
       priceDetails: "Price prediction details",
       cards: {
@@ -136,7 +137,8 @@ const translations = {
       axisMed: "Med",
       axisLow: "Low",
       insightTitle: "Peak Demand: Friday",
-      insightDescription: "The highest demand for {{fruit}} is expected this Friday, with prices remaining stable.",
+      insightDescription:
+        "The highest demand for {{fruit}} is expected this Friday, with prices remaining stable.",
       bottomHint: "Swipe to view other fruits or use the tabs above",
       details: "Details",
     },
@@ -228,7 +230,8 @@ const translations = {
       priceLabel: "මිල",
       perKg: "/කි.ග්.",
       featuredTitle: "අඹ මිල වැඩි වීමට පුරෝකථනය වේ!",
-      featuredDescription: "මෙම සතියේ සාමාන්‍ය මිල 2.5% කින් ඉහළ යැයි අපේක්ෂා කරයි.",
+      featuredDescription:
+        "මෙම සතියේ සාමාන්‍ය මිල 2.5% කින් ඉහළ යැයි අපේක්ෂා කරයි.",
       updatedTime: "අලුත් කළේ මිනිත්තු 5 කට පෙර",
       priceDetails: "මිල පුරෝකථන විස්තර",
       cards: {
@@ -419,9 +422,11 @@ i18n.locale = deviceLocale;
 i18n.enableFallback = true;
 i18n.defaultLocale = "en";
 
-export const translate = (key: string, options?: Record<string, unknown>) => i18n.t(key, options);
+export const translate = (key: string, options?: Record<string, unknown>) =>
+  i18n.t(key, options);
 export const setI18nLocale = (locale: AppLocale) => {
   i18n.locale = locale;
 };
-export const getCurrentLocale = (): AppLocale => (i18n.locale as AppLocale) || deviceLocale;
+export const getCurrentLocale = (): AppLocale =>
+  (i18n.locale as AppLocale) || deviceLocale;
 export const SUPPORTED_LOCALES: AppLocale[] = ["en", "si"];
