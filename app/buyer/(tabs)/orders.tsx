@@ -50,7 +50,7 @@ type TabKey = "all" | "pending" | "payment_due" | "in_delivery";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "all", label: "All" },
-  { key: "pending", label: "Pending" },
+  { key: "pending", label: "Pending Farmer" },
   { key: "payment_due", label: "Payment Due" },
   { key: "in_delivery", label: "In Delivery" },
 ];

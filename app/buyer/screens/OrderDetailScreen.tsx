@@ -9,7 +9,6 @@ import { formatCurrency, formatDate } from "@/utils/formatters";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import * as WebBrowser from "expo-web-browser";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -26,6 +25,7 @@ import {
 } from "react-native";
 import MapView, { Marker } from "react-native-maps";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { WebView } from "react-native-webview";
 
 // --- Helpers ---
 const getFruitMeta = (fruit: string) => {
@@ -88,11 +88,13 @@ export default function OrderDetailScreen() {
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [preapprovalConsentVisible, setPreapprovalConsentVisible] = useState(false);
   const [preapprovalLoading, setPreapprovalLoading] = useState(false);
+  const [preapprovalWebViewUrl, setPreapprovalWebViewUrl] = useState<string | null>(null);
   const [isPriceLocked, setIsPriceLocked] = useState(false);
   const [lockedUnitPrice, setLockedUnitPrice] = useState<number | null>(null);
   const [predictedPrice, setPredictedPrice] = useState<number>(0);
   const [isFetchingForecast, setIsFetchingForecast] = useState(false);
   const [payherePaymentId, setPayherePaymentId] = useState<string | null>(null);
+  const [preapprovalAuthorized, setPreapprovalAuthorized] = useState(false);
 
   // ── accordion + proof-of-harvest state ──
   // Start expanded; collapse automatically once the order is paid and in-transit
@@ -326,26 +328,11 @@ export default function OrderDetailScreen() {
 
       setPreapprovalConsentVisible(false);
 
-      // ── DEBUG: log the URL so we can verify return_url is HTTPS, not a deep link ──
-      console.log("[Preapproval] opening URL:", url);
-
-      const result = await WebBrowser.openAuthSessionAsync(
-        url,
-        "freshroutemobile://preapproval-success",
-      );
-
-      if (result.type === "success") {
-        Alert.alert(
-          "Auto-Payment Scheduled",
-          "Your card has been authorized. We\u2019ll automatically charge you on delivery day \u2014 no action needed.",
-          [{ text: "OK", onPress: () => fetchOrderDetails() }],
-        );
-      } else if (result.type === "cancel") {
-        Alert.alert(
-          "Authorization Cancelled",
-          "You can authorize auto-payment at any time before delivery.",
-        );
-      }
+      console.log("[Preapproval] opening WebView URL:", url);
+      // Open inside an in-app WebView with baseUrl set to the whitelisted domain.
+      // PayHere reads the Origin header from the WebView and matches it against
+      // the domain whitelist — freshroute.lk is already approved.
+      setPreapprovalWebViewUrl(url);
     } catch (error: any) {
       Alert.alert(
         "Authorization Failed",
@@ -418,6 +405,15 @@ export default function OrderDetailScreen() {
     }
     switch (order.status) {
       case "AWAITING_PAYMENT":
+        if (order.payment_status === "AUTHORIZED" || preapprovalAuthorized) {
+          return {
+            label: order.required_date
+              ? `Auto-payment scheduled · ${formatDate(order.required_date)}`
+              : "Payment will process automatically",
+            onPress: () => {},
+            disabled: true,
+          };
+        }
         return {
           label: "Proceed to Payment",
           onPress: () => setPaymentModalVisible(true),
@@ -893,17 +889,33 @@ export default function OrderDetailScreen() {
           {primaryAction && (
             <View style={styles.actionContainer}>
               <TouchableOpacity
-                style={styles.primaryBtn}
+                style={[
+                  styles.primaryBtn,
+                  (primaryAction as any).disabled && styles.primaryBtnScheduled,
+                ]}
                 onPress={primaryAction.onPress}
+                disabled={(primaryAction as any).disabled}
+                activeOpacity={(primaryAction as any).disabled ? 1 : 0.8}
               >
-                {(primaryAction as any).icon && (
-                  <Ionicons
-                    name={(primaryAction as any).icon as any}
-                    size={20}
-                    color="#fff"
-                  />
+                {(primaryAction as any).disabled ? (
+                  <Ionicons name="calendar-outline" size={18} color="rgba(255,255,255,0.85)" />
+                ) : (
+                  (primaryAction as any).icon && (
+                    <Ionicons
+                      name={(primaryAction as any).icon as any}
+                      size={20}
+                      color="#fff"
+                    />
+                  )
                 )}
-                <Text style={styles.primaryBtnText}>{primaryAction.label}</Text>
+                <Text
+                  style={[
+                    styles.primaryBtnText,
+                    (primaryAction as any).disabled && styles.primaryBtnScheduledText,
+                  ]}
+                >
+                  {primaryAction.label}
+                </Text>
               </TouchableOpacity>
             </View>
           )}
@@ -990,6 +1002,64 @@ export default function OrderDetailScreen() {
             </View>
           )}
         </View>
+      </Modal>
+
+      {/* PayHere Preapproval WebView Modal */}
+      <Modal
+        visible={!!preapprovalWebViewUrl}
+        animationType="slide"
+        onRequestClose={() => setPreapprovalWebViewUrl(null)}
+      >
+        <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
+          {/* Header bar */}
+          <View style={styles.webViewHeader}>
+            <Text style={styles.webViewTitle}>Authorize Auto-Payment</Text>
+            <TouchableOpacity
+              onPress={() => {
+                setPreapprovalWebViewUrl(null);
+                Alert.alert(
+                  "Authorization Cancelled",
+                  "You can authorize auto-payment at any time before delivery.",
+                );
+              }}
+            >
+              <Ionicons name="close" size={24} color="#111827" />
+            </TouchableOpacity>
+          </View>
+
+          {preapprovalWebViewUrl && (
+            <WebView
+              source={{ uri: preapprovalWebViewUrl }}
+              // baseUrl spoofs the Origin header to match the PayHere-whitelisted domain
+              originWhitelist={["*"]}
+              onNavigationStateChange={(navState) => {
+                console.log("[Preapproval WebView] nav:", navState.url);
+                if (
+                  navState.url.includes("preapproval-return") &&
+                  navState.url.includes("status=success")
+                ) {
+                  setPreapprovalWebViewUrl(null);
+                  setPreapprovalAuthorized(true);
+                  Alert.alert(
+                    "Auto-Payment Scheduled",
+                    "Your card has been authorized. We\u2019ll automatically charge you on delivery day \u2014 no action needed.",
+                    [{ text: "OK", onPress: () => fetchOrderDetails() }],
+                  );
+                } else if (
+                  navState.url.includes("preapproval-return") &&
+                  navState.url.includes("status=cancel")
+                ) {
+                  setPreapprovalWebViewUrl(null);
+                  Alert.alert(
+                    "Authorization Cancelled",
+                    "You can authorize auto-payment at any time before delivery.",
+                  );
+                }
+              }}
+              style={{ flex: 1 }}
+            />
+          )}
+        </SafeAreaView>
       </Modal>
 
       {/* Proof of Harvest Image Viewer Modal */}
@@ -1242,6 +1312,15 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   primaryBtnText: { fontSize: 15, fontWeight: "bold", color: "#ffffff" },
+  primaryBtnScheduled: {
+    backgroundColor: "#166534",
+    opacity: 0.9,
+  },
+  primaryBtnScheduledText: {
+    fontSize: 13,
+    fontWeight: "600",
+    letterSpacing: 0.1,
+  },
 
   modalBg: {
     flex: 1,
@@ -1356,6 +1435,23 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     color: "#16A34A",
+  },
+
+  // --- Preapproval WebView Modal ---
+  webViewHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+    backgroundColor: "#fff",
+  },
+  webViewTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#111827",
   },
 
   // --- Mini Map (Track Your Order) ---

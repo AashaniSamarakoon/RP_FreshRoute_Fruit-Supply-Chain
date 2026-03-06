@@ -2,19 +2,21 @@ import api from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
-  Alert,
-  Animated,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Alert,
+    Animated,
+    Image,
+    Platform,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import RNPickerSelect, { PickerSelectProps } from "react-native-picker-select";
 
@@ -154,6 +156,7 @@ export default function AddStock() {
   const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [dateValue, setDateValue] = useState<Date | null>(null);
   const [loading, setLoading] = useState(true);
+  const [images, setImages] = useState<string[]>([]);
 
   useEffect(() => {
     const load = async () => {
@@ -216,6 +219,41 @@ export default function AddStock() {
     setCategory(null);
   }, [fruit, rows]);
 
+  const pickImageFromGallery = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      return Alert.alert("Permission Denied", "We need access to your gallery.");
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: "images",
+      allowsMultipleSelection: true,
+      selectionLimit: 10,
+      quality: 0.5,
+    });
+    if (!result.canceled) {
+      const newUris = result.assets.map((a) => a.uri);
+      setImages((prev) => [...prev, ...newUris].slice(0, 10));
+    }
+  };
+
+  const takePhotoWithCamera = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      return Alert.alert("Permission Denied", "We need access to your camera.");
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: "images",
+      quality: 0.5,
+    });
+    if (!result.canceled) {
+      setImages((prev) => [...prev, result.assets[0].uri].slice(0, 10));
+    }
+  };
+
+  const removeImage = (index: number) => {
+    setImages((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const isFutureDate = (dateStr: string) => {
     if (!dateStr) return false;
     const selected = new Date(dateStr);
@@ -245,22 +283,30 @@ export default function AddStock() {
         : null;
       if (!token) return Alert.alert("Error", "Not authenticated");
 
-      const payload = {
-        fruit_type: fruit,
-        variant: category,
-        quantity: parseInt(quantity, 10),
-        grade,
-        estimated_harvest_date: estimatedDate,
-      };
+      const formData = new FormData();
+      formData.append("fruit_type", fruit!);
+      formData.append("variant", category!);
+      formData.append("quantity", quantity);
+      formData.append("grade", grade);
+      formData.append("estimated_harvest_date", estimatedDate);
+      formData.append("price_per_unit", "0");
+      images.forEach((uri, index) => {
+        const ext = uri.substring(uri.lastIndexOf(".") + 1);
+        formData.append("images", {
+          uri,
+          name: `upload_${index}.${ext}`,
+          type: `image/${ext}`,
+        } as any);
+      });
+
       console.log(
         "[AddStock] submitting stock, Authorization: Bearer",
         masked,
-        "payload:",
-        payload,
+        "fruit:", fruit, "category:", category, "qty:", quantity, "images:", images.length,
       );
 
       try {
-        const body = await api.post(`/api/farmer/add-predict-stock`, payload);
+        const body = await api.postForm(`/api/farmer/add-predict-stock`, formData);
       } catch (err: any) {
         console.error("Submit error:", err);
         return Alert.alert("Error", err.message || "Failed to submit stock");
@@ -359,6 +405,47 @@ export default function AddStock() {
                 </TouchableOpacity>
               ))}
             </View>
+
+            {/* Photos */}
+            <Text style={styles.label}>Photos (optional)</Text>
+            <View style={styles.imagePickerRow}>
+              <TouchableOpacity
+                style={styles.imagePickerBtn}
+                onPress={takePhotoWithCamera}
+                disabled={images.length >= 10}
+              >
+                <Ionicons name="camera" size={20} color={PRIMARY_GREEN} />
+                <Text style={styles.imagePickerBtnText}>Camera</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.imagePickerBtn}
+                onPress={pickImageFromGallery}
+                disabled={images.length >= 10}
+              >
+                <Ionicons name="image" size={20} color={PRIMARY_GREEN} />
+                <Text style={styles.imagePickerBtnText}>Gallery</Text>
+              </TouchableOpacity>
+            </View>
+
+            {images.length > 0 && (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.thumbnailScroll}
+              >
+                {images.map((uri, index) => (
+                  <View key={index} style={styles.thumbnailWrapper}>
+                    <Image source={{ uri }} style={styles.thumbnail} />
+                    <TouchableOpacity
+                      style={styles.thumbnailRemove}
+                      onPress={() => removeImage(index)}
+                    >
+                      <Ionicons name="close-circle" size={20} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
 
             <Text style={styles.label}>Estimated harvest date</Text>
             <TouchableOpacity
@@ -527,5 +614,48 @@ const styles = StyleSheet.create({
     backgroundColor: LIGHT_GRAY,
     borderRadius: 27,
     marginHorizontal: 16,
+  },
+
+  imagePickerRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 4,
+  },
+  imagePickerBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    borderWidth: 1.5,
+    borderColor: PRIMARY_GREEN,
+    borderRadius: 10,
+    paddingVertical: 12,
+    backgroundColor: "#fff",
+  },
+  imagePickerBtnText: {
+    color: PRIMARY_GREEN,
+    fontWeight: "600",
+    fontSize: 15,
+  },
+  thumbnailScroll: {
+    marginTop: 12,
+  },
+  thumbnailWrapper: {
+    position: "relative",
+    marginRight: 10,
+  },
+  thumbnail: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    backgroundColor: LIGHT_GRAY,
+  },
+  thumbnailRemove: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    borderRadius: 10,
   },
 });

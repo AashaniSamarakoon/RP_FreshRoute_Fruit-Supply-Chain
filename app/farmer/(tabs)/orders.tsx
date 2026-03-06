@@ -1,18 +1,20 @@
 import api from "@/services/api";
-import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect, useRouter } from "expo-router";
 import {
   CheckCircle,
-  ChevronRight,
+  ChevronDown,
+  ChevronUp,
   ShieldCheck,
-  ShoppingCart,
+  Sprout,
   XCircle,
 } from "lucide-react-native";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   FlatList,
-  ScrollView,
+  RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -20,13 +22,43 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "../../../components/Header";
+import { PillTabBar } from "../../../components/ui/PillTabBar";
 import { BuyerColors } from "../../../constants/theme";
 
-// reuse buyer color palette for farmers for consistent styling
+// ─── Constants ────────────────────────────────────────────────────────────────
+
 const PRIMARY_GREEN = BuyerColors.primaryGreen;
-const LIGHT_GREEN = BuyerColors.primaryLight;
-const LIGHT_GRAY = BuyerColors.background;
-const DANGER_RED = "#d32f2f";
+const DANGER_RED = "#BE123C";
+
+const SHORT_DATE_FMT: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+const FULL_DATE_FMT: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", year: "numeric" };
+
+const formatDate = (iso: string, opts: Intl.DateTimeFormatOptions = SHORT_DATE_FMT) =>
+  new Date(iso).toLocaleDateString("en-US", opts);
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface Harvest {
+  id: string;
+  fruit_type: string;
+  variant: string;
+  quantity: number;
+  grade: string;
+  estimated_harvest_date: string;
+  status: string;
+  created_at: string;
+  price_per_kg: number;
+}
+
+interface ProposalOrder {
+  buyer: { id: string; user: { name: string; email: string } };
+  grade: string;
+  variant: string;
+  quantity: number;
+  fruit_type: string;
+  required_date: string;
+  delivery_location: string;
+}
 
 interface Proposal {
   id: string;
@@ -36,387 +68,732 @@ interface Proposal {
   status: "PENDING_FARMER" | "ACCEPTED" | "REJECTED";
   expires_at: string;
   created_at: string;
-  order: {
-    buyer: {
-      id: string;
-      user: {
-        name: string;
-        email: string;
-      };
-    };
-    grade: string;
-    variant: string;
-    quantity: number;
-    fruit_type: string;
-    required_date: string;
-    delivery_location: string;
-  };
+  order: ProposalOrder;
 }
 
-export default function OrdersTab() {
-  const router = useRouter();
+type TabKey = "harvests" | "proposals";
+
+// ─── Lookup maps ──────────────────────────────────────────────────────────────
+
+type FruitMeta = { emoji: string; bg: string };
+const FRUIT_MAP: Array<[string[], FruitMeta]> = [
+  [["banana"],    { emoji: "🍌", bg: "#FEF3C7" }],
+  [["mango"],     { emoji: "🥭", bg: "#FFEDD5" }],
+  [["pineapple"], { emoji: "🍍", bg: "#FEF08A" }],
+
+];
+const DEFAULT_FRUIT: FruitMeta = { emoji: "🌿", bg: "#D1FAE5" };
+const getFruitMeta = (name: string): FruitMeta => {
+  const lc = name.toLowerCase();
+  return FRUIT_MAP.find(([keys]) => keys.some((k) => lc.includes(k)))?.[1] ?? DEFAULT_FRUIT;
+};
+
+type StatusMeta = { label: string; color: string; bg: string };
+const HARVEST_STATUS: Record<string, StatusMeta> = {
+  OPEN:     { label: "Open",     color: "#B45309", bg: "#FEF3C7" },
+  FRESH:    { label: "Fresh",    color: "#B45309", bg: "#FEF3C7" },
+  RESERVED: { label: "Reserved", color: "#0F766E", bg: "#CCFBF1" },
+  MATCHED:  { label: "Matched",  color: "#166534", bg: "#BBF7D0" },
+};
+const DEFAULT_STATUS = HARVEST_STATUS.OPEN;
+
+const TAB_CONFIG: { key: TabKey; label: string }[] = [
+  { key: "harvests",  label: "My Harvests" },
+  { key: "proposals", label: "All Proposals" },
+];
+
+// ─── Custom hook ──────────────────────────────────────────────────────────────
+
+function useOrdersData() {
+  const [harvests, setHarvests] = useState<Harvest[]>([]);
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [processingProposals, setProcessingProposals] = useState<Set<string>>(
-    new Set(),
-  );
+  const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
 
-  const fetchPendingProposals = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
+    if (!silent) { setLoading(true); setError(null); }
     try {
-      setLoading(true);
-      setError(null);
+      let harvestRes: any;
+      try {
+        harvestRes = await api.get("/api/farmer/estimated-stocks");
+      } catch (err: any) {
+        if (!silent) setError(err?.message ?? "Failed to load harvests");
+        return;
+      }
+
+      const stocks: Harvest[] = Array.isArray(harvestRes)
+        ? harvestRes
+        : (harvestRes?.stocks ?? harvestRes?.data ?? []);
+      setHarvests(stocks);
 
       try {
-        const data = await api.get(`/api/farmer/proposals`);
-        setProposals(data.proposals || []);
-      } catch (err: any) {
-        throw err;
+        const proposalRes = await api.get("/api/farmer/proposals");
+        setProposals(proposalRes?.proposals ?? []);
+      } catch {
+        setProposals([]);
       }
-    } catch (err) {
-      console.error("Error fetching proposals:", err);
-      setError(err instanceof Error ? err.message : "Failed to load proposals");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    fetchPendingProposals();
-  }, [fetchPendingProposals]);
+  const refresh = useCallback(async () => {
+    setRefreshing(true);
+    await load(true);
+    setRefreshing(false);
+  }, [load]);
 
-  const handleAcceptProposal = async (proposalId: string) => {
+  const setProcessing = (id: string, on: boolean) =>
+    setProcessingIds((prev) => {
+      const next = new Set(prev);
+      on ? next.add(id) : next.delete(id);
+      return next;
+    });
+
+  const acceptProposal = useCallback(async (id: string) => {
+    setProcessing(id, true);
     try {
-      setProcessingProposals((prev) => new Set(prev).add(proposalId));
-
-      try {
-        const data = await api.post(
-          `/api/farmer/proposals/${proposalId}/accept`,
-          {},
-        );
-      } catch (err) {
-        throw err;
-      }
-
-      // Update local state
+      await api.post(`/api/farmer/proposals/${id}/accept`, {});
       setProposals((prev) =>
-        prev.map((proposal) =>
-          proposal.id === proposalId
-            ? { ...proposal, status: "ACCEPTED" }
-            : proposal,
-        ),
+        prev.map((p) => (p.id === id ? { ...p, status: "ACCEPTED" as const } : p)),
       );
-
       Alert.alert("Success", "Proposal accepted successfully!");
     } catch (err) {
-      console.error("Error accepting proposal:", err);
-      Alert.alert(
-        "Error",
-        err instanceof Error ? err.message : "Failed to accept proposal",
-      );
+      Alert.alert("Error", err instanceof Error ? err.message : "Failed to accept proposal");
     } finally {
-      setProcessingProposals((prev) => {
-        const newSet = new Set(prev);
-        newSet.delete(proposalId);
-        return newSet;
-      });
+      setProcessing(id, false);
     }
-  };
+  }, []);
 
-  const handleRejectProposal = async (proposalId: string) => {
+  const rejectProposal = useCallback(async (id: string) => {
+    setProcessing(id, true);
     try {
-      setProcessingProposals((prev) => new Set(prev).add(proposalId));
-
-      try {
-        await api.post(`/api/farmer/proposals/${proposalId}/reject`, {});
-      } catch (err: any) {
-        throw err;
-      }
-
-      // Remove from local state (rejected proposals are no longer pending)
-      setProposals((prev) =>
-        prev.filter((proposal) => proposal.id !== proposalId),
-      );
-
-      Alert.alert(
-        "Success",
-        "Proposal rejected. Buyer can select another farmer.",
-      );
+      await api.post(`/api/farmer/proposals/${id}/reject`, {});
+      setProposals((prev) => prev.filter((p) => p.id !== id));
+      Alert.alert("Success", "Proposal declined. Buyer can select another farmer.");
     } catch (err) {
-      console.error("Error rejecting proposal:", err);
-      Alert.alert(
-        "Error",
-        err instanceof Error ? err.message : "Failed to reject proposal",
-      );
+      Alert.alert("Error", err instanceof Error ? err.message : "Failed to reject proposal");
     } finally {
-      setProcessingProposals((prev) => {
-        const newSet = new Set(prev);
-        newSet.delete(proposalId);
-        return newSet;
-      });
+      setProcessing(id, false);
     }
+  }, []);
+
+  return {
+    harvests,
+    proposals,
+    loading,
+    refreshing,
+    error,
+    processingIds,
+    load,
+    refresh,
+    acceptProposal,
+    rejectProposal,
   };
+}
 
-  const handleViewProfile = (order: Proposal) => {
-    // Navigate to the dynamic trust profile route with buyer data
-    router.push({
-      pathname: "/farmer/screens/buyer-trust-profile/[id]",
-      params: {
-        id: order.order.buyer.id,
-        buyerName: order.order.buyer.user.name,
-        buyerLocation:
-          order.order.delivery_location || "Location not specified",
-        trustScore: "Not rated", // Trust score not available in proposal data
-      },
-    });
-  };
+// ─── Micro-components ────────────────────────────────────────────────────────
 
-  const pendingProposals = proposals.filter(
-    (proposal) => proposal.status === "PENDING_FARMER",
-  );
-  const acceptedProposals = proposals.filter(
-    (proposal) => proposal.status === "ACCEPTED",
-  );
+const VerifiedBadge = React.memo(() => (
+  <View style={styles.verifiedBadge}>
+    <ShieldCheck size={10} color="#fff" />
+    <Text style={styles.verifiedText}>Verified</Text>
+  </View>
+));
 
-  const OrderCard = ({ order }: { order: Proposal }) => (
-    <View style={styles.orderCard}>
-      {/* Header Section - Clickable Profile Button */}
+const MetricChip = React.memo(({
+  icon,
+  label,
+}: {
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  label: string;
+}) => (
+  <View style={styles.metricChip}>
+    <Ionicons name={icon} size={12} color="#6B7280" />
+    <Text style={styles.metricText}>{label}</Text>
+  </View>
+));
+
+const ProposalActionFooter = React.memo(({
+  proposal,
+  processing,
+  onAccept,
+  onReject,
+  padded = false,
+}: {
+  proposal: Proposal;
+  processing: boolean;
+  onAccept: () => void;
+  onReject: () => void;
+  padded?: boolean;
+}) => {
+  if (proposal.status === "ACCEPTED") {
+    return (
+      <View style={[styles.acceptedBadgeRow, padded && styles.footerPadding]}>
+        <CheckCircle size={15} color={PRIMARY_GREEN} />
+        <Text style={styles.acceptedBadgeText}>Proposal Accepted</Text>
+      </View>
+    );
+  }
+  if (proposal.status !== "PENDING_FARMER") return null;
+  return (
+    <View style={[styles.proposalActions, padded && styles.footerPadding]}>
       <TouchableOpacity
-        style={styles.cardHeader}
-        activeOpacity={0.7}
-        onPress={() => handleViewProfile(order)}
+        style={[styles.actionBtn, styles.acceptBtn]}
+        onPress={onAccept}
+        disabled={processing}
+        accessibilityLabel="Accept proposal"
       >
-        <View style={styles.buyerInfo}>
-          <View style={styles.nameRow}>
-            <Text style={styles.buyerName}>{order.order.buyer.user.name}</Text>
-            <View style={styles.verifiedBadge}>
-              <ShieldCheck size={10} color="#fff" />
-              <Text style={styles.verifiedText}>Verified</Text>
+        {processing ? (
+          <ActivityIndicator size="small" color="#fff" />
+        ) : (
+          <>
+            <CheckCircle size={14} color="#fff" />
+            <Text style={styles.actionBtnText}>Accept</Text>
+          </>
+        )}
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.actionBtn, styles.rejectBtn]}
+        onPress={onReject}
+        disabled={processing}
+        accessibilityLabel="Decline proposal"
+      >
+        {processing ? (
+          <ActivityIndicator size="small" color="#fff" />
+        ) : (
+          <>
+            <XCircle size={14} color="#fff" />
+            <Text style={styles.actionBtnText}>Decline</Text>
+          </>
+        )}
+      </TouchableOpacity>
+    </View>
+  );
+});
+
+// ─── ProposalRow (nested inside HarvestCard) ──────────────────────────────────
+
+const ProposalRow = React.memo(({
+  proposal,
+  processing,
+  onAccept,
+  onReject,
+  onViewProfile,
+}: {
+  proposal: Proposal;
+  processing: boolean;
+  onAccept: () => void;
+  onReject: () => void;
+  onViewProfile: () => void;
+}) => (
+  <View style={styles.proposalRow}>
+    <TouchableOpacity
+      style={styles.proposalBuyerRow}
+      onPress={onViewProfile}
+      activeOpacity={0.7}
+    >
+      <VerifiedBadge />
+      <Text style={styles.proposalBuyerName}>{proposal.order.buyer.user.name}</Text>
+      <Ionicons name="chevron-forward" size={14} color={PRIMARY_GREEN} />
+    </TouchableOpacity>
+
+    <View style={styles.proposalDetailsGrid}>
+      <View style={styles.proposalDetailItem}>
+        <Text style={styles.proposalDetailLabel}>Qty Requested</Text>
+        <Text style={styles.proposalDetailValue}>{proposal.quantity_proposed} kg</Text>
+      </View>
+      <View style={styles.proposalDetailDivider} />
+      <View style={styles.proposalDetailItem}>
+        <Text style={styles.proposalDetailLabel}>Delivery By</Text>
+        <Text style={styles.proposalDetailValue}>
+          {formatDate(proposal.order.required_date)}
+        </Text>
+      </View>
+      <View style={styles.proposalDetailDivider} />
+      <View style={styles.proposalDetailItem}>
+        <Text style={styles.proposalDetailLabel}>Location</Text>
+        <Text style={styles.proposalDetailValue} numberOfLines={1}>
+          {proposal.order.delivery_location || "—"}
+        </Text>
+      </View>
+    </View>
+
+    <ProposalActionFooter
+      proposal={proposal}
+      processing={processing}
+      onAccept={onAccept}
+      onReject={onReject}
+    />
+  </View>
+));
+
+// ─── HarvestCard ──────────────────────────────────────────────────────────────
+
+const HarvestCard = React.memo(({
+  harvest,
+  proposals,
+  processingIds,
+  onAccept,
+  onReject,
+  onViewProfile,
+}: {
+  harvest: Harvest;
+  proposals: Proposal[];
+  processingIds: Set<string>;
+  onAccept: (id: string) => void;
+  onReject: (id: string) => void;
+  onViewProfile: (p: Proposal) => void;
+}) => {
+  const [expanded, setExpanded] = useState(false);
+  const fruit = getFruitMeta(harvest.fruit_type);
+  const statusMeta = HARVEST_STATUS[harvest.status] ?? DEFAULT_STATUS;
+  const pendingCount = useMemo(
+    () => proposals.filter((p) => p.status === "PENDING_FARMER").length,
+    [proposals],
+  );
+  const toggle = useCallback(() => setExpanded((v) => !v), []);
+
+  return (
+    <View style={styles.card}>
+      <TouchableOpacity style={styles.cardHeader} activeOpacity={0.85} onPress={toggle}>
+        <View style={[styles.fruitIcon, { backgroundColor: fruit.bg }]}>
+          <Text style={styles.fruitEmoji}>{fruit.emoji}</Text>
+        </View>
+
+        <View style={styles.cardBody}>
+          <View style={styles.titleRow}>
+            <Text style={styles.cardTitle}>{harvest.fruit_type}</Text>
+            <View style={[styles.statusPill, { backgroundColor: statusMeta.bg }]}>
+              <Text style={[styles.statusLabel, { color: statusMeta.color }]}>
+                {statusMeta.label}
+              </Text>
             </View>
           </View>
-
-          <View style={styles.locationRow}>
-            <Text style={styles.orderId}>Proposal #{order.id.slice(-6)}</Text>
+          <Text style={styles.cardSubtitle}>{harvest.variant} · Grade {harvest.grade}</Text>
+          <View style={styles.metricsRow}>
+            <MetricChip icon="scale-outline" label={`${harvest.quantity} kg`} />
+            <MetricChip
+              icon="calendar-outline"
+              label={formatDate(harvest.estimated_harvest_date, FULL_DATE_FMT)}
+            />
+            {pendingCount > 0 && (
+              <View style={styles.proposalBadge}>
+                <Text style={styles.proposalBadgeText}>
+                  {pendingCount} proposal{pendingCount > 1 ? "s" : ""}
+                </Text>
+              </View>
+            )}
           </View>
         </View>
 
-        <View style={styles.headerRight}>
-          <View style={styles.dateBadge}>
-            <Text style={styles.dateText}>
-              {new Date(order.created_at).toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-              })}
-            </Text>
-          </View>
-          <ChevronRight size={16} color={PRIMARY_GREEN} />
+        <View style={styles.expandIcon}>
+          {expanded ? <ChevronUp size={18} color="#9CA3AF" /> : <ChevronDown size={18} color="#9CA3AF" />}
         </View>
       </TouchableOpacity>
 
-      {/* Product Name */}
-      <View style={styles.productRow}>
-        <Text style={styles.productName}>
-          {order.order.fruit_type} - Grade {order.order.grade} (
-          {order.order.variant})
-        </Text>
-      </View>
-
-      {/* Order Details */}
-      <View style={styles.orderDetails}>
-        <View style={styles.detailItem}>
-          <Text style={styles.detailLabel}>Quantity</Text>
-          <Text style={styles.detailValue}>{order.quantity_proposed} kg</Text>
-        </View>
-        <View style={styles.detailDivider} />
-        <View style={styles.detailItem}>
-          <Text style={styles.detailLabel}>Delivery</Text>
-          <Text style={styles.detailValue}>
-            {new Date(order.order.required_date).toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-            })}
-          </Text>
-        </View>
-      </View>
-
-      {order.status === "PENDING_FARMER" && (
-        <View style={styles.actionButtons}>
-          <TouchableOpacity
-            style={[styles.button, styles.acceptButton]}
-            onPress={() => handleAcceptProposal(order.id)}
-            disabled={processingProposals.has(order.id)}
-          >
-            {processingProposals.has(order.id) ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <>
-                <CheckCircle size={16} color="#fff" />
-                <Text style={styles.buttonText}>Accept</Text>
-              </>
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.button, styles.rejectButton]}
-            onPress={() => handleRejectProposal(order.id)}
-            disabled={processingProposals.has(order.id)}
-          >
-            {processingProposals.has(order.id) ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <>
-                <XCircle size={16} color="#fff" />
-                <Text style={styles.buttonText}>Reject</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {order.status === "ACCEPTED" && (
-        <View style={styles.acceptedBadge}>
-          <CheckCircle size={18} color={PRIMARY_GREEN} />
-          <Text style={styles.acceptedText}>Proposal Accepted</Text>
+      {expanded && (
+        <View style={styles.proposalsContainer}>
+          {proposals.length === 0 ? (
+            <View style={styles.emptyProposals}>
+              <Text style={styles.emptyProposalsText}>No proposals for this harvest yet</Text>
+            </View>
+          ) : (
+            proposals.map((p, idx) => (
+              <View key={p.id}>
+                {idx > 0 && <View style={styles.proposalDivider} />}
+                <ProposalRow
+                  proposal={p}
+                  processing={processingIds.has(p.id)}
+                  onAccept={() => onAccept(p.id)}
+                  onReject={() => onReject(p.id)}
+                  onViewProfile={() => onViewProfile(p)}
+                />
+              </View>
+            ))
+          )}
         </View>
       )}
     </View>
   );
+});
+
+// ─── StandaloneProposalCard ───────────────────────────────────────────────────
+
+const StandaloneProposalCard = React.memo(({
+  proposal,
+  processing,
+  onAccept,
+  onReject,
+  onViewProfile,
+}: {
+  proposal: Proposal;
+  processing: boolean;
+  onAccept: () => void;
+  onReject: () => void;
+  onViewProfile: () => void;
+}) => (
+  <View style={styles.card}>
+    <TouchableOpacity style={styles.cardHeader} activeOpacity={0.7} onPress={onViewProfile}>
+      <View style={[styles.fruitIcon, styles.personIconBg]}>
+        <Ionicons name="person" size={20} color={PRIMARY_GREEN} />
+      </View>
+      <View style={styles.cardBody}>
+        <View style={styles.titleRow}>
+          <Text style={styles.cardTitle}>{proposal.order.buyer.user.name}</Text>
+          <VerifiedBadge />
+        </View>
+        <Text style={styles.cardSubtitle}>
+          {proposal.order.fruit_type} · Grade {proposal.order.grade} · {proposal.order.variant}
+        </Text>
+        <View style={styles.metricsRow}>
+          <MetricChip icon="scale-outline" label={`${proposal.quantity_proposed} kg`} />
+          <MetricChip icon="calendar-outline" label={formatDate(proposal.order.required_date)} />
+        </View>
+      </View>
+      <Ionicons name="chevron-forward" size={16} color={PRIMARY_GREEN} />
+    </TouchableOpacity>
+
+    <ProposalActionFooter
+      proposal={proposal}
+      processing={processing}
+      onAccept={onAccept}
+      onReject={onReject}
+      padded
+    />
+  </View>
+));
+
+// ─── EmptyState ───────────────────────────────────────────────────────────────
+
+const EmptyState = React.memo(({
+  icon,
+  title,
+  subtitle,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  subtitle: string;
+}) => (
+  <View style={styles.stateView}>
+    <View style={styles.emptyIconBox}>{icon}</View>
+    <Text style={styles.emptyTitle}>{title}</Text>
+    <Text style={styles.emptySubtitle}>{subtitle}</Text>
+  </View>
+));
+
+// ─── Main screen ──────────────────────────────────────────────────────────────
+
+export default function OrdersTab() {
+  const router = useRouter();
+  const {
+    harvests, proposals, loading, refreshing, error, processingIds,
+    load, refresh, acceptProposal, rejectProposal,
+  } = useOrdersData();
+  const [activeTab, setActiveTab] = useState<TabKey>("harvests");
+
+  useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  // ── Derived ────────────────────────────────────────────────────────────────
+
+  const proposalsByStock = useMemo(() => {
+    const map: Record<string, Proposal[]> = {};
+    proposals.forEach((p) => { (map[p.stock_id] ??= []).push(p); });
+    return map;
+  }, [proposals]);
+
+  const pendingCount = useMemo(
+    () => proposals.filter((p) => p.status === "PENDING_FARMER").length,
+    [proposals],
+  );
+
+  const tabData = useMemo(
+    () => TAB_CONFIG.map((t) => ({
+      ...t,
+      count: t.key === "harvests" ? harvests.length : pendingCount,
+    })),
+    [harvests.length, pendingCount],
+  );
+
+  // ── Navigation ─────────────────────────────────────────────────────────────
+
+  const handleViewProfile = useCallback((proposal: Proposal) => {
+    router.push({
+      pathname: "/farmer/screens/buyer-trust-profile/[id]",
+      params: {
+        id: proposal.order.buyer.id,
+        buyerName: proposal.order.buyer.user.name,
+        buyerLocation: proposal.order.delivery_location || "Location not specified",
+        trustScore: "Not rated",
+      },
+    });
+  }, [router]);
+
+  // ── Render items ───────────────────────────────────────────────────────────
+
+  const renderHarvest = useCallback(
+    ({ item }: { item: Harvest }) => (
+      <HarvestCard
+        harvest={item}
+        proposals={proposalsByStock[item.id] ?? []}
+        processingIds={processingIds}
+        onAccept={acceptProposal}
+        onReject={rejectProposal}
+        onViewProfile={handleViewProfile}
+      />
+    ),
+    [proposalsByStock, processingIds, acceptProposal, rejectProposal, handleViewProfile],
+  );
+
+  const renderProposal = useCallback(
+    ({ item }: { item: Proposal }) => (
+      <StandaloneProposalCard
+        proposal={item}
+        processing={processingIds.has(item.id)}
+        onAccept={() => acceptProposal(item.id)}
+        onReject={() => rejectProposal(item.id)}
+        onViewProfile={() => handleViewProfile(item)}
+      />
+    ),
+    [processingIds, acceptProposal, rejectProposal, handleViewProfile],
+  );
+
+  const refreshControl = (
+    <RefreshControl
+      refreshing={refreshing}
+      onRefresh={refresh}
+      colors={[PRIMARY_GREEN]}
+      tintColor={PRIMARY_GREEN}
+    />
+  );
+
+  // ── Content ────────────────────────────────────────────────────────────────
+
+  const renderContent = () => {
+    if (loading) {
+      return (
+        <View style={styles.stateView}>
+          <ActivityIndicator size="large" color={PRIMARY_GREEN} />
+          <Text style={styles.stateText}>Loading...</Text>
+        </View>
+      );
+    }
+
+    if (error) {
+      return (
+        <View style={styles.stateView}>
+          <View style={styles.emptyIconBox}>
+            <Ionicons name="alert-circle-outline" size={36} color={DANGER_RED} />
+          </View>
+          <Text style={[styles.emptyTitle, { color: DANGER_RED }]}>Could not load harvests</Text>
+          <Text style={styles.emptySubtitle}>{error}</Text>
+          <TouchableOpacity style={styles.retryBtn} onPress={() => load()}>
+            <Text style={styles.retryBtnText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    if (activeTab === "harvests") {
+      return (
+        <FlatList<Harvest>
+          data={harvests}
+          keyExtractor={(item) => item.id}
+          renderItem={renderHarvest}
+          contentContainerStyle={harvests.length === 0 ? styles.emptyContainer : styles.listContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={refreshControl}
+          ListEmptyComponent={
+            <EmptyState
+              icon={<Sprout size={36} color="#9CA3AF" />}
+              title="No harvests yet"
+              subtitle="Add an expected harvest to start receiving buyer proposals."
+            />
+          }
+        />
+      );
+    }
+
+    return (
+      <FlatList<Proposal>
+        data={proposals}
+        keyExtractor={(item) => item.id}
+        renderItem={renderProposal}
+        contentContainerStyle={proposals.length === 0 ? styles.emptyContainer : styles.listContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={refreshControl}
+        ListEmptyComponent={
+          <EmptyState
+            icon={<Ionicons name="receipt-outline" size={36} color="#9CA3AF" />}
+            title="No proposals yet"
+            subtitle="Buyer proposals will appear here once matched to your harvests."
+          />
+        }
+      />
+    );
+  };
 
   return (
-    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-      {/* header styled like buyer orders */}
-      <Header
-        title="Orders"
-        showNotification={true}
-        onNotificationPress={() => {}}
-      />
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.content}
-      >
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={PRIMARY_GREEN} />
-            <Text style={styles.loadingText}>Loading proposals...</Text>
-          </View>
-        ) : error ? (
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity
-              style={styles.retryButton}
-              onPress={fetchPendingProposals}
-            >
-              <Text style={styles.retryButtonText}>Retry</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <>
-            {pendingProposals.length > 0 && (
-              <View>
-                <Text style={styles.sectionTitle}>
-                  Pending Proposals ({pendingProposals.length})
-                </Text>
-                <FlatList
-                  data={pendingProposals}
-                  keyExtractor={(item) => item.id}
-                  scrollEnabled={false}
-                  renderItem={({ item }) => <OrderCard order={item} />}
-                />
-              </View>
-            )}
-
-            {acceptedProposals.length > 0 && (
-              <View style={styles.acceptedSection}>
-                <Text style={styles.sectionTitle}>
-                  Accepted Proposals ({acceptedProposals.length})
-                </Text>
-                <FlatList
-                  data={acceptedProposals}
-                  keyExtractor={(item) => item.id}
-                  scrollEnabled={false}
-                  renderItem={({ item }) => <OrderCard order={item} />}
-                />
-              </View>
-            )}
-
-            {proposals.length === 0 && (
-              <View style={styles.emptyState}>
-                <ShoppingCart size={48} color={LIGHT_GRAY} />
-                <Text style={styles.emptyText}>No proposals yet</Text>
-                <Text style={styles.emptySubText}>
-                  Proposals from buyers will appear here
-                </Text>
-              </View>
-            )}
-          </>
-        )}
-      </ScrollView>
+    <SafeAreaView style={styles.container} edges={["top"]}>
+      <Header title="Orders" showNotification onNotificationPress={() => {}} />
+      <PillTabBar tabs={tabData} activeKey={activeTab} onPress={setActiveTab} />
+      {renderContent()}
     </SafeAreaView>
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: BuyerColors.background,
-  },
-  content: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 20,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: BuyerColors.textBlack,
-    marginBottom: 12,
-    marginTop: 12,
-  },
-  acceptedSection: {
-    marginTop: 20,
-  },
-  orderCard: {
-    backgroundColor: BuyerColors.cardWhite,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
+  container: { flex: 1, backgroundColor: "#F3F4F6" },
+  listContent: { padding: 16, paddingBottom: 80, gap: 14 },
+  emptyContainer: { flexGrow: 1 },
+
+  // ── Loading / error / empty state ────────────────────────────────────────
+  stateView: { flex: 1, alignItems: "center", justifyContent: "center", padding: 32 },
+  stateText: { fontSize: 15, color: "#6B7280", fontWeight: "500", marginTop: 12 },
+  emptyIconBox: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: "#F3F4F6",
     borderWidth: 1,
-    borderColor: BuyerColors.border,
-    elevation: 2,
+    borderColor: "#E5E7EB",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
+  },
+  emptyTitle: { fontSize: 18, fontWeight: "800", color: "#111827", marginBottom: 8 },
+  emptySubtitle: { fontSize: 14, color: "#6B7280", textAlign: "center", lineHeight: 20 },
+  retryBtn: {
+    marginTop: 16,
+    backgroundColor: PRIMARY_GREEN,
+    paddingHorizontal: 28,
+    paddingVertical: 11,
+    borderRadius: 20,
+  },
+  retryBtnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+
+  // ── Card shell ────────────────────────────────────────────────────────────
+  card: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
+    shadowOpacity: 0.05,
     shadowRadius: 6,
+    elevation: 1,
+    overflow: "hidden",
   },
+  cardHeader: { flexDirection: "row", alignItems: "flex-start", padding: 16, gap: 12 },
+  cardBody: { flex: 1 },
+  cardTitle: { fontSize: 16, fontWeight: "800", color: "#111827" },
+  cardSubtitle: { fontSize: 13, color: "#6B7280", fontWeight: "500", marginTop: 3, marginBottom: 8 },
 
-  // Header Section
-  cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 12,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F5F5F5",
+  // ── Fruit icon ────────────────────────────────────────────────────────────
+  fruitIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
   },
+  fruitEmoji: { fontSize: 22 },
+  personIconBg: { backgroundColor: "#F3F4F6" },
 
-  buyerInfo: {
-    flex: 1,
-    marginRight: 8,
-  },
+  // ── Title row / metrics ───────────────────────────────────────────────────
+  titleRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 2, flexWrap: "wrap" },
+  metricsRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
 
-  nameRow: {
+  // ── Status pill ───────────────────────────────────────────────────────────
+  statusPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
+  statusLabel: { fontSize: 11, fontWeight: "700", textTransform: "uppercase" },
+
+  // ── Metric chip ───────────────────────────────────────────────────────────
+  metricChip: {
     flexDirection: "row",
     alignItems: "center",
+    backgroundColor: "#F9FAFB",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
+  },
+  metricText: { fontSize: 12, fontWeight: "600", color: "#4B5563" },
+
+  // ── Proposal count badge ──────────────────────────────────────────────────
+  proposalBadge: { backgroundColor: "#FEF3C7", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  proposalBadgeText: { fontSize: 12, fontWeight: "700", color: "#B45309" },
+  expandIcon: { paddingTop: 2, flexShrink: 0 },
+
+  // ── Proposals container ───────────────────────────────────────────────────
+  proposalsContainer: { borderTopWidth: 1, borderTopColor: "#F3F4F6", backgroundColor: "#FAFAFA" },
+  proposalDivider: { height: 1, backgroundColor: "#F0F0F0", marginHorizontal: 16 },
+  emptyProposals: { paddingVertical: 18, alignItems: "center" },
+  emptyProposalsText: { fontSize: 13, color: "#9CA3AF", fontStyle: "italic" },
+
+  // ── Proposal row ──────────────────────────────────────────────────────────
+  proposalRow: { padding: 14 },
+  proposalBuyerRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10 },
+  proposalBuyerName: { flex: 1, fontSize: 14, fontWeight: "700", color: "#111827" },
+  proposalDetailsGrid: {
+    flexDirection: "row",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 10,
+    paddingVertical: 10,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  proposalDetailItem: { flex: 1, alignItems: "center" },
+  proposalDetailLabel: {
+    fontSize: 10,
+    color: "#9CA3AF",
+    fontWeight: "600",
+    textTransform: "uppercase",
+    marginBottom: 3,
+  },
+  proposalDetailValue: { fontSize: 13, fontWeight: "700", color: "#111827" },
+  proposalDetailDivider: { width: 1, backgroundColor: "#E5E7EB" },
+
+  // ── Action buttons ────────────────────────────────────────────────────────
+  proposalActions: { flexDirection: "row", gap: 10 },
+  footerPadding: { paddingHorizontal: 16, paddingBottom: 14 },
+  actionBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    borderRadius: 20,
     gap: 6,
-    marginBottom: 5,
+    elevation: 2,
   },
+  acceptBtn: { backgroundColor: PRIMARY_GREEN },
+  rejectBtn: { backgroundColor: DANGER_RED },
+  actionBtnText: { color: "#fff", fontSize: 13, fontWeight: "700" },
 
-  buyerName: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#1a1a1a",
+  // ── Accepted state ────────────────────────────────────────────────────────
+  acceptedBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    backgroundColor: BuyerColors.primaryLight,
+    borderRadius: 20,
+    gap: 6,
+    marginTop: 4,
   },
+  acceptedBadgeText: { color: PRIMARY_GREEN, fontSize: 14, fontWeight: "700" },
 
+  // ── Verified badge ────────────────────────────────────────────────────────
   verifiedBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -425,189 +802,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 4,
     gap: 3,
+    flexShrink: 0,
   },
-
-  verifiedText: {
-    fontSize: 10,
-    color: "#fff",
-    fontWeight: "600",
-  },
-
-  locationRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    marginBottom: 5,
-  },
-
-  orderId: {
-    fontSize: 12,
-    color: BuyerColors.textGray,
-    fontWeight: "500",
-  },
-
-  headerRight: {
-    alignItems: "flex-end",
-    gap: 6,
-  },
-
-  dateBadge: {
-    backgroundColor: BuyerColors.primaryLight,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-  },
-
-  dateText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: PRIMARY_GREEN,
-  },
-
-  productRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-
-  productName: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: BuyerColors.textBlack,
-    flex: 1,
-  },
-
-  orderDetails: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    backgroundColor: "#FAFAFA",
-    borderRadius: 12,
-    paddingVertical: 12,
-    marginBottom: 12,
-  },
-
-  detailItem: {
-    flex: 1,
-    alignItems: "center",
-  },
-
-  detailLabel: {
-    fontSize: 11,
-    color: BuyerColors.textGray,
-    fontWeight: "500",
-    marginBottom: 3,
-    textTransform: "uppercase",
-  },
-
-  detailValue: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: BuyerColors.textBlack,
-  },
-
-  detailDivider: {
-    width: 1,
-    height: 24,
-    backgroundColor: "#E0E0E0",
-  },
-
-  amountText: {
-    color: PRIMARY_GREEN,
-    fontSize: 14,
-  },
-
-  actionButtons: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  button: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 10,
-    borderRadius: 20,
-    gap: 6,
-    shadowColor: PRIMARY_GREEN,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  acceptButton: {
-    backgroundColor: PRIMARY_GREEN,
-  },
-  rejectButton: {
-    backgroundColor: DANGER_RED,
-  },
-  buttonText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  acceptedBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 13,
-    backgroundColor: BuyerColors.primaryLight,
-    borderRadius: 20,
-    gap: 6,
-  },
-  acceptedText: {
-    color: PRIMARY_GREEN,
-    fontSize: 15,
-    fontWeight: "700",
-  },
-  emptyState: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 60,
-  },
-  emptyText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: BuyerColors.textBlack,
-    marginTop: 16,
-  },
-  emptySubText: {
-    fontSize: 14,
-    color: BuyerColors.textGray,
-    marginTop: 8,
-  },
-  loadingContainer: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 60,
-  },
-  loadingText: {
-    fontSize: 16,
-    color: PRIMARY_GREEN,
-    marginTop: 16,
-    fontWeight: "500",
-  },
-  errorContainer: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 60,
-    paddingHorizontal: 20,
-  },
-  errorText: {
-    fontSize: 16,
-    color: DANGER_RED,
-    textAlign: "center",
-    marginBottom: 20,
-  },
-  retryButton: {
-    backgroundColor: PRIMARY_GREEN,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
+  verifiedText: { fontSize: 10, color: "#fff", fontWeight: "600" },
 });
