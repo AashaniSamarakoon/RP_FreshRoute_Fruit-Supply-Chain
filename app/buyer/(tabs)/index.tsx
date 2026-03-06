@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  RefreshControl,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -29,81 +30,81 @@ export default function BuyerDashboardScreen(): React.JSX.Element {
   // start as false so we don't show spinner on first render when there
   // aren't any deals yet. section only appears once we actually have deals.
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Fetch matching deals for the buyer
-  useEffect(() => {
-    const fetchMatchingDeals = async () => {
+  const fetchMatchingDeals = async (showLoadingSpinner = true) => {
+    try {
+      if (showLoadingSpinner) setLoading(true);
+      const token = await AsyncStorage.getItem("token");
+      const userStr = await AsyncStorage.getItem("user");
+
+      if (!token || !userStr) {
+        console.warn("No auth token or user data found");
+        setDeals([]); // No deals if not authenticated
+        return;
+      }
+
+      const user = JSON.parse(userStr);
+      // the API used to expect the "idx" primary key from the
+      // purchases table, which meant we had to look up the buyer row
+      // first. the backend has since been changed to query by
+      // `user_id` (the UUID contained in the Supabase session), so we
+      // can pass the user.id directly.
+      const buyerId = user.id;
+
+      if (!buyerId) {
+        console.warn("No buyer ID found");
+        setDeals([]);
+        return;
+      }
+
+      let data: any;
       try {
-        setLoading(true);
-        const token = await AsyncStorage.getItem("token");
-        const userStr = await AsyncStorage.getItem("user");
+        // note: `/api/buyer/matching/buyer/:id` now treats `id` as a
+        // user UUID rather than the buyer table's numeric idx.
+        data = await api.get(`/api/buyer/matching/buyer/${buyerId}`);
+      } catch (err) {
+        throw err;
+      }
+      console.log("Matching deals data:", data);
 
-        if (!token || !userStr) {
-          console.warn("No auth token or user data found");
-          setLoading(false);
-          setDeals([]); // No deals if not authenticated
-          return;
-        }
-
-        const user = JSON.parse(userStr);
-        // the API used to expect the "idx" primary key from the
-        // purchases table, which meant we had to look up the buyer row
-        // first. the backend has since been changed to query by
-        // `user_id` (the UUID contained in the Supabase session), so we
-        // can pass the user.id directly.
-        const buyerId = user.id;
-
-        if (!buyerId) {
-          console.warn("No buyer ID found");
-          setLoading(false);
-          setDeals([]);
-          return;
-        }
-
-        let data: any;
-        try {
-          // note: `/api/buyer/matching/buyer/:id` now treats `id` as a
-          // user UUID rather than the buyer table's numeric idx.
-          data = await api.get(`/api/buyer/matching/buyer/${buyerId}`);
-        } catch (err) {
-          throw err;
-        }
-        console.log("Matching deals data:", data);
-
-        // Transform API response to DealData format
-        const matchingDeals = (data.proposals || data || []).map(
-          (proposal: any) => ({
+      // Transform API response to DealData format
+      const matchingDeals = (data.proposals || data || []).map(
+        (proposal: any) => {
+          console.log("Raw proposal from backend:", proposal);
+          return {
             id: proposal.id,
             title:
-              `${proposal.order?.fruit_type || proposal.fruit_type || ""} ${
-                proposal.order?.variant || proposal.variant || ""
-              }`.trim(),
-            price: proposal.price_per_kg || proposal.price || "",
-            unit: proposal.price_per_kg ? "kg" : "",
-            location:
-              proposal.order?.delivery_location ||
-              proposal.delivery_location ||
-              proposal.location ||
-              "Unknown Location",
-            grade: proposal.order?.grade || proposal.grade || "Standard",
-            quality:
-              (proposal.order?.grade || proposal.grade) === "Grade A"
-                ? "Premium"
-                : "Standard",
-          }),
-        );
+              `${proposal.stock?.fruit_type || "Unknown"} ${proposal.stock?.variant || ""}`.trim(),
+            price: proposal.stock?.price_per_kg || "",
+            unit: "kg",
+            location: proposal.stock?.farmer?.location || "Unknown",
+            grade: proposal.order?.grade || "Unknown",
+            quality: proposal.order?.grade || "Unknown", // Using grade as quality for now
+            quantity_proposed: proposal.quantity_proposed || "0",
+          };
+        },
+      );
 
-        // Only set deals if there are matching deals, otherwise empty array
-        setDeals(matchingDeals.length > 0 ? matchingDeals : []);
-      } catch (error) {
-        console.error("Error fetching matching deals:", error);
-        // Set empty array on error - don't show section
-        setDeals([]);
-      } finally {
-        setLoading(false);
-      }
-    };
+      // Only set deals if there are matching deals, otherwise empty array
+      setDeals(matchingDeals.length > 0 ? matchingDeals : []);
+    } catch (error) {
+      console.error("Error fetching matching deals:", error);
+      // Set empty array on error - don't show section
+      setDeals([]);
+    } finally {
+      if (showLoadingSpinner) setLoading(false);
+    }
+  };
 
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchMatchingDeals(false);
+    setRefreshing(false);
+  };
+
+  useEffect(() => {
     fetchMatchingDeals();
   }, []);
 
@@ -120,6 +121,14 @@ export default function BuyerDashboardScreen(): React.JSX.Element {
         style={styles.contentContainer}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 100 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[BuyerColors.primaryGreen]}
+            tintColor={BuyerColors.primaryGreen}
+          />
+        }
       >
         <Search />
 
@@ -227,7 +236,7 @@ const styles = StyleSheet.create({
   },
 
   dealsScroll: {
-    paddingBottom: 20,
+    // paddingBottom: 20,
   },
 
   loadingContainer: {

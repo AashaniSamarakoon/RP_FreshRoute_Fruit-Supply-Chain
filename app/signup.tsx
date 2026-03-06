@@ -1,4 +1,5 @@
 import api from "@/services/api";
+import { supabase } from "@/utils/supabaseClient";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Link, useRouter } from "expo-router";
@@ -7,7 +8,6 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -15,6 +15,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 type Role = "FARMER" | "TRANSPORTER" | "BUYER";
 
@@ -24,16 +25,21 @@ export default function Signup() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState(""); // Capturing phone for unified login
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [role, setRole] = useState<Role>("FARMER");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   // Inside app/signup.tsx -> handleSignup
   const handleSignup = async () => {
-    if (!name || !email || !password || !phone) {
+    if (!name || !email || !password || !phone || !confirmPassword) {
       return Alert.alert("Required", "Please fill in all details.");
+    }
+    if (password !== confirmPassword) {
+      return Alert.alert("Password Mismatch", "Passwords must match.");
     }
 
     setLoading(true);
+
     try {
       // Split name for your backend controller
       const [first_name, ...lastNameArr] = name.trim().split(" ");
@@ -48,127 +54,183 @@ export default function Signup() {
         role: role.toLowerCase(),
       });
 
-      Alert.alert("Success", `Status: ${data.blockchainStatus}`);
+      // backend responded; store token and optional user record
       await AsyncStorage.setItem("token", data.token);
-      router.replace(`/${role.toLowerCase()}` as any);
-    } catch (err) {
-      Alert.alert("Signup Error", err.message);
+
+      // backend may return the user record as well; store it so later
+      // onboarding steps that depend on `user.id` don't break.
+      if (data.user) {
+        await AsyncStorage.setItem("user", JSON.stringify(data.user));
+      }
+
+      // ensure Supabase client has a session; attempt to log in
+      // using the just‑created credentials.
+      try {
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (error)
+          console.warn("supabase sign-in after signup failed", error.message);
+      } catch (e) {
+        console.warn("error signing in after signup", e);
+      }
+
+      const onboarded = data.isOnboarded || false;
+      // route depending on role and onboarding state
+      if (role === "FARMER") {
+        if (onboarded) router.replace("/farmer" as any);
+        else router.replace("/onboarding/farmer/farm-info" as any);
+      } else if (role === "BUYER") {
+        if (onboarded) router.replace("/buyer" as any);
+        else router.replace("/onboarding/buyer/business" as any);
+      } else {
+        router.replace(`/${role.toLowerCase()}` as any);
+      }
+    } catch (err: any) {
+      Alert.alert("Signup Error", err?.message || String(err));
     } finally {
       setLoading(false);
     }
   };
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={styles.container}
-    >
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView style={styles.container}>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={[styles.scrollContent, { flexGrow: 1 }]}
+          showsVerticalScrollIndicator={false}
         >
-          <Ionicons name="chevron-back" size={24} color="#1F2937" />
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+          >
+            <Ionicons name="chevron-back" size={24} color="#1F2937" />
+          </TouchableOpacity>
 
-        <View style={styles.header}>
-          <Text style={styles.title}>Create an Account</Text>
-          <Text style={styles.subtitle}>
-            Join the FreshRoute network and streamline your supply chain
-            journey.
-          </Text>
-        </View>
+          <View style={styles.header}>
+            <Text style={styles.title}>Create an Account</Text>
+            <Text style={styles.subtitle}>
+              Join the FreshRoute network and streamline your supply chain
+              journey.
+            </Text>
+          </View>
 
-        <View style={styles.form}>
-          <InputGroup
-            label="Full Name"
-            value={name}
-            onChangeText={setName}
-            placeholder="Enter your name.."
-            icon="person-outline"
-          />
-          <InputGroup
-            label="Email"
-            value={email}
-            onChangeText={setEmail}
-            placeholder="Email address.."
-            keyboardType="email-address"
-            icon="mail-outline"
-          />
-          <InputGroup
-            label="Phone Number"
-            value={phone}
-            onChangeText={setPhone}
-            placeholder="07x xxxxxxx"
-            keyboardType="phone-pad"
-            icon="call-outline"
-          />
+          <View style={styles.form}>
+            <InputGroup
+              label="Full Name"
+              value={name}
+              onChangeText={setName}
+              placeholder="Enter your name.."
+              icon="person-outline"
+            />
+            <InputGroup
+              label="Email"
+              value={email}
+              onChangeText={setEmail}
+              placeholder="Email address.."
+              keyboardType="email-address"
+              icon="mail-outline"
+            />
+            <InputGroup
+              label="Phone Number"
+              value={phone}
+              onChangeText={setPhone}
+              placeholder="07x xxxxxxx"
+              keyboardType="phone-pad"
+              icon="call-outline"
+            />
 
-          <View style={styles.inputWrapper}>
-            <Text style={styles.label}>Password</Text>
-            <View style={styles.passwordContainer}>
-              <TextInput
-                style={[
-                  styles.input,
-                  { flex: 1, borderBottomWidth: 0, marginBottom: 0 },
-                ]}
-                placeholder="Secure password"
-                secureTextEntry={!showPassword}
-                placeholderTextColor="#9CA3AF"
-                value={password}
-                onChangeText={setPassword}
-              />
-              <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                <Ionicons
-                  name={showPassword ? "eye-off-outline" : "eye-outline"}
-                  size={20}
-                  color="#6B7280"
+            <View style={styles.inputWrapper}>
+              <Text style={styles.label}>Password</Text>
+              <View style={styles.passwordContainer}>
+                <TextInput
+                  style={[
+                    styles.input,
+                    { flex: 1, borderBottomWidth: 0, marginBottom: 0 },
+                  ]}
+                  placeholder="Secure password"
+                  secureTextEntry={!showPassword}
+                  placeholderTextColor="#9CA3AF"
+                  value={password}
+                  onChangeText={setPassword}
                 />
-              </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setShowPassword(!showPassword)}
+                >
+                  <Ionicons
+                    name={showPassword ? "eye-off-outline" : "eye-outline"}
+                    size={20}
+                    color="#6B7280"
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
+            <View style={styles.inputWrapper}>
+              <Text style={styles.label}>Confirm Password</Text>
+              <View style={styles.passwordContainer}>
+                <TextInput
+                  style={[
+                    styles.input,
+                    { flex: 1, borderBottomWidth: 0, marginBottom: 0 },
+                  ]}
+                  placeholder="Re-enter password"
+                  secureTextEntry={!showPassword}
+                  placeholderTextColor="#9CA3AF"
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                />
+                <TouchableOpacity
+                  onPress={() => setShowPassword(!showPassword)}
+                >
+                  <Ionicons
+                    name={showPassword ? "eye-off-outline" : "eye-outline"}
+                    size={20}
+                    color="#6B7280"
+                  />
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
 
-        <Text style={styles.label}>I am a...</Text>
-        <View style={styles.roleRow}>
-          <RoleItem
-            label="Farmer"
-            value="FARMER"
-            icon="leaf"
-            active={role === "FARMER"}
-            onSelect={setRole}
-          />
-          <RoleItem
-            label="Driver"
-            value="TRANSPORTER"
-            icon="truck"
-            active={role === "TRANSPORTER"}
-            onSelect={setRole}
-          />
-          <RoleItem
-            label="Buyer"
-            value="BUYER"
-            icon="shopping"
-            active={role === "BUYER"}
-            onSelect={setRole}
-          />
-        </View>
+          <Text style={styles.label}>I am a...</Text>
+          <View style={styles.roleRow}>
+            <RoleItem
+              label="Farmer"
+              value="FARMER"
+              icon="leaf"
+              active={role === "FARMER"}
+              onSelect={setRole}
+            />
+            <RoleItem
+              label="Driver"
+              value="TRANSPORTER"
+              icon="truck"
+              active={role === "TRANSPORTER"}
+              onSelect={setRole}
+            />
+            <RoleItem
+              label="Buyer"
+              value="BUYER"
+              icon="shopping"
+              active={role === "BUYER"}
+              onSelect={setRole}
+            />
+          </View>
 
-        <TouchableOpacity
-          style={styles.signupButton}
-          onPress={handleSignup}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.signupButtonText}>Sign Up</Text>
-          )}
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.signupButton}
+            onPress={handleSignup}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.signupButtonText}>Sign Up</Text>
+            )}
+          </TouchableOpacity>
 
-        {/* <View style={styles.dividerRow}>
+          {/* <View style={styles.dividerRow}>
           <View style={styles.divider} />
           <Text style={styles.dividerText}>Or continue with</Text>
           <View style={styles.divider} />
@@ -180,16 +242,17 @@ export default function Signup() {
           <SocialButton icon="facebook" color="#4267B2" />
         </View> */}
 
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>Already have an account? </Text>
-          <Link href="/login" asChild>
-            <TouchableOpacity>
-              <Text style={styles.footerLink}>Sign In</Text>
-            </TouchableOpacity>
-          </Link>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>Already have an account? </Text>
+            <Link href="/login" asChild>
+              <TouchableOpacity>
+                <Text style={styles.footerLink}>Sign In</Text>
+              </TouchableOpacity>
+            </Link>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
@@ -258,7 +321,7 @@ const SocialButton = ({ icon, color }: { icon: any; color: string }) => (
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
-  scrollContent: { padding: 24, paddingTop: 60, paddingBottom: 40 },
+  scrollContent: { padding: 24 },
   backButton: {
     width: 40,
     height: 40,

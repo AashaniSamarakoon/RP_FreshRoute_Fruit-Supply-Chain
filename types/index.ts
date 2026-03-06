@@ -36,6 +36,7 @@ export interface DealData {
   location: string;
   grade: string;
   quality: string;
+  quantity_proposed: string;
 }
 
 export interface NavItemProps {
@@ -99,6 +100,8 @@ export interface PlacedOrder {
   deliveryFee?: number;
   totalPrice?: number;
   deliveryType?: string;
+  // PayHere reference populated by the backend notify webhook after payment
+  payhere_payment_id?: string | null;
 }
 
 export interface Payment {

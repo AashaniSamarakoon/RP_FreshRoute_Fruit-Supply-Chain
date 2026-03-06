@@ -77,7 +77,7 @@ export default function FruitForecastScreen() {
       const priceJson = await api.get(pricePath);
       console.log("[FRUIT-FORECAST] Price response data:", priceJson);
 
-      if (demandRes.ok && demandJson.days) {
+      if (demandJson && demandJson.days) {
         const demandDays: ForecastDay[] = demandJson.days.map((d: any) => ({
           day: d.day,
           demandValue: parseFloat(d.value) || 0,
@@ -94,7 +94,7 @@ export default function FruitForecastScreen() {
         setPeakDay(maxDemandDay.day);
       }
 
-      if (priceRes.ok && priceJson.days) {
+      if (priceJson && priceJson.days) {
         const priceDays = priceJson.days.map((d: any) => ({
           day: d.day,
           priceValue: parseFloat(d.value) || 0,

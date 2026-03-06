@@ -1,19 +1,70 @@
 // supabaseClient.ts
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createClient } from "@supabase/supabase-js";
-import "react-native-url-polyfill/auto"; // Adds URL support for older engines
+import * as FileSystem from "expo-file-system/legacy";
+import "react-native-url-polyfill/auto";
+// @ts-ignore: no types provided for this helper
+import { decode } from "base64-arraybuffer";
 
-// Replace these with your actual Supabase Project credentials
-// Best practice: Use process.env.EXPO_PUBLIC_SUPABASE_URL if using Expo Router .env
-const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL as string;
-const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY as string;
-//   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFpd25kamdhZHlheHV5b2lveHhhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyODEyNDMsImV4cCI6MjA3Njg1NzI0M30.YTYB_SgzsD5syELoH9xR7kiwR0u_G2fL_qVjS-3keRE";
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || "";
+const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || "";
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
-    storage: AsyncStorage, // Configures the client to use Async Storage
+    storage: AsyncStorage,
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: false, // Turn off for React Native (no browser URL bar)
+    detectSessionInUrl: false,
   },
 });
+
+export async function uploadImageToSupabase(
+  uri: string,
+  userId: string,
+  bucketName: string,
+  folder: string,
+  filename: string,
+): Promise<string> {
+  try {
+    const path = `${userId}/${folder}/${filename}`;
+
+    // obtain the latest supabase session token
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const token = session?.access_token;
+
+    const authSupabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: {
+        headers: {
+          Authorization: token ? `Bearer ${token}` : "",
+        },
+      },
+    });
+
+    // read the file as base64 and decode for upload
+    const base64 = await FileSystem.readAsStringAsync(uri, {
+      encoding: "base64",
+    });
+
+    console.log(`Uploading to bucket: ${bucketName}, path: ${path}`);
+
+    const { error: uploadError } = await authSupabase.storage
+      .from(bucketName)
+      .upload(path, decode(base64), {
+        upsert: true,
+        contentType: "image/jpeg",
+      });
+
+    if (uploadError) {
+      console.error("Supabase Storage Error:", uploadError);
+      throw uploadError;
+    }
+
+    const { data } = authSupabase.storage.from(bucketName).getPublicUrl(path);
+    return data.publicUrl;
+  } catch (error) {
+    console.error(`Failed to upload ${filename}:`, error);
+    throw error;
+  }
+}

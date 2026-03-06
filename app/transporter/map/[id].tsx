@@ -38,26 +38,24 @@ export default function JobMap() {
     try {
       const data = await api.get(`/api/transporter/jobs/${id}`);
 
-      if (res.ok) {
-        // --- FIX: Ensure lat/lng are Numbers, not Strings ---
-        const rawManifest = data.route_manifest || [];
-        const cleanManifest = rawManifest
-          .map((item: any) => ({
-            ...item,
-            lat: parseFloat(item.lat),
-            lng: parseFloat(item.lng),
-          }))
-          .filter((item: any) => !isNaN(item.lat) && !isNaN(item.lng));
+      // --- FIX: Ensure lat/lng are Numbers, not Strings ---
+      const rawManifest = data.route_manifest || [];
+      const cleanManifest = rawManifest
+        .map((item: any) => ({
+          ...item,
+          lat: parseFloat(item.lat),
+          lng: parseFloat(item.lng),
+        }))
+        .filter((item: any) => !isNaN(item.lat) && !isNaN(item.lng));
 
-        setManifest(cleanManifest);
-        setRouteName(data.route_name);
+      setManifest(cleanManifest);
+      setRouteName(data.route_name);
 
-        // Auto-zoom to fit markers
-        if (cleanManifest.length > 0) {
-          setTimeout(() => {
-            fitMapToMarkers(cleanManifest);
-          }, 500);
-        }
+      // Auto-zoom to fit markers
+      if (cleanManifest.length > 0) {
+        setTimeout(() => {
+          fitMapToMarkers(cleanManifest);
+        }, 500);
       }
     } catch (error) {
       console.error("Failed to load map data", error);

@@ -19,10 +19,13 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import Header from "../../../components/Header";
+import { BuyerColors } from "../../../constants/theme";
 
-const PRIMARY_GREEN = "#2E7D32";
-const LIGHT_GREEN = "#e8f4f0";
-const LIGHT_GRAY = "#f5f5f5";
+// reuse buyer color palette for farmers for consistent styling
+const PRIMARY_GREEN = BuyerColors.primaryGreen;
+const LIGHT_GREEN = BuyerColors.primaryLight;
+const LIGHT_GRAY = BuyerColors.background;
 const DANGER_RED = "#d32f2f";
 
 interface Proposal {
@@ -280,6 +283,12 @@ export default function OrdersTab() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
+      {/* header styled like buyer orders */}
+      <Header
+        title="Orders"
+        showNotification={true}
+        onNotificationPress={() => {}}
+      />
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.content}
@@ -348,7 +357,7 @@ export default function OrdersTab() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: BuyerColors.background,
   },
   content: {
     paddingHorizontal: 16,
@@ -358,7 +367,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#333",
+    color: BuyerColors.textBlack,
     marginBottom: 12,
     marginTop: 12,
   },
@@ -366,12 +375,12 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   orderCard: {
-    backgroundColor: "#fff",
+    backgroundColor: BuyerColors.cardWhite,
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: "#F0F0F0",
+    borderColor: BuyerColors.border,
     elevation: 2,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
@@ -433,7 +442,7 @@ const styles = StyleSheet.create({
 
   orderId: {
     fontSize: 12,
-    color: "#666",
+    color: BuyerColors.textGray,
     fontWeight: "500",
   },
 
@@ -443,7 +452,7 @@ const styles = StyleSheet.create({
   },
 
   dateBadge: {
-    backgroundColor: "#E8F5E9",
+    backgroundColor: BuyerColors.primaryLight,
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 12,
@@ -465,7 +474,7 @@ const styles = StyleSheet.create({
   productName: {
     fontSize: 15,
     fontWeight: "700",
-    color: "#1a1a1a",
+    color: BuyerColors.textBlack,
     flex: 1,
   },
 
@@ -485,7 +494,7 @@ const styles = StyleSheet.create({
 
   detailLabel: {
     fontSize: 11,
-    color: "#999",
+    color: BuyerColors.textGray,
     fontWeight: "500",
     marginBottom: 3,
     textTransform: "uppercase",
@@ -494,7 +503,7 @@ const styles = StyleSheet.create({
   detailValue: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#333",
+    color: BuyerColors.textBlack,
   },
 
   detailDivider: {
@@ -542,12 +551,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 13,
-    backgroundColor: "#d1fae5",
+    backgroundColor: BuyerColors.primaryLight,
     borderRadius: 20,
     gap: 6,
   },
   acceptedText: {
-    color: "#065f46",
+    color: PRIMARY_GREEN,
     fontSize: 15,
     fontWeight: "700",
   },
@@ -559,12 +568,12 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#333",
+    color: BuyerColors.textBlack,
     marginTop: 16,
   },
   emptySubText: {
     fontSize: 14,
-    color: "#999",
+    color: BuyerColors.textGray,
     marginTop: 8,
   },
   loadingContainer: {
