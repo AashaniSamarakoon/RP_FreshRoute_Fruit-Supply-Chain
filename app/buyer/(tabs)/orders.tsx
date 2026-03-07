@@ -1,5 +1,4 @@
 import api from "@/services/api";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
@@ -161,17 +160,20 @@ export default function BuyerOrders() {
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>("all");
 
-  const fetchProposalCounts = async () => {
+  const fetchProposalCounts = async (orderList: PlacedOrder[]) => {
+    const matchingOrders = orderList.filter((o) => MATCHING_PHASE.includes(o.status));
+    if (matchingOrders.length === 0) return;
     try {
-      const userStr = await AsyncStorage.getItem("user");
-      if (!userStr) return;
-      const user = JSON.parse(userStr);
-      const data: any = await api.get(`/api/buyer/matching/${user.id}`);
-      const proposals: any[] = data?.proposals ?? data?.matches ?? (Array.isArray(data) ? data : []);
+      const results = await Promise.allSettled(
+        matchingOrders.map((o) => api.get(`/api/buyer/matching/order/${o.id}`)),
+      );
       const counts: Record<string, number> = {};
-      proposals.forEach((p: any) => {
-        const oid = p.order_id ?? p.orderId;
-        if (oid) counts[oid] = (counts[oid] ?? 0) + 1;
+      results.forEach((result, i) => {
+        if (result.status === "fulfilled") {
+          const data: any = result.value;
+          const proposals: any[] = data?.proposals ?? data?.matches ?? (Array.isArray(data) ? data : []);
+          if (proposals.length > 0) counts[matchingOrders[i].id] = proposals.length;
+        }
       });
       setProposalCounts(counts);
     } catch {
@@ -188,7 +190,7 @@ export default function BuyerOrders() {
         return { ...o, totalPrice: raw != null ? String(raw) : null };
       });
       setOrders(list);
-      fetchProposalCounts();
+      fetchProposalCounts(list);
     } catch {
       if (!silent) setOrders([]);
     } finally {
