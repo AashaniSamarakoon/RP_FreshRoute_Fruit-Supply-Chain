@@ -4,13 +4,13 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { useTranslation } from "../../../hooks/farmer/useTranslation";
 
@@ -112,7 +112,7 @@ export default function NotificationsScreen() {
     try {
       const token = await AsyncStorage.getItem("token");
       if (!token) return;
-      await api.put(`/api/farmer/notifications/read-all`, null);
+      await api.put(`/api/farmer/notifications/read-all`, {});
       setNotifications((prev) =>
         prev.map((n) => ({
           ...n,
@@ -136,7 +136,7 @@ export default function NotificationsScreen() {
     try {
       const token = await AsyncStorage.getItem("token");
       if (token && id) {
-        await api.put(`/api/farmer/notifications/${id}/read`, null);
+        await api.put(`/api/farmer/notifications/${id}/read`, {});
       }
       setNotifications((prev) =>
         prev.map((n) =>
