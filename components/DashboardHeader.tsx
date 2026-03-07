@@ -1,57 +1,25 @@
 import { Colors } from "@/constants/theme";
-import api from "@/services/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { Bell, Search } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
-interface UserData {
-  name?: string;
-  email?: string;
-  role?: string;
-}
-
-interface HomeData {
-  greeting?: string;
-}
-
 const DashboardHeader = () => {
-  const [user, setUser] = useState<UserData | null>(null);
-  const [greeting, setGreeting] = useState<string>("Good morning");
+  const [greeting, setGreeting] = useState<string>("");
   const router = useRouter();
 
   useEffect(() => {
-    const loadUser = async () => {
+    const loadGreeting = async () => {
       const userJson = await AsyncStorage.getItem("user");
-      if (userJson) {
-        setUser(JSON.parse(userJson));
-      }
+      const meta = userJson ? JSON.parse(userJson)?.user_metadata : null;
+      const firstName = meta?.first_name || meta?.name?.split(" ")[0] || "there";
+      const hour = new Date().getHours();
+      const timeGreeting =
+        hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+      setGreeting(`${timeGreeting}, ${firstName}`);
     };
-    loadUser();
-  }, []);
-
-  useEffect(() => {
-    const fetchGreeting = async () => {
-      try {
-        const response = await api.get("/api/farmer/home");
-        if (response?.greeting) {
-          // Extract first name only from greeting
-          const parts = response.greeting.split(", ");
-          if (parts.length > 1) {
-            const fullName = parts[1];
-            const firstName = fullName.split(" ")[0];
-            const greetingWithFirstName = `${parts[0]}, ${firstName}`;
-            setGreeting(greetingWithFirstName);
-          } else {
-            setGreeting(response.greeting);
-          }
-        }
-      } catch (error) {
-        console.error("[DashboardHeader] Failed to fetch greeting:", error);
-      }
-    };
-    fetchGreeting();
+    loadGreeting();
   }, []);
 
   return (

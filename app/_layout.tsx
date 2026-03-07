@@ -50,26 +50,30 @@ export default function RootLayout() {
         // check for onboarding flag stored locally (set when the final step
         // of the onboarding flow completes).  this allows us to redirect
         // back into the flow if a user quits before finishing.
-        // try to determine whether the user has already completed onboarding.
         // we keep a local cache so we can redirect quickly on startup, but
         // the cache can be wiped (app reinstall, manual clear, etc.).  in
         // that case we fall back to querying the server and then repopulate
         // the flag so future launches are fast.
         async function isOnboarded() {
+          // 1. Check local AsyncStorage cache first (fastest)
           const flag = await AsyncStorage.getItem("onboarded");
           if (flag === "true") {
             return true;
           }
 
-          // if no local flag, ask the backend.  your API should expose the
-          // onboarding state in a lightweight endpoint; here we assume
-          // `/api/auth/me` returns an object with `isOnboarded`.
+          // 2. Check Supabase user metadata (stored on the user object itself)
+          const metaOnboarded =
+            session?.user?.user_metadata?.is_onboarded ||
+            session?.user?.user_metadata?.isOnboarded;
+          if (metaOnboarded) {
+            await AsyncStorage.setItem("onboarded", "true");
+            return true;
+          }
+
+          // 3. Fall back to querying the server API
           try {
             const resp: any = await api.get("/api/auth/me");
             console.log("[RootLayout] /api/auth/me ->", resp);
-            // older responses might put the flag at top-level; new backend subjects
-            // have it nested inside `profile.is_onboarded` (snake case).  normalize
-            // to a boolean so we can handle both.
             const serverOnboarded =
               resp?.isOnboarded ||
               resp?.is_onboarded ||
