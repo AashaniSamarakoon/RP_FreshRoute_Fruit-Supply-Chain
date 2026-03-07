@@ -2,15 +2,15 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import React, { useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Platform,
-  SafeAreaView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Platform,
+    SafeAreaView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import MapView, { PROVIDER_GOOGLE, Region } from "react-native-maps";
 
@@ -40,9 +40,29 @@ export default function LocationPicker({
   doneLabel = "Done",
 }: LocationPickerProps) {
   const mapRef = useRef<MapView>(null);
-  const [region, setRegion] = useState<Region | null>(null);
-  const [address, setAddress] = useState<string>(initialAddress || "");
-  const [loading, setLoading] = useState(true);
+  // Default to center of Sri Lanka if no location provided
+  const DEFAULT_REGION: Region = {
+    latitude: 7.8731,
+    longitude: 80.7718,
+    latitudeDelta: 0.5,
+    longitudeDelta: 0.5,
+  };
+  
+  const [region, setRegion] = useState<Region>(() => {
+    if (
+      typeof initialLatitude === "number" &&
+      typeof initialLongitude === "number"
+    ) {
+      return {
+        latitude: initialLatitude,
+        longitude: initialLongitude,
+        latitudeDelta: 0.005,
+        longitudeDelta: 0.005,
+      };
+    }
+    return DEFAULT_REGION;
+  });
+  const [address, setAddress] = useState<string>(initialAddress || "Select your location");
   const [moving, setMoving] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searching, setSearching] = useState(false);
@@ -69,11 +89,11 @@ export default function LocationPicker({
       if (!initialAddress) {
         updateAddress(initial.latitude, initial.longitude);
       }
-      setLoading(false);
     } else {
       console.log(
-        "[LocationPicker] no initial coords, going to current location",
+        "[LocationPicker] no initial coords, attempting to get current location",
       );
+      // Try to get current location in background, but don't block map display
       goToCurrentLocation();
     }
   }, [initialLatitude, initialLongitude, initialAddress]);
@@ -83,7 +103,9 @@ export default function LocationPicker({
       setSearching(true);
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
-        Alert.alert("Permission denied", "Location permission is required");
+        // Don't show alert, just keep default location - user can still select manually
+        console.log("[LocationPicker] Location permission denied, using default/manual selection");
+        setSearching(false);
         return;
       }
 
@@ -100,9 +122,9 @@ export default function LocationPicker({
       setRegion(currentRegion);
       mapRef.current?.animateToRegion(currentRegion, 1000);
       updateAddress(currentRegion.latitude, currentRegion.longitude);
-      setLoading(false);
     } catch (err) {
-      Alert.alert("Error", "Could not fetch current location.");
+      // Don't show alert, just keep default location - user can still select manually
+      console.log("[LocationPicker] Could not fetch current location, using default/manual selection", err);
     } finally {
       setSearching(false);
     }
@@ -163,17 +185,8 @@ export default function LocationPicker({
   };
 
   const onNext = () => {
-    if (!region) return;
     onDone({ lat: region.latitude, lng: region.longitude, location: address });
   };
-
-  if (loading)
-    return (
-      <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#2E7D32" />
-        <Text style={styles.loadingText}>Loading Map...</Text>
-      </View>
-    );
 
   return (
     <View style={styles.container}>
@@ -181,7 +194,7 @@ export default function LocationPicker({
         ref={mapRef}
         style={styles.map}
         provider={PROVIDER_GOOGLE}
-        initialRegion={region!}
+        initialRegion={region}
         onRegionChange={() => setMoving(true)}
         onRegionChangeComplete={handleRegionChangeComplete}
         showsUserLocation={true}

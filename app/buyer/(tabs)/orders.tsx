@@ -1,4 +1,5 @@
 import api from "@/services/api";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
@@ -150,14 +151,33 @@ const STATUS_META: Record<
   }, // Neutral Gray
 };
 
-const MATCHING_PHASE = ["OPEN", "PENDING_BUYER", "PENDING_FARMER"];
+const MATCHING_PHASE = ["OPEN", "MATCHED", "PENDING_BUYER", "PENDING_FARMER"];
 
 export default function BuyerOrders() {
   const router = useRouter();
   const [orders, setOrders] = useState<PlacedOrder[]>([]);
+  const [proposalCounts, setProposalCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>("all");
+
+  const fetchProposalCounts = async () => {
+    try {
+      const userStr = await AsyncStorage.getItem("user");
+      if (!userStr) return;
+      const user = JSON.parse(userStr);
+      const data: any = await api.get(`/api/buyer/matching/${user.id}`);
+      const proposals: any[] = data?.proposals ?? data?.matches ?? (Array.isArray(data) ? data : []);
+      const counts: Record<string, number> = {};
+      proposals.forEach((p: any) => {
+        const oid = p.order_id ?? p.orderId;
+        if (oid) counts[oid] = (counts[oid] ?? 0) + 1;
+      });
+      setProposalCounts(counts);
+    } catch {
+      // silently ignore — counts just won't show
+    }
+  };
 
   const fetchOrders = async (silent = false) => {
     try {
@@ -168,6 +188,7 @@ export default function BuyerOrders() {
         return { ...o, totalPrice: raw != null ? String(raw) : null };
       });
       setOrders(list);
+      fetchProposalCounts();
     } catch {
       if (!silent) setOrders([]);
     } finally {
@@ -228,7 +249,7 @@ export default function BuyerOrders() {
   const handlePress = (item: PlacedOrder) => {
     if (MATCHING_PHASE.includes(item.status)) {
       router.push({
-        pathname: "/buyer/screens/MatchedStocksScreen" as any,
+        pathname: "/buyer/screens/MatchedStocks" as any,
         params: { orderId: item.id },
       });
     } else {
@@ -251,12 +272,21 @@ export default function BuyerOrders() {
       icon: "ellipse-outline",
     };
 
+    const proposalCount = proposalCounts[item.id] ?? 0;
+    const paymentDue = ["AWAITING_PAYMENT", "UNPAID"].includes(item.status);
+    const badgeCount = proposalCount > 0 ? proposalCount : (paymentDue ? "!" : null);
+
     return (
       <TouchableOpacity
         style={styles.card}
         activeOpacity={0.8}
         onPress={() => handlePress(item)}
       >
+        {badgeCount !== null && (
+          <View style={styles.cardCountBadge}>
+            <Text style={styles.cardCountBadgeText}>{badgeCount}</Text>
+          </View>
+        )}
         <View style={styles.cardBody}>
           {/* Header Row: Order ID & Status */}
           <View style={styles.cardTopRow}>
@@ -435,7 +465,7 @@ const GREEN = BuyerColors.primaryGreen;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: "#ffffff",
   },
 
   // ── List ─────────────────────────────────────────────────────────────────────
@@ -459,7 +489,29 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 8,
     elevation: 1,
+    overflow: "visible",
   },
+  cardCountBadge: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "#EF4444",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 5,
+    zIndex: 10,
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 4,
+  },
+  cardCountBadgeText: { fontSize: 12, fontWeight: "800", color: "#FFFFFF" },
   cardBody: {
     padding: 16,
   },

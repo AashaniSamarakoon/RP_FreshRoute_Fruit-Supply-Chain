@@ -13,7 +13,9 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
+  FlatList,
   Image,
+  Modal,
   SectionList,
   StyleSheet,
   Text,
@@ -67,8 +69,6 @@ const getFruitMeta = (fruit: string) => {
     return { emoji: "🥭", bg: "#FFEDD5", text: "#EA580C" };
   if (f.includes("pineapple"))
     return { emoji: "🍍", bg: "#FEF08A", text: "#A16207" };
-  if (f.includes("papaya"))
-    return { emoji: "🥥", bg: "#FFEDD5", text: "#EA580C" };
   return { emoji: "📦", bg: "#F3F4F6", text: "#6B7280" };
 };
 
@@ -153,12 +153,21 @@ export default function MatchedStocksScreen() {
           return;
         }
 
+        console.log("[MatchedStocks] raw response keys:", data ? Object.keys(data) : "null/undefined");
+        console.log("[MatchedStocks] raw response:", JSON.stringify(data)?.slice(0, 500));
+
         let matches: any[] = [];
         if (data?.proposals && Array.isArray(data.proposals)) {
           matches = data.proposals;
+        } else if (data?.matches && Array.isArray(data.matches)) {
+          matches = data.matches;
+        } else if (data?.data && Array.isArray(data.data)) {
+          matches = data.data;
         } else if (Array.isArray(data)) {
           matches = data;
         }
+
+        console.log("[MatchedStocks] resolved matches count:", matches.length);
 
         if (matches.length === 0) {
           setGroupedStocks([]);
@@ -174,7 +183,10 @@ export default function MatchedStocksScreen() {
             const order = item.order || {};
 
             console.log("item", item);
-            if (!stock?.id || !item.id) return null;
+            if (!stock?.id || !item.id) {
+              console.log("[MatchedStocks] FILTERED OUT item - missing stock.id or item.id:", { itemId: item.id, stockId: stock?.id });
+              return null;
+            }
 
             return {
               id: item.id,
@@ -244,9 +256,8 @@ export default function MatchedStocksScreen() {
 
   const navigateToProfile = (item: MatchedStock) => {
     router.push({
-      pathname: "/buyer/screens/trust-profile/[id]",
+      pathname: `/buyer/screens/trust-profile/${item.farmerId}` as any,
       params: {
-        id: item.farmerId,
         farmerName: item.farmerName,
         farmLocation: item.farmLocation,
         trustScore: item.trustScore,
@@ -498,7 +509,60 @@ export default function MatchedStocksScreen() {
         />
       )}
 
-      {/* Modals remain mostly identical, omitted for brevity but include them! */}
+      {/* Image Gallery Modal */}
+      <Modal
+        visible={imageModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setImageModalVisible(false)}
+        statusBarTranslucent
+      >
+        <View style={styles.imageModalOverlay}>
+          <TouchableOpacity
+            style={styles.imageModalClose}
+            onPress={() => setImageModalVisible(false)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.imageModalCloseText}>✕</Text>
+          </TouchableOpacity>
+
+          {currentImages.length > 1 && (
+            <Text style={styles.imageModalCounter}>
+              {currentImageIndex + 1} / {currentImages.length}
+            </Text>
+          )}
+
+          <FlatList
+            data={currentImages}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            initialScrollIndex={currentImageIndex}
+            getItemLayout={(_, index) => ({
+              length: SCREEN_WIDTH,
+              offset: SCREEN_WIDTH * index,
+              index,
+            })}
+            onMomentumScrollEnd={(e) => {
+              const index = Math.round(
+                e.nativeEvent.contentOffset.x / SCREEN_WIDTH,
+              );
+              setCurrentImageIndex(index);
+            }}
+            keyExtractor={(uri, i) => `${uri}-${i}`}
+            renderItem={({ item: uri }) => (
+              <View style={styles.imageModalPage}>
+                <Image
+                  source={{ uri }}
+                  style={styles.imageModalFull}
+                  resizeMode="contain"
+                />
+              </View>
+            )}
+          />
+        </View>
+      </Modal>
+
       {/* Success Modal */}
       <SuccessModal
         visible={successModalVisible}
@@ -723,4 +787,49 @@ const styles = StyleSheet.create({
   statusSuccessText: { color: "#16A34A" },
   statusError: { backgroundColor: "#FEF2F2" },
   statusErrorText: { color: "#DC2626" },
+
+  // Image Gallery Modal
+  imageModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.95)",
+    justifyContent: "center",
+  },
+  imageModalClose: {
+    position: "absolute",
+    top: 52,
+    right: 20,
+    zIndex: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  imageModalCloseText: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "bold",
+  },
+  imageModalCounter: {
+    position: "absolute",
+    top: 58,
+    left: 0,
+    right: 0,
+    textAlign: "center",
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
+    zIndex: 10,
+  },
+  imageModalPage: {
+    width: SCREEN_WIDTH,
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  imageModalFull: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_WIDTH * 1.2,
+  },
 });

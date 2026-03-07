@@ -3,8 +3,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import {
   CheckCircle,
-  ChevronDown,
-  ChevronUp,
   ShieldCheck,
   Sprout,
   XCircle,
@@ -130,6 +128,7 @@ function useOrdersData() {
 
       try {
         const proposalRes = await api.get("/api/farmer/proposals");
+        console.log("[Orders] proposals response:", JSON.stringify(proposalRes));
         setProposals(proposalRes?.proposals ?? []);
       } catch {
         setProposals([]);
@@ -335,30 +334,27 @@ const ProposalRow = React.memo(({
 const HarvestCard = React.memo(({
   harvest,
   proposals,
-  processingIds,
-  onAccept,
-  onReject,
-  onViewProfile,
+  onPress,
 }: {
   harvest: Harvest;
   proposals: Proposal[];
-  processingIds: Set<string>;
-  onAccept: (id: string) => void;
-  onReject: (id: string) => void;
-  onViewProfile: (p: Proposal) => void;
+  onPress: () => void;
 }) => {
-  const [expanded, setExpanded] = useState(false);
   const fruit = getFruitMeta(harvest.fruit_type);
   const statusMeta = HARVEST_STATUS[harvest.status] ?? DEFAULT_STATUS;
   const pendingCount = useMemo(
     () => proposals.filter((p) => p.status === "PENDING_FARMER").length,
     [proposals],
   );
-  const toggle = useCallback(() => setExpanded((v) => !v), []);
 
   return (
-    <View style={styles.card}>
-      <TouchableOpacity style={styles.cardHeader} activeOpacity={0.85} onPress={toggle}>
+    <TouchableOpacity style={styles.card} activeOpacity={0.85} onPress={onPress}>
+      {proposals.length > 0 && (
+        <View style={styles.cardCountBadge}>
+          <Text style={styles.cardCountBadgeText}>{proposals.length}</Text>
+        </View>
+      )}
+      <View style={styles.cardHeader}>
         <View style={[styles.fruitIcon, { backgroundColor: fruit.bg }]}>
           <Text style={styles.fruitEmoji}>{fruit.emoji}</Text>
         </View>
@@ -379,44 +375,12 @@ const HarvestCard = React.memo(({
               icon="calendar-outline"
               label={formatDate(harvest.estimated_harvest_date, FULL_DATE_FMT)}
             />
-            {pendingCount > 0 && (
-              <View style={styles.proposalBadge}>
-                <Text style={styles.proposalBadgeText}>
-                  {pendingCount} proposal{pendingCount > 1 ? "s" : ""}
-                </Text>
-              </View>
-            )}
           </View>
         </View>
 
-        <View style={styles.expandIcon}>
-          {expanded ? <ChevronUp size={18} color="#9CA3AF" /> : <ChevronDown size={18} color="#9CA3AF" />}
-        </View>
-      </TouchableOpacity>
-
-      {expanded && (
-        <View style={styles.proposalsContainer}>
-          {proposals.length === 0 ? (
-            <View style={styles.emptyProposals}>
-              <Text style={styles.emptyProposalsText}>No proposals for this harvest yet</Text>
-            </View>
-          ) : (
-            proposals.map((p, idx) => (
-              <View key={p.id}>
-                {idx > 0 && <View style={styles.proposalDivider} />}
-                <ProposalRow
-                  proposal={p}
-                  processing={processingIds.has(p.id)}
-                  onAccept={() => onAccept(p.id)}
-                  onReject={() => onReject(p.id)}
-                  onViewProfile={() => onViewProfile(p)}
-                />
-              </View>
-            ))
-          )}
-        </View>
-      )}
-    </View>
+        <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+      </View>
+    </TouchableOpacity>
   );
 });
 
@@ -436,6 +400,11 @@ const StandaloneProposalCard = React.memo(({
   onViewProfile: () => void;
 }) => (
   <View style={styles.card}>
+    {proposal.status === "PENDING_FARMER" && (
+      <View style={styles.cardCountBadge}>
+        <Text style={styles.cardCountBadgeText}>1</Text>
+      </View>
+    )}
     <TouchableOpacity style={styles.cardHeader} activeOpacity={0.7} onPress={onViewProfile}>
       <View style={[styles.fruitIcon, styles.personIconBg]}>
         <Ionicons name="person" size={20} color={PRIMARY_GREEN} />
@@ -521,12 +490,25 @@ export default function OrdersTab() {
 
   const handleViewProfile = useCallback((proposal: Proposal) => {
     router.push({
-      pathname: "/farmer/screens/buyer-trust-profile/[id]",
+      pathname: `/farmer/screens/buyer-trust-profile/${proposal.order.buyer.id}` as any,
       params: {
-        id: proposal.order.buyer.id,
         buyerName: proposal.order.buyer.user.name,
         buyerLocation: proposal.order.delivery_location || "Location not specified",
         trustScore: "Not rated",
+      },
+    });
+  }, [router]);
+
+  const handleHarvestPress = useCallback((harvest: Harvest) => {
+    router.push({
+      pathname: "/farmer/screens/harvest-proposals" as any,
+      params: {
+        harvestId: harvest.id,
+        fruitType: harvest.fruit_type,
+        variant: harvest.variant,
+        grade: harvest.grade,
+        quantity: String(harvest.quantity),
+        harvestDate: harvest.estimated_harvest_date,
       },
     });
   }, [router]);
@@ -538,13 +520,10 @@ export default function OrdersTab() {
       <HarvestCard
         harvest={item}
         proposals={proposalsByStock[item.id] ?? []}
-        processingIds={processingIds}
-        onAccept={acceptProposal}
-        onReject={rejectProposal}
-        onViewProfile={handleViewProfile}
+        onPress={() => handleHarvestPress(item)}
       />
     ),
-    [proposalsByStock, processingIds, acceptProposal, rejectProposal, handleViewProfile],
+    [proposalsByStock, handleHarvestPress],
   );
 
   const renderProposal = useCallback(
@@ -637,7 +616,7 @@ export default function OrdersTab() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      <Header title="Orders" showNotification onNotificationPress={() => {}} />
+      <Header title="Orders" showNotification onNotificationPress={() => router.push("/farmer/screens/notifications" as any)} />
       <PillTabBar tabs={tabData} activeKey={activeTab} onPress={setActiveTab} />
       {renderContent()}
     </SafeAreaView>
@@ -687,7 +666,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 6,
     elevation: 1,
-    overflow: "hidden",
+    overflow: "visible",
   },
   cardHeader: { flexDirection: "row", alignItems: "flex-start", padding: 16, gap: 12 },
   cardBody: { flex: 1 },
@@ -731,6 +710,28 @@ const styles = StyleSheet.create({
   // ── Proposal count badge ──────────────────────────────────────────────────
   proposalBadge: { backgroundColor: "#FEF3C7", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   proposalBadgeText: { fontSize: 12, fontWeight: "700", color: "#B45309" },
+  // ── Card notification count badge (top-right corner) ─────────────────────
+  cardCountBadge: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "#EF4444",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 5,
+    zIndex: 10,
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 4,
+  },
+  cardCountBadgeText: { fontSize: 11, fontWeight: "800", color: "#FFFFFF" },
   expandIcon: { paddingTop: 2, flexShrink: 0 },
 
   // ── Proposals container ───────────────────────────────────────────────────

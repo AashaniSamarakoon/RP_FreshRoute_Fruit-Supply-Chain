@@ -3,15 +3,15 @@ import * as Location from "expo-location";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Platform,
-  SafeAreaView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Platform,
+    SafeAreaView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import MapView, { PROVIDER_GOOGLE, Region } from "react-native-maps";
 import { useOnboarding } from "../OnboardingContext";
@@ -20,14 +20,21 @@ export default function LocationStep() {
   const router = useRouter();
   const mapRef = useRef<MapView>(null);
   const { updateFarmerData } = useOnboarding();
-  const [region, setRegion] = useState<Region | null>(null);
-  const [address, setAddress] = useState("Dragging to locate...");
+  // Default to center of Sri Lanka - map always visible
+  const DEFAULT_REGION: Region = {
+    latitude: 7.8731,
+    longitude: 80.7718,
+    latitudeDelta: 0.5,
+    longitudeDelta: 0.5,
+  };
+  const [region, setRegion] = useState<Region>(DEFAULT_REGION);
+  const [address, setAddress] = useState("Select your farm location");
   const [searchQuery, setSearchQuery] = useState("");
-  const [loading, setLoading] = useState(true);
   const [moving, setMoving] = useState(false);
   const [searching, setSearching] = useState(false);
 
   useEffect(() => {
+    // Try to get current location in background, but don't block map display
     goToCurrentLocation();
   }, []);
 
@@ -37,7 +44,9 @@ export default function LocationStep() {
       setSearching(true);
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
-        Alert.alert("Permission denied", "Location permission is required");
+        // Don't show alert, user can still select location manually
+        console.log("Location permission denied, user can select manually");
+        setSearching(false);
         return;
       }
 
@@ -54,9 +63,9 @@ export default function LocationStep() {
       setRegion(currentRegion);
       mapRef.current?.animateToRegion(currentRegion, 1000);
       updateAddress(currentRegion.latitude, currentRegion.longitude);
-      setLoading(false);
     } catch (err) {
-      Alert.alert("Error", "Could not fetch current location.");
+      // Don't show alert, user can still select location manually
+      console.log("Could not fetch current location, user can select manually", err);
     } finally {
       setSearching(false);
     }
@@ -116,7 +125,6 @@ export default function LocationStep() {
   };
 
   const onNext = () => {
-    if (!region) return;
     // store location in context
     updateFarmerData({
       lat: region.latitude,
@@ -126,21 +134,13 @@ export default function LocationStep() {
     router.push("/onboarding/farmer/farm-info" as any);
   };
 
-  if (loading)
-    return (
-      <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#2E7D32" />
-        <Text style={styles.loadingText}>Loading Map...</Text>
-      </View>
-    );
-
   return (
     <View style={styles.container}>
       <MapView
         ref={mapRef}
         style={styles.map}
         provider={PROVIDER_GOOGLE}
-        initialRegion={region!}
+        initialRegion={region}
         onRegionChange={() => setMoving(true)}
         onRegionChangeComplete={handleRegionChangeComplete}
         showsUserLocation={true}

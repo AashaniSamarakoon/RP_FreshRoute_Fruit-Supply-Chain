@@ -1,12 +1,13 @@
 import {
-    DarkTheme,
-    DefaultTheme,
-    ThemeProvider,
+  DarkTheme,
+  DefaultTheme,
+  ThemeProvider,
 } from "@react-navigation/native";
 import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import "react-native-reanimated";
 
+import { NotificationBannerHost } from "@/components/notifications/NotificationBanner";
 import { TranslationProvider } from "@/context/TranslationContext";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import api from "@/services/api";
@@ -135,6 +136,7 @@ export default function RootLayout() {
             <Stack.Screen name="buyer" options={{ headerShown: false }} />
             <Stack.Screen name="transporter" options={{ headerShown: false }} />
           </Stack>
+          <NotificationBannerHost />
           <StatusBar style="inverted" />
         </ThemeProvider>
       </TranslationProvider>

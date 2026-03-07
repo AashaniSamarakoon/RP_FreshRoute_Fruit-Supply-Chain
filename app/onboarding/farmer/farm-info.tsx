@@ -3,13 +3,13 @@ import * as Location from "expo-location";
 import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
-  Alert,
-  Platform,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Alert,
+    Platform,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import MapView, { PROVIDER_GOOGLE, Region } from "react-native-maps";
 import { useOnboarding } from "../OnboardingContext";
@@ -28,19 +28,20 @@ export default function FarmInfoStep() {
   const [selectedCrops, setSelectedCrops] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
-  // map preview state
-  const [region, setRegion] = useState<Region | null>(null);
+  // map preview state - default to center of Sri Lanka so map always displays
+  const DEFAULT_REGION: Region = {
+    latitude: 7.8731,
+    longitude: 80.7718,
+    latitudeDelta: 0.5,
+    longitudeDelta: 0.5,
+  };
+  const [region, setRegion] = useState<Region>(DEFAULT_REGION);
   const mapRef = useRef<MapView>(null);
 
-  // on mount we could pre-populate fields from context if desired
-  // (skipped for brevity)
-
-  // keep storage in sync as the user types so progress isn't lost
-  // replaced by context updates below: no AsyncStorage calls needed anymore
-
+  // Try to get current location in background, non-blocking
   useEffect(() => {
-    if (!region) {
-      (async () => {
+    (async () => {
+      try {
         let { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== "granted") return;
         let loc = await Location.getCurrentPositionAsync({
@@ -52,9 +53,11 @@ export default function FarmInfoStep() {
           latitudeDelta: 0.01,
           longitudeDelta: 0.01,
         });
-      })();
-    }
-  }, [region]);
+      } catch (err) {
+        console.log("Could not get location, using default", err);
+      }
+    })();
+  }, []);
 
   const toggleCrop = (id: string) => {
     setSelectedCrops((prev) =>
@@ -110,34 +113,27 @@ export default function FarmInfoStep() {
       {/* Map Preview Section */}
       <View style={styles.section}>
         <Text style={styles.label}>Farm Location Pin</Text>
-        {region ? (
-          <TouchableOpacity
-            style={styles.mapContainer}
-            activeOpacity={0.8}
-            onPress={() => router.push("/onboarding/farmer/location" as any)}
-          >
-            <MapView
-              ref={mapRef}
-              provider={PROVIDER_GOOGLE}
-              style={styles.smallMap}
-              region={region}
-              pointerEvents="none"
-            />
-            <View style={styles.pinContainer}>
-              <Ionicons name="location" size={32} color="#2E7D32" />
-            </View>
-            {/* Edit Overlay Banner */}
-            <View style={styles.mapEditOverlay}>
-              <Ionicons name="pencil" size={14} color="#fff" />
-              <Text style={styles.mapEditText}>Tap to edit location</Text>
-            </View>
-          </TouchableOpacity>
-        ) : (
-          <View style={[styles.mapContainer, styles.mapPlaceholder]}>
-            <Ionicons name="map-outline" size={32} color="#9CA3AF" />
-            <Text style={{ color: "#9CA3AF", marginTop: 8 }}>Locating...</Text>
+        <TouchableOpacity
+          style={styles.mapContainer}
+          activeOpacity={0.8}
+          onPress={() => router.push("/onboarding/farmer/location" as any)}
+        >
+          <MapView
+            ref={mapRef}
+            provider={PROVIDER_GOOGLE}
+            style={styles.smallMap}
+            region={region}
+            pointerEvents="none"
+          />
+          <View style={styles.pinContainer}>
+            <Ionicons name="location" size={32} color="#2E7D32" />
           </View>
-        )}
+          {/* Edit Overlay Banner */}
+          <View style={styles.mapEditOverlay}>
+            <Ionicons name="pencil" size={14} color="#fff" />
+            <Text style={styles.mapEditText}>Tap to edit location</Text>
+          </View>
+        </TouchableOpacity>
       </View>
 
       {/* Form Fields */}

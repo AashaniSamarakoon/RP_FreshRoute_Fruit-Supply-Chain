@@ -5,11 +5,21 @@ import { BuyerColors } from "@/constants/theme";
 import api from "@/services/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import { ArrowRight, MapPin, ShieldCheck, Wallet } from "lucide-react-native";
+import {
+  ArrowRight,
+  Award,
+  Box,
+  CheckCircle2,
+  FileText,
+  MapPin,
+  ShieldCheck,
+  ShoppingBag,
+} from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Image,
+  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -17,7 +27,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import Svg, { G, Path } from "react-native-svg";
 
 interface PassportData {
   serialNumber: string;
@@ -244,15 +253,13 @@ export default function BuyerTrustProfile({
       ? displayProfile.transactions
       : fallbackBuyerProfile.transactions;
 
-  const needleRotation = (displayProfile.trustScore / 100) * 180 - 90;
-
   if (profileLoading) {
     return (
       <SafeAreaView style={styles.container}>
-        <Header title="Buyer Trust Profile" onBack={() => router.back()} />
+        <Header title="Buyer Identity" onBack={() => router.back()} />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={BuyerColors.primaryGreen} />
-          <Text style={styles.loadingText}>Loading buyer profile...</Text>
+          <Text style={styles.loadingText}>Fetching buyer profile...</Text>
         </View>
       </SafeAreaView>
     );
@@ -260,138 +267,122 @@ export default function BuyerTrustProfile({
 
   return (
     <SafeAreaView style={styles.container}>
-      <Header title="Buyer Trust Profile" onBack={() => router.back()} />
+      <Header title="Buyer Identity" onBack={() => router.back()} />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Profile Card */}
-        <View style={styles.profileCard}>
-          <View style={styles.profileCardLeft}>
-            <View style={styles.nameRow}>
-              <Text style={styles.profileName}>{displayProfile.name}</Text>
-              {displayProfile.verified && (
-                <View style={styles.verifiedBadge}>
-                  <ShieldCheck size={14} color={BuyerColors.primaryGreen} />
-                  <Text style={styles.verifiedText}>Verified</Text>
-                </View>
-              )}
-            </View>
-            <View style={styles.locationRow}>
-              <MapPin size={16} color={BuyerColors.textGray} />
-              <Text style={styles.locationText}>{displayProfile.location}</Text>
-            </View>
-
-            <TouchableOpacity
-              style={styles.passportButton}
-              onPress={handleViewPassport}
-            >
-              <Text style={styles.passportButtonText}>View Digital ID</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.avatarContainer}>
-            <Image
-              source={{ uri: displayProfile.image }}
-              style={styles.avatar}
-            />
-          </View>
-        </View>
-
-        {/* Trust Score Card */}
-        <View style={styles.trustScoreCard}>
-          <View style={styles.trustScoreLeft}>
-            <Text style={styles.trustScoreLabel}>Trust Score</Text>
-            <Text style={styles.trustScoreValue}>
-              {displayProfile.trustScore}%
-            </Text>
-          </View>
-          <View style={styles.gaugeContainer}>
-            <Svg width={120} height={70} viewBox="0 0 120 70">
-              <Path
-                d="M 10 60 A 45 45 0 0 1 110 60"
-                fill="none"
-                stroke="#ffffff"
-                strokeWidth="12"
-                strokeLinecap="round"
+        {/* --- HEADER SECTION --- */}
+        <View style={styles.headerSection}>
+          <View style={styles.headerTopRow}>
+            <View style={styles.avatarWrapper}>
+              <Image
+                source={{ uri: displayProfile.image }}
+                style={styles.avatarLarge}
               />
-              <G transform={`rotate(${needleRotation} 60 60)`}>
-                <Path
-                  d="M 54 60 Q 58 35 60 10 Q 62 35 66 60 Q 60 67 54 60"
-                  fill="#ffffff"
-                  stroke={BuyerColors.primaryGreen}
-                  strokeWidth="1"
-                  strokeLinecap="round"
-                />
-              </G>
-            </Svg>
-          </View>
-        </View>
-
-        {/* Metrics Cards */}
-        <View style={styles.metricsContainer}>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricLabel}>On-time Purchase</Text>
-            <Text style={styles.metricValue}>
-              {displayProfile.onTimeDelivery}%
-            </Text>
-          </View>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricLabel}>Quality Standards</Text>
-            <Text style={styles.metricValue}>
-              {displayProfile.qualityGrade}%
-            </Text>
-          </View>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricLabel}>Successful Purchases</Text>
-            <Text style={styles.metricValue}>
-              {displayProfile.successfulOrders}
-            </Text>
-          </View>
-        </View>
-
-        {/* Transactions Section */}
-        <View style={styles.transactionsSection}>
-          <Text style={styles.transactionsTitle}>
-            Recent Purchase Transactions
-          </Text>
-
-          <View style={styles.transactionsContainer}>
-            {displayTransactions.map((tx, index) => (
-              <View key={tx.id}>
-                <TouchableOpacity
-                  style={styles.transactionItem}
-                  onPress={() => handleTransactionClick(tx)}
-                >
-                  <View style={styles.transactionIcon}>
-                    <Wallet size={24} color={BuyerColors.primaryGreen} />
-                  </View>
-                  <View style={styles.transactionContent}>
-                    <Text style={styles.transactionId}>
-                      {tx.txId.substring(0, 24)}...
-                    </Text>
-                    <Text style={styles.transactionLabel}>
-                      Tap to view Receipt
-                    </Text>
-                    <Text style={styles.transactionDate}>
-                      {tx.date.split("•")[0]}
-                    </Text>
-                  </View>
-                  <ArrowRight size={20} color={BuyerColors.textGray} />
-                </TouchableOpacity>
-                {index < displayTransactions.length - 1 && (
-                  <View style={styles.transactionDivider} />
+              <View style={styles.avatarBadge}>
+                <ShoppingBag size={12} color="#FFF" />
+              </View>
+            </View>
+            <View style={styles.headerInfo}>
+              <View style={styles.nameBadgeWrapper}>
+                <Text style={styles.profileNameLarge}>{displayProfile.name}</Text>
+                {displayProfile.verified && (
+                  <ShieldCheck size={20} color={BuyerColors.primaryGreen} strokeWidth={2.5} />
                 )}
               </View>
+              <View style={styles.locationWrapper}>
+                <MapPin size={14} color="#6B7280" />
+                <Text style={styles.locationTextPlain}>
+                  {displayProfile.location}
+                </Text>
+              </View>
+              <Text style={styles.idHash}>
+                ID: 0x{buyerId?.substring(0, 8) || "b4e2a7f9"}... Verified
+              </Text>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={styles.verifyButtonSolid}
+            onPress={handleViewPassport}
+          >
+            <CheckCircle2 size={16} color="#FFFFFF" />
+            <Text style={styles.verifyButtonText}>View X.509 Certificate</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.thickDivider} />
+
+        {/* --- PLATFORM METRICS --- */}
+        <View style={styles.metricsWrapper}>
+          <View style={styles.sectionTitleRow}>
+            <Award size={16} color={BuyerColors.primaryGreen} />
+            <Text style={styles.sectionLabel}>PLATFORM METRICS</Text>
+          </View>
+
+          <View style={styles.statsRow}>
+            <View style={styles.statBlock}>
+              <Text style={styles.statValueLarge}>{displayProfile.trustScore}</Text>
+              <Text style={styles.statLabelMuted}>Trust Score</Text>
+            </View>
+            <View style={styles.statVerticalDivider} />
+            <View style={styles.statBlock}>
+              <Text style={styles.statValueLarge}>{displayProfile.qualityGrade}%</Text>
+              <Text style={styles.statLabelMuted}>Standards</Text>
+            </View>
+            <View style={styles.statVerticalDivider} />
+            <View style={styles.statBlock}>
+              <Text style={styles.statValueLarge}>{displayProfile.onTimeDelivery}%</Text>
+              <Text style={styles.statLabelMuted}>On-Time</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.thickDivider} />
+
+        {/* --- IMMUTABLE LEDGER --- */}
+        <View style={styles.ledgerSection}>
+          <View style={styles.ledgerHeaderRow}>
+            <View style={styles.sectionTitleRow}>
+              <Box size={16} color={BuyerColors.primaryGreen} />
+              <Text style={styles.sectionLabel}>PURCHASE LEDGER</Text>
+            </View>
+            <Text style={styles.totalTxText}>
+              {displayProfile.successfulOrders} Purchases
+            </Text>
+          </View>
+
+          <View style={styles.ledgerList}>
+            {displayTransactions.map((tx, index) => (
+              <TouchableOpacity
+                key={tx.id}
+                style={[
+                  styles.ledgerItem,
+                  index === displayTransactions.length - 1 && styles.ledgerItemLast,
+                ]}
+                onPress={() => handleTransactionClick(tx)}
+              >
+                <View style={styles.txIconBox}>
+                  <FileText size={20} color={BuyerColors.primaryGreen} strokeWidth={2} />
+                </View>
+
+                <View style={styles.txCenter}>
+                  <Text style={styles.txHashText} numberOfLines={1} ellipsizeMode="middle">
+                    {tx.txId}
+                  </Text>
+                  <Text style={styles.txDateText}>{tx.date.split("•")[0]}</Text>
+                </View>
+
+                <View style={styles.txRight}>
+                  <Text style={styles.txAmountText}>Success</Text>
+                  <ArrowRight size={16} color={BuyerColors.primaryGreen} />
+                </View>
+              </TouchableOpacity>
             ))}
           </View>
         </View>
-
-        {/* View All Button */}
-        <TouchableOpacity style={styles.viewAllButton}>
-          <Text style={styles.viewAllButtonText}>View All Transactions</Text>
-        </TouchableOpacity>
       </ScrollView>
 
       {/* Modals */}
@@ -414,291 +405,234 @@ export default function BuyerTrustProfile({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#ffffffff",
-    paddingTop: 40,
+    backgroundColor: "#FFFFFF",
+    paddingTop: Platform.OS === "android" ? 24 : 0,
   },
-
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
   },
-
   loadingText: {
     marginTop: 12,
-    fontSize: 16,
-    color: BuyerColors.textGray,
-  },
-
-  scrollContent: {
-    paddingBottom: 30,
-  },
-
-  profileCard: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginHorizontal: 16,
-    marginTop: 16,
-    marginBottom: 16,
-    backgroundColor: "#fff",
-    padding: 16,
-    borderRadius: 20,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    elevation: 3,
-  },
-
-  profileCardLeft: {
-    flex: 1,
-  },
-
-  nameRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 8,
-  },
-
-  profileName: {
-    fontSize: 23,
-    fontWeight: "bold",
-    color: "#333",
-  },
-
-  verifiedBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: BuyerColors.primaryLight,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-
-  verifiedText: {
-    fontSize: 12,
+    fontSize: 14,
     color: BuyerColors.primaryGreen,
     fontWeight: "600",
   },
-
-  locationRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 12,
+  scrollContent: {
+    paddingBottom: 40,
   },
 
-  locationText: {
-    fontSize: 16,
-    color: BuyerColors.textGray,
-    fontWeight: "500",
-  },
-
-  passportButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#333",
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    alignSelf: "flex-start",
-    gap: 6,
-  },
-
-  passportButtonText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-
-  avatarContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    overflow: "hidden",
-    backgroundColor: "#E0E0E0",
-  },
-
-  avatar: {
-    width: "100%",
-    height: "100%",
-  },
-
-  trustScoreCard: {
-    flexDirection: "row",
-    marginHorizontal: 16,
-    marginBottom: 16,
-    backgroundColor: BuyerColors.primaryGreen,
+  // --- TOP HEADER SECTION ---
+  headerSection: {
     paddingHorizontal: 24,
-    paddingVertical: 0,
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderRadius: 20,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    elevation: 3,
+    paddingTop: 24,
+    paddingBottom: 24,
   },
-
-  trustScoreLeft: {
-    flex: 1,
-  },
-
-  trustScoreLabel: {
-    fontSize: 16,
-    color: "#fff",
-    fontWeight: "500",
-  },
-
-  trustScoreValue: {
-    fontSize: 45,
-    fontWeight: "800",
-    color: "#fff",
-  },
-
-  gaugeContainer: {
-    width: 120,
-    height: 110,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
-  metricsContainer: {
-    flexDirection: "row",
-    gap: 12,
-    marginHorizontal: 16,
-    marginBottom: 24,
-  },
-
-  metricCard: {
-    flex: 1,
-    backgroundColor: "#fff",
-    padding: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 20,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    elevation: 3,
-  },
-
-  metricLabel: {
-    fontSize: 14,
-    color: "#333",
-    fontWeight: "700",
-    marginBottom: 8,
-    textAlign: "center",
-  },
-
-  metricValue: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: "#333",
-  },
-
-  transactionsSection: {
-    marginHorizontal: 16,
-    marginBottom: 16,
-  },
-
-  transactionsTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#333",
-    marginBottom: 12,
-  },
-
-  transactionsContainer: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    elevation: 2,
-  },
-
-  transactionItem: {
+  headerTopRow: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 14,
+    marginBottom: 20,
   },
-
-  transactionDivider: {
-    height: 1,
-    backgroundColor: "#f0f0f0",
-    marginLeft: 62,
+  avatarWrapper: {
+    position: "relative",
   },
-
-  transactionIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
+  avatarLarge: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: "#E8F5E9",
+    borderWidth: 2,
+    borderColor: "#C8E6C9",
+  },
+  avatarBadge: {
+    position: "absolute",
+    bottom: -2,
+    right: -2,
+    backgroundColor: BuyerColors.primaryGreen,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
-    marginRight: 12,
+    borderWidth: 2,
+    borderColor: "#FFF",
   },
-
-  transactionContent: {
+  headerInfo: {
+    marginLeft: 16,
     flex: 1,
+    justifyContent: "center",
   },
-
-  transactionId: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#333",
-    marginBottom: 2,
-  },
-
-  transactionLabel: {
-    fontSize: 11,
-    color: BuyerColors.textGray,
-    fontWeight: "500",
+  nameBadgeWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
     marginBottom: 4,
   },
-
-  transactionDate: {
-    fontSize: 12,
-    color: BuyerColors.textGray,
+  profileNameLarge: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: "#111827",
+    letterSpacing: -0.5,
+  },
+  locationWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginBottom: 6,
+  },
+  locationTextPlain: {
+    fontSize: 14,
+    color: "#6B7280",
     fontWeight: "500",
   },
-
-  viewAllButton: {
-    marginHorizontal: 16,
-    backgroundColor: BuyerColors.primaryGreen,
-    paddingVertical: 14,
-    borderRadius: 20,
+  idHash: {
+    fontSize: 12,
+    color: BuyerColors.primaryGreen,
+    fontWeight: "700",
+    fontFamily: "monospace",
+  },
+  verifyButtonSolid: {
+    flexDirection: "row",
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    justifyContent: "center",
+    backgroundColor: BuyerColors.primaryGreen,
+    borderRadius: 10,
+    paddingVertical: 14,
+    gap: 8,
+    shadowColor: BuyerColors.primaryGreen,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
     shadowRadius: 8,
-    elevation: 2,
+    elevation: 4,
+  },
+  verifyButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "700",
+    letterSpacing: 0.5,
   },
 
-  viewAllButtonText: {
-    color: "#fff",
+  // --- SEPARATORS ---
+  thickDivider: {
+    height: 8,
+    backgroundColor: "#F9FAFB",
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: "#F3F4F6",
+  },
+
+  // --- METRICS SECTION ---
+  metricsWrapper: {
+    paddingHorizontal: 24,
+    paddingVertical: 24,
+  },
+  sectionTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 16,
+  },
+  sectionLabel: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: BuyerColors.primaryGreen,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+  },
+  statsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  statBlock: {
+    flex: 1,
+    alignItems: "flex-start",
+  },
+  statVerticalDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: "#E5E7EB",
+    marginHorizontal: 16,
+  },
+  statValueLarge: {
+    fontSize: 28,
+    fontWeight: "800",
+    color: "#111827",
+    marginBottom: 4,
+  },
+  statLabelMuted: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#6B7280",
+  },
+
+  // --- LEDGER SECTION ---
+  ledgerSection: {
+    paddingTop: 24,
+  },
+  ledgerHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 24,
+    marginBottom: 8,
+  },
+  totalTxText: {
+    fontSize: 13,
+    color: BuyerColors.primaryGreen,
     fontWeight: "700",
-    fontSize: 16,
+  },
+  ledgerList: {
+    borderTopWidth: 1,
+    borderColor: "#F3F4F6",
+  },
+  ledgerItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderBottomWidth: 1,
+    borderColor: "#F3F4F6",
+  },
+  ledgerItemLast: {
+    borderBottomWidth: 0,
+  },
+  txIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "#E8F5E9",
+    borderWidth: 1,
+    borderColor: "#C8E6C9",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 16,
+  },
+  txCenter: {
+    flex: 1,
+    justifyContent: "center",
+  },
+  txHashText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#111827",
+    fontFamily: "monospace",
+    marginBottom: 4,
+  },
+  txDateText: {
+    fontSize: 13,
+    color: "#6B7280",
+    fontWeight: "500",
+  },
+  txRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  txAmountText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: BuyerColors.primaryGreen,
   },
 });
