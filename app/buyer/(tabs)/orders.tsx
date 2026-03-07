@@ -58,9 +58,12 @@ const TABS: { key: TabKey; label: string }[] = [
 const TAB_STATUS_MAP: Record<TabKey, string[]> = {
   all: [],
   pending: ["OPEN", "PENDING_FARMER", "PENDING_BUYER", "MATCHED"],
-  payment_due: ["AWAITING_PAYMENT", "UNPAID"],
+  payment_due: ["AWAITING_PAYMENT"],
   in_delivery: [
     "PAID_PENDING_DELIVERY",
+    "PACKING",
+    "READY_FOR_PICKUP",
+    "PICKED_UP",
     "IN_TRANSIT",
     "DELIVERED",
     "COMPLETED",
@@ -111,43 +114,67 @@ const STATUS_META: Record<
     color: "#BE123C",
     bg: "#FFE4E6",
     icon: "wallet-outline",
-  }, // Rose/Crimson
-  UNPAID: {
-    label: "Payment Due",
-    color: "#BE123C",
-    bg: "#FFE4E6",
-    icon: "wallet-outline",
-  }, // Rose/Crimson
+  },
   PAID_PENDING_DELIVERY: {
     label: "Dispatching",
     color: "#0F766E",
     bg: "#CCFBF1",
     icon: "cube-outline",
-  }, // Deep Teal
+  },
+  PACKING: {
+    label: "Packing",
+    color: "#92400E",
+    bg: "#FEF3C7",
+    icon: "archive-outline",
+  },
+  READY_FOR_PICKUP: {
+    label: "Ready for Pickup",
+    color: "#065F46",
+    bg: "#D1FAE5",
+    icon: "checkmark-done-outline",
+  },
+  PICKED_UP: {
+    label: "Picked Up",
+    color: "#0F766E",
+    bg: "#CCFBF1",
+    icon: "bag-handle-outline",
+  },
   IN_TRANSIT: {
     label: "In Transit",
     color: "#047857",
     bg: "#D1FAE5",
     icon: "bus-outline",
-  }, // Emerald
+  },
   DELIVERED: {
     label: "Delivered",
     color: "#15803D",
     bg: "#DCFCE7",
     icon: "checkmark-circle-outline",
-  }, // Forest Green
+  },
   COMPLETED: {
     label: "Completed",
     color: "#166534",
     bg: "#BBF7D0",
     icon: "shield-checkmark-outline",
-  }, // Dark Green
+  },
+  REJECTED: {
+    label: "Rejected",
+    color: "#991B1B",
+    bg: "#FEE2E2",
+    icon: "close-circle-outline",
+  },
+  DISPUTED: {
+    label: "Disputed",
+    color: "#6D28D9",
+    bg: "#EDE9FE",
+    icon: "warning-outline",
+  },
   CANCELLED: {
     label: "Cancelled",
     color: "#4B5563",
     bg: "#F3F4F6",
     icon: "close-circle-outline",
-  }, // Neutral Gray
+  },
 };
 
 const MATCHING_PHASE = ["OPEN", "MATCHED", "PENDING_BUYER", "PENDING_FARMER"];
@@ -156,6 +183,7 @@ export default function BuyerOrders() {
   const router = useRouter();
   const [orders, setOrders] = useState<PlacedOrder[]>([]);
   const [proposalCounts, setProposalCounts] = useState<Record<string, number>>({});
+  const [proposalPrices, setProposalPrices] = useState<Record<string, { min: number; max: number }>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>("all");
@@ -168,14 +196,24 @@ export default function BuyerOrders() {
         matchingOrders.map((o) => api.get(`/api/buyer/matching/order/${o.id}`)),
       );
       const counts: Record<string, number> = {};
+      const prices: Record<string, { min: number; max: number }> = {};
       results.forEach((result, i) => {
         if (result.status === "fulfilled") {
           const data: any = result.value;
           const proposals: any[] = data?.proposals ?? data?.matches ?? (Array.isArray(data) ? data : []);
-          if (proposals.length > 0) counts[matchingOrders[i].id] = proposals.length;
+          if (proposals.length > 0) {
+            counts[matchingOrders[i].id] = proposals.length;
+            const pkgPrices = proposals
+              .map((p: any) => Number(p.stock?.price_per_kg ?? p.price_per_kg))
+              .filter((v) => !isNaN(v) && v > 0);
+            if (pkgPrices.length > 0) {
+              prices[matchingOrders[i].id] = { min: Math.min(...pkgPrices), max: Math.max(...pkgPrices) };
+            }
+          }
         }
       });
       setProposalCounts(counts);
+      setProposalPrices(prices);
     } catch {
       // silently ignore — counts just won't show
     }
@@ -275,8 +313,10 @@ export default function BuyerOrders() {
     };
 
     const proposalCount = proposalCounts[item.id] ?? 0;
-    const paymentDue = ["AWAITING_PAYMENT", "UNPAID"].includes(item.status);
+    const paymentDue = ["AWAITING_PAYMENT"].includes(item.status);
     const badgeCount = proposalCount > 0 ? proposalCount : (paymentDue ? "!" : null);
+    const isMatchingPhase = MATCHING_PHASE.includes(item.status);
+    const priceRange = proposalPrices[item.id];
 
     return (
       <TouchableOpacity
@@ -319,10 +359,30 @@ export default function BuyerOrders() {
             </View>
 
             <View style={styles.priceBlock}>
-              <Text style={styles.priceLabel}>Total Amount</Text>
-              <Text style={styles.priceValue}>
-                Rs. {formatCurrency(item.totalPrice)}
-              </Text>
+              {isMatchingPhase ? (
+                priceRange ? (
+                  <>
+                    <Text style={styles.priceLabel}>Proposals From</Text>
+                    <Text style={styles.priceValue}>
+                      Rs. {priceRange.min.toLocaleString()}
+                      {priceRange.max !== priceRange.min ? `–${priceRange.max.toLocaleString()}` : ""}
+                    </Text>
+                    <Text style={styles.pricePerKgLabel}>/kg</Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.priceLabel}>Price</Text>
+                    <Text style={styles.priceAwaitingText}>Awaiting proposals</Text>
+                  </>
+                )
+              ) : (
+                <>
+                  <Text style={styles.priceLabel}>Total Amount</Text>
+                  <Text style={styles.priceValue}>
+                    Rs. {formatCurrency(item.totalPrice)}
+                  </Text>
+                </>
+              )}
             </View>
           </View>
 
@@ -505,8 +565,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 5,
     zIndex: 10,
-    borderWidth: 2,
-    borderColor: "#FFFFFF",
+    // borderWidth: 2,
+    // borderColor: "#FFFFFF",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.2,
@@ -591,9 +651,21 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   priceValue: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "900",
     color: GREEN,
+  },
+  pricePerKgLabel: {
+    fontSize: 11,
+    fontWeight: "500",
+    color: "#6B7280",
+    marginTop: 1,
+  },
+  priceAwaitingText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#9CA3AF",
+    fontStyle: "italic",
   },
 
   // Metrics (Chips instead of dividers)

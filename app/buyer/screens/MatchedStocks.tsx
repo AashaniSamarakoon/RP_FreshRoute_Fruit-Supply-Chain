@@ -16,6 +16,7 @@ import {
   FlatList,
   Image,
   Modal,
+  Platform,
   SectionList,
   StyleSheet,
   Text,
@@ -26,20 +27,19 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "../../../components/Header";
 import ErrorModal from "../../../components/modals/ErrorModal";
 import SuccessModal from "../../../components/modals/SuccessModal";
-import { BuyerColors } from "../../../constants/theme";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 interface MatchedStock {
   id: string;
   stockId: string;
-  orderId: string; // Added to track which order this belongs to
+  orderId: string;
   farmerId: string;
   farmerName: string;
   fruitType: string;
   category: string;
   quantity: number;
-  orderQuantity: number; // The amount the buyer requested
+  orderQuantity: number;
   availableUnit: string;
   grade: string;
   quality: string;
@@ -49,33 +49,35 @@ interface MatchedStock {
   estimatedHarvestDate?: string;
   imageUrls: string[];
   status: string;
+  pricePerKg: number | null;
+  pricing: {
+    unitPrice: number;
+    basePrice: number;
+    serviceCharge: number;
+    deliveryFee: number;
+    estimatedTotal: number;
+  } | null;
 }
 
-// Data structure required by SectionList
 interface OrderGroup {
   orderId: string;
   fruitType: string;
   category: string;
   orderQuantity: number;
-  data: MatchedStock[]; // The proposals (matches) for this order
+  data: MatchedStock[]; 
 }
 
 // --- Helpers ---
 const getFruitMeta = (fruit: string) => {
   const f = fruit?.toLowerCase() || "";
-  if (f.includes("banana"))
-    return { emoji: "🍌", bg: "#FEF9C3", text: "#CA8A04" };
-  if (f.includes("mango"))
-    return { emoji: "🥭", bg: "#FFEDD5", text: "#EA580C" };
-  if (f.includes("pineapple"))
-    return { emoji: "🍍", bg: "#FEF08A", text: "#A16207" };
+  if (f.includes("banana")) return { emoji: "🍌", bg: "#FEF9C3", text: "#CA8A04" };
+  if (f.includes("mango")) return { emoji: "🥭", bg: "#FFEDD5", text: "#EA580C" };
+  if (f.includes("pineapple")) return { emoji: "🍍", bg: "#FEF08A", text: "#A16207" };
   return { emoji: "📦", bg: "#F3F4F6", text: "#6B7280" };
 };
 
 export default function MatchedStocksScreen() {
   const router = useRouter();
-  // orderId param is passed when navigating from a specific order card.
-  // When absent (e.g. dashboard "See all"), we fall back to the buyer-wide endpoint.
   const { orderId: orderIdParam } = useLocalSearchParams<{
     orderId?: string;
   }>();
@@ -87,12 +89,8 @@ export default function MatchedStocksScreen() {
   const [successModalVisible, setSuccessModalVisible] = useState(false);
   const [selectedStock, setSelectedStock] = useState<MatchedStock | null>(null);
   const [errorModalVisible, setErrorModalVisible] = useState(false);
-  // In per-order mode this holds the orderId → calls /api/buyer/matching/:orderId
-  // In buyer-wide mode this holds the buyerId  → calls /api/buyer/matching/:buyerId
   const [fetchId, setFetchId] = useState<string | null>(orderIdParam || null);
-  const [approvingProposals, setApprovingProposals] = useState<Set<string>>(
-    new Set(),
-  );
+  const [approvingProposals, setApprovingProposals] = useState<Set<string>>(new Set());
 
   // Image modal state
   const [imageModalVisible, setImageModalVisible] = useState(false);
@@ -101,11 +99,9 @@ export default function MatchedStocksScreen() {
 
   const resolveFetchId = useCallback(async () => {
     if (orderIdParam) {
-      // Per-order mode: use orderId directly → GET /api/buyer/matching/:orderId
       setFetchId(orderIdParam);
       return;
     }
-    // Buyer-wide mode: look up buyer UUID → GET /api/buyer/matching/:buyerId
     try {
       const userStr = await AsyncStorage.getItem("user");
       if (!userStr) {
@@ -135,15 +131,10 @@ export default function MatchedStocksScreen() {
 
         if (!fetchId) return;
 
-        // Per-order mode:  GET /api/buyer/matching/order/:orderId  (orderId from nav params)
-        // Buyer-wide mode: GET /api/buyer/matching/:buyerId         (buyerId from AsyncStorage)
         const apiUrl = isPerOrderMode
           ? `/api/buyer/matching/order/${fetchId}`
           : `/api/buyer/matching/${fetchId}`;
-        console.log(
-          `[MatchedStocks] ${isPerOrderMode ? "per-order" : "buyer-wide"} fetch:`,
-          apiUrl,
-        );
+        
         let data: any;
         try {
           data = await api.get(apiUrl);
@@ -152,9 +143,6 @@ export default function MatchedStocksScreen() {
           setLoading(false);
           return;
         }
-
-        console.log("[MatchedStocks] raw response keys:", data ? Object.keys(data) : "null/undefined");
-        console.log("[MatchedStocks] raw response:", JSON.stringify(data)?.slice(0, 500));
 
         let matches: any[] = [];
         if (data?.proposals && Array.isArray(data.proposals)) {
@@ -167,57 +155,55 @@ export default function MatchedStocksScreen() {
           matches = data;
         }
 
-        console.log("[MatchedStocks] resolved matches count:", matches.length);
-
         if (matches.length === 0) {
           setGroupedStocks([]);
           setLoading(false);
           return;
         }
 
-        // 1. Transform raw data into structured MatchedStock array
+        // Transform data
         const transformedStocks = matches
           .map((item: any) => {
             const stock = item.stock || {};
             const farmer = stock.farmer || {};
             const order = item.order || {};
 
-            console.log("item", item);
-            if (!stock?.id || !item.id) {
-              console.log("[MatchedStocks] FILTERED OUT item - missing stock.id or item.id:", { itemId: item.id, stockId: stock?.id });
-              return null;
-            }
+            if (!stock?.id || !item.id) return null;
 
             return {
               id: item.id,
               stockId: stock.id,
               orderId: order.id || "Unknown Order",
               farmerId: farmer?.user?.id || farmer?.id || "",
-              farmerName:
-                farmer?.user?.first_name + " " + farmer?.user?.last_name,
+              farmerName: farmer?.user?.first_name + " " + farmer?.user?.last_name,
               fruitType: order.fruit_type || stock.fruit_type || "Fruit",
               category: order.variant || stock.variant || "Unknown",
-              quantity: parseInt(
-                item.quantity_proposed ?? stock.quantity ?? 0,
-                10,
-              ),
+              quantity: parseInt(item.quantity_proposed ?? stock.quantity ?? 0, 10),
               orderQuantity: parseInt(order.quantity || 0, 10),
               availableUnit: "kg",
               grade: stock.grade || "A",
               quality: stock.quality || "Premium",
               farmLocation: farmer?.location || "Unknown Location",
               distance: item.distance_km || 0,
-              trustScore: farmer?.reputation
-                ? `${farmer.reputation}/5`
-                : "Not rated",
+              trustScore: farmer?.reputation ? `${farmer.reputation}/5` : "Not rated",
               estimatedHarvestDate: stock.estimated_harvest_date,
               imageUrls: stock.image_url || [],
               status: item.status || "PENDING",
+              pricePerKg: stock.price_per_kg != null ? Number(stock.price_per_kg) : null,
+              pricing: item.pricing
+                ? {
+                    unitPrice: Number(item.pricing.unitPrice),
+                    basePrice: Number(item.pricing.basePrice),
+                    serviceCharge: Number(item.pricing.serviceCharge),
+                    deliveryFee: Number(item.pricing.deliveryFee),
+                    estimatedTotal: Number(item.pricing.estimatedTotal),
+                  }
+                : null,
             };
           })
           .filter((item) => item !== null) as MatchedStock[];
 
-        // 2. Group the transformed stocks by Order ID
+        // Group by Order
         const groupedData = transformedStocks.reduce(
           (acc: Record<string, OrderGroup>, curr) => {
             if (!acc[curr.orderId]) {
@@ -226,7 +212,7 @@ export default function MatchedStocksScreen() {
                 fruitType: curr.fruitType,
                 category: curr.category,
                 orderQuantity: curr.orderQuantity,
-                data: [], // This holds the proposals for this specific order
+                data: [], 
               };
             }
             acc[curr.orderId].data.push(curr);
@@ -239,11 +225,7 @@ export default function MatchedStocksScreen() {
         setError(null);
         setLoading(false);
       } catch (error) {
-        setError(
-          error instanceof Error
-            ? error.message
-            : "Failed to load matched stocks.",
-        );
+        setError(error instanceof Error ? error.message : "Failed to load matched stocks.");
         setGroupedStocks([]);
         setLoading(false);
       }
@@ -271,14 +253,11 @@ export default function MatchedStocksScreen() {
       setApprovingProposals((prev) => new Set(prev).add(item.id));
       await api.post(`/api/buyer/matching/approve/${item.id}`, {});
 
-      // Update the status inside the deeply nested array
       setGroupedStocks((prevGroups) =>
         prevGroups.map((group) => ({
           ...group,
           data: group.data.map((stock) =>
-            stock.id === item.id
-              ? { ...stock, status: "PENDING_FARMER" }
-              : stock,
+            stock.id === item.id ? { ...stock, status: "PENDING_FARMER" } : stock,
           ),
         })),
       );
@@ -286,9 +265,7 @@ export default function MatchedStocksScreen() {
       setSuccessModalVisible(true);
       setSelectedStock(item);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to approve proposal",
-      );
+      setError(err instanceof Error ? err.message : "Failed to approve proposal");
       setErrorModalVisible(true);
     } finally {
       setApprovingProposals((prev) => {
@@ -299,50 +276,49 @@ export default function MatchedStocksScreen() {
     }
   };
 
-  // --- UI Renders ---
+  // --- PREMIUM UI RENDER ---
 
-  // Renders the Farmer Proposal Card
   const renderStockCard = ({ item }: { item: MatchedStock }) => {
     const fruitMeta = getFruitMeta(item.fruitType);
     const isApproving = approvingProposals.has(item.id);
 
     return (
       <View style={styles.stockCard}>
-        {/* Card Header (Farmer Profile) */}
+        {/* Card Header (Farmer CRM Style) */}
         <TouchableOpacity
           style={styles.cardHeader}
           activeOpacity={0.7}
           onPress={() => navigateToProfile(item)}
         >
-          <View style={styles.farmerInfo}>
-            <View style={styles.nameRow}>
-              <Text style={styles.farmerName}>{item.farmerName}</Text>
-              <View style={styles.verifiedBadge}>
-                <ShieldCheck size={12} color="#16A34A" />
-                <Text style={styles.verifiedText}>Verified</Text>
+          <View style={styles.headerLeft}>
+            <View style={styles.farmerAvatar}>
+              <Text style={styles.farmerAvatarText}>
+                {item.farmerName ? item.farmerName.charAt(0).toUpperCase() : "F"}
+              </Text>
+              <View style={styles.verifiedBadgeDot}>
+                <ShieldCheck size={10} color="#FFFFFF" />
               </View>
             </View>
-            <View style={styles.locationRow}>
-              <MapPin size={14} color="#6B7280" />
-              <Text style={styles.locationText} numberOfLines={1}>
-                {item.farmLocation}
-              </Text>
+            
+            <View style={styles.farmerInfo}>
+              <Text style={styles.farmerName}>{item.farmerName}</Text>
+              <View style={styles.locationRow}>
+                <MapPin size={12} color="#6B7280" />
+                <Text style={styles.locationText} numberOfLines={1}>
+                  {item.farmLocation} • {item.distance.toFixed(1)} km
+                </Text>
+              </View>
             </View>
           </View>
-          <View style={styles.headerRight}>
-            <View style={styles.distanceBadge}>
-              <Text style={styles.distanceText}>
-                {item.distance.toFixed(1)} km
-              </Text>
-            </View>
-            <ChevronRight size={20} color="#D1D5DB" />
-          </View>
+
+          <ChevronRight size={20} color="#D1D5DB" />
         </TouchableOpacity>
 
-        <View style={styles.dashedDivider} />
+        <View style={styles.solidDivider} />
 
         {/* Card Body (Product Details) */}
         <View style={styles.productBody}>
+          {/* Image */}
           <TouchableOpacity
             style={styles.imageWrapper}
             activeOpacity={0.8}
@@ -357,70 +333,61 @@ export default function MatchedStocksScreen() {
           >
             {item.imageUrls.length > 0 ? (
               <>
-                <Image
-                  source={{ uri: item.imageUrls[0] }}
-                  style={styles.productImage}
-                />
+                <Image source={{ uri: item.imageUrls[0] }} style={styles.productImage} />
                 {item.imageUrls.length > 1 && (
                   <View style={styles.imageCountBadge}>
-                    <ImageIcon
-                      size={10}
-                      color="#fff"
-                      style={{ marginRight: 2 }}
-                    />
-                    <Text style={styles.imageCountText}>
-                      +{item.imageUrls.length - 1}
-                    </Text>
+                    <ImageIcon size={10} color="#fff" style={{ marginRight: 2 }} />
+                    <Text style={styles.imageCountText}>+{item.imageUrls.length - 1}</Text>
                   </View>
                 )}
               </>
             ) : (
-              <View
-                style={[
-                  styles.avatarFallback,
-                  { backgroundColor: fruitMeta.bg },
-                ]}
-              >
+              <View style={[styles.avatarFallback, { backgroundColor: fruitMeta.bg }]}>
                 <Text style={styles.avatarEmoji}>{fruitMeta.emoji}</Text>
               </View>
             )}
           </TouchableOpacity>
 
+          {/* Details */}
           <View style={styles.productInfo}>
-            <View style={styles.chipContainer}>
-              <View
-                style={[
-                  styles.chip,
-                  {
-                    backgroundColor: "#F0FDF4",
-                    borderColor: "#BBF7D0",
-                    borderWidth: 1,
-                  },
-                ]}
-              >
-                <Text style={[styles.chipText, { color: "#16A34A" }]}>
-                  Yield: {item.quantity} {item.availableUnit}
+            
+            {/* Tag Row (Yield, Grade, and Harvest together) */}
+            <View style={styles.tagRow}>
+              <View style={styles.yieldTag}>
+                <Text style={styles.yieldTagText}>
+                  Yield: {item.quantity}{item.availableUnit}
                 </Text>
               </View>
-              <View style={styles.chip}>
-                <Text style={styles.chipText}>Grade {item.grade}</Text>
+              
+              <View style={styles.gradeTag}>
+                <Text style={styles.gradeTagText}>Grade {item.grade}</Text>
               </View>
+
+              {item.estimatedHarvestDate && (
+                <View style={styles.harvestTag}>
+                  <Calendar size={12} color="#4B5563" style={{ marginRight: 4 }} />
+                  <Text style={styles.harvestTagText}>
+                    {new Date(item.estimatedHarvestDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                  </Text>
+                </View>
+              )}
             </View>
 
-            {item.estimatedHarvestDate && (
-              <View style={styles.harvestRow}>
-                <Calendar size={14} color="#6B7280" />
-                <Text style={styles.harvestText}>
-                  Harvest:{" "}
-                  <Text style={{ fontWeight: "700", color: "#374151" }}>
-                    {new Date(item.estimatedHarvestDate).toLocaleDateString(
-                      "en-US",
-                      { month: "short", day: "numeric" },
-                    )}
+            {/* Minimalist Total Pricing Box */}
+            {item.pricing && (
+              <View style={styles.invoiceBox}>
+                <View style={styles.invoiceRow}>
+                  <View>
+                    <Text style={styles.invoiceTotalLabel}>Estimated Total</Text>
+                    <Text style={styles.invoiceSubLabel}>Inc. service & delivery</Text>
+                  </View>
+                  <Text style={styles.invoiceTotalValue}>
+                    Rs. {item.pricing.estimatedTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </Text>
-                </Text>
+                </View>
               </View>
             )}
+
           </View>
         </View>
 
@@ -456,13 +423,10 @@ export default function MatchedStocksScreen() {
                   item.status === "REJECTED" && styles.statusErrorText,
                 ]}
               >
-                {item.status === "PENDING_FARMER"
-                  ? "Waiting for Farmer Confirmation"
-                  : item.status === "ACCEPTED"
-                    ? "Deal Accepted"
-                    : item.status === "REJECTED"
-                      ? "Proposal Rejected"
-                      : item.status}
+                {item.status === "PENDING_FARMER" ? "Waiting for Farmer Confirmation"
+                  : item.status === "ACCEPTED" ? "Deal Accepted"
+                  : item.status === "REJECTED" ? "Proposal Rejected"
+                  : item.status}
               </Text>
             </View>
           )}
@@ -484,7 +448,7 @@ export default function MatchedStocksScreen() {
 
       {loading ? (
         <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={BuyerColors.primaryGreen} />
+          <ActivityIndicator size="large" color="#2E7D32" />
           <Text style={styles.loadingText}>Analyzing market matches...</Text>
         </View>
       ) : groupedStocks.length === 0 ? (
@@ -505,91 +469,49 @@ export default function MatchedStocksScreen() {
           renderItem={renderStockCard}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
-          stickySectionHeadersEnabled={true} // Makes the order header stick to the top!
+          stickySectionHeadersEnabled={true}
         />
       )}
 
       {/* Image Gallery Modal */}
-      <Modal
-        visible={imageModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setImageModalVisible(false)}
-        statusBarTranslucent
-      >
+      <Modal visible={imageModalVisible} transparent animationType="fade" onRequestClose={() => setImageModalVisible(false)} statusBarTranslucent>
         <View style={styles.imageModalOverlay}>
-          <TouchableOpacity
-            style={styles.imageModalClose}
-            onPress={() => setImageModalVisible(false)}
-            activeOpacity={0.7}
-          >
+          <TouchableOpacity style={styles.imageModalClose} onPress={() => setImageModalVisible(false)} activeOpacity={0.7}>
             <Text style={styles.imageModalCloseText}>✕</Text>
           </TouchableOpacity>
-
           {currentImages.length > 1 && (
-            <Text style={styles.imageModalCounter}>
-              {currentImageIndex + 1} / {currentImages.length}
-            </Text>
+            <Text style={styles.imageModalCounter}>{currentImageIndex + 1} / {currentImages.length}</Text>
           )}
-
           <FlatList
-            data={currentImages}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
+            data={currentImages} horizontal pagingEnabled showsHorizontalScrollIndicator={false}
             initialScrollIndex={currentImageIndex}
-            getItemLayout={(_, index) => ({
-              length: SCREEN_WIDTH,
-              offset: SCREEN_WIDTH * index,
-              index,
-            })}
+            getItemLayout={(_, index) => ({ length: SCREEN_WIDTH, offset: SCREEN_WIDTH * index, index })}
             onMomentumScrollEnd={(e) => {
-              const index = Math.round(
-                e.nativeEvent.contentOffset.x / SCREEN_WIDTH,
-              );
+              const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
               setCurrentImageIndex(index);
             }}
             keyExtractor={(uri, i) => `${uri}-${i}`}
             renderItem={({ item: uri }) => (
               <View style={styles.imageModalPage}>
-                <Image
-                  source={{ uri }}
-                  style={styles.imageModalFull}
-                  resizeMode="contain"
-                />
+                <Image source={{ uri }} style={styles.imageModalFull} resizeMode="contain" />
               </View>
             )}
           />
         </View>
       </Modal>
 
-      {/* Success Modal */}
+      {/* Success/Error Modals */}
       <SuccessModal
         visible={successModalVisible}
-        onClose={() => {
-          setSuccessModalVisible(false);
-          setSelectedStock(null);
-        }}
+        onClose={() => { setSuccessModalVisible(false); setSelectedStock(null); }}
         title="Proposal Approved"
-        message={
-          selectedStock
-            ? `You have approved the proposal from ${selectedStock.farmerName}. Awaiting farmer's final confirmation.`
-            : ""
-        }
+        message={selectedStock ? `You have approved the proposal from ${selectedStock.farmerName}. Awaiting farmer's final confirmation.` : ""}
         buttonText="Got it"
-        onButtonPress={() => {
-          setSuccessModalVisible(false);
-          setSelectedStock(null);
-        }}
+        onButtonPress={() => { setSuccessModalVisible(false); setSelectedStock(null); }}
       />
-
-      {/* Error Modal */}
       <ErrorModal
         visible={errorModalVisible}
-        onClose={() => {
-          setErrorModalVisible(false);
-          setError(null);
-        }}
+        onClose={() => { setErrorModalVisible(false); setError(null); }}
         title="Error"
         message={error || "An unexpected error occurred"}
       />
@@ -598,14 +520,16 @@ export default function MatchedStocksScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F3F4F6" },
+  container: { 
+    flex: 1, 
+    backgroundColor: "#ffffff",
+  },
   centerContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 32,
   },
-
   loadingText: {
     fontSize: 15,
     color: "#6B7280",
@@ -616,220 +540,218 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: "#F9FAFB",
+    backgroundColor: "#FFFFFF",
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 16,
     borderWidth: 1,
     borderColor: "#E5E7EB",
   },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: 8,
-  },
-  emptyMessage: {
-    fontSize: 15,
-    color: "#6B7280",
-    textAlign: "center",
-    lineHeight: 22,
-  },
-
+  emptyTitle: { fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 8 },
+  emptyMessage: { fontSize: 15, color: "#6B7280", textAlign: "center", lineHeight: 22 },
   listContent: { paddingTop: 16, paddingBottom: 40 },
 
-  // --- Card Structure ---
+  // --- NEW CARD UI ---
   stockCard: {
-    backgroundColor: "#ffffff",
+    backgroundColor: "#FFFFFF",
     borderRadius: 16,
     padding: 16,
-    marginHorizontal: 20,
+    marginHorizontal: 16,
     marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.03,
     shadowRadius: 8,
-    elevation: 2,
+    elevation: 1,
   },
 
-  // Card Header (Farmer Profile)
+  // Header
   cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 16,
   },
-  farmerInfo: { flex: 1, marginRight: 12 },
-  nameRow: {
+  headerLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginBottom: 4,
+    flex: 1,
   },
-  farmerName: { fontSize: 16, fontWeight: "700", color: "#111827" },
-  verifiedBadge: {
-    flexDirection: "row",
+  farmerAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#E8F5E9",
+    justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#F0FDF4",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
+    marginRight: 12,
     borderWidth: 1,
-    borderColor: "#BBF7D0",
-    gap: 2,
+    borderColor: "#C8E6C9",
+    position: "relative",
   },
-  verifiedText: { fontSize: 11, color: "#16A34A", fontWeight: "600" },
+  farmerAvatarText: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#2E7D32",
+  },
+  verifiedBadgeDot: {
+    position: "absolute",
+    bottom: -2,
+    right: -2,
+    backgroundColor: "#2E7D32",
+    borderRadius: 10,
+    width: 18,
+    height: 18,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+  },
+  farmerInfo: { flex: 1, paddingRight: 8 },
+  farmerName: { fontSize: 16, fontWeight: "800", color: "#111827", marginBottom: 2 },
   locationRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   locationText: { fontSize: 13, color: "#6B7280", fontWeight: "500" },
 
-  headerRight: { flexDirection: "row", alignItems: "center", gap: 8 },
-  distanceBadge: {
-    backgroundColor: "#F3F4F6",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  distanceText: { fontSize: 12, fontWeight: "700", color: "#4B5563" },
-
   // Divider
-  dashedDivider: {
+  solidDivider: {
     height: 1,
-    borderStyle: "dashed",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    margin: -1,
+    backgroundColor: "#F3F4F6",
     marginBottom: 16,
   },
 
-  // Card Body (Product)
+  // Body
   productBody: {
     flexDirection: "row",
     alignItems: "flex-start",
     marginBottom: 16,
   },
   imageWrapper: {
-    width: 72,
-    height: 72,
+    width: 96, // Enlarged to perfectly match right-side content height
+    height: 96, // Enlarged to perfectly match right-side content height
     borderRadius: 12,
     overflow: "hidden",
     backgroundColor: "#F9FAFB",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
   productImage: { width: "100%", height: "100%", resizeMode: "cover" },
   imageCountBadge: {
     position: "absolute",
     bottom: 4,
     right: 4,
-    backgroundColor: "rgba(0,0,0,0.7)",
-    borderRadius: 8,
+    backgroundColor: "rgba(17, 24, 39, 0.75)",
+    borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 2,
     flexDirection: "row",
     alignItems: "center",
   },
   imageCountText: { color: "#fff", fontSize: 10, fontWeight: "bold" },
-  avatarFallback: {
-    width: "100%",
-    height: "100%",
-    justifyContent: "center",
-    alignItems: "center",
-  },
+  avatarFallback: { width: "100%", height: "100%", justifyContent: "center", alignItems: "center" },
   avatarEmoji: { fontSize: 32 },
 
-  productInfo: { flex: 1, marginLeft: 16, paddingTop: 4 },
-  chipContainer: {
+  productInfo: { flex: 1, marginLeft: 16 },
+  
+  // Tags
+  tagRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 8,
-  },
-  chip: {
-    backgroundColor: "#F3F4F6",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  chipText: { fontSize: 12, fontWeight: "700", color: "#4B5563" },
-
-  harvestRow: {
-    flexDirection: "row",
+    flexWrap: "wrap", // Safely wraps if the phone screen is narrow
     alignItems: "center",
-    gap: 6,
-    backgroundColor: "#F9FAFB",
-    alignSelf: "flex-start",
+    gap: 8,
+    marginBottom: 12,
+  },
+  yieldTag: {
+    backgroundColor: "#ECFDF5",
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
   },
-  harvestText: { fontSize: 13, color: "#6B7280" },
+  yieldTagText: { fontSize: 12, fontWeight: "700", color: "#059669" },
+  gradeTag: {
+    backgroundColor: "#F3F4F6",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  gradeTagText: { fontSize: 12, fontWeight: "600", color: "#4B5563" },
+  
+  harvestTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F3F4F6",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  harvestTagText: { 
+    fontSize: 12, 
+    fontWeight: "600", 
+    color: "#4B5563" 
+  },
 
-  // Card Footer (Actions)
+  // Minimalist Pricing Box
+  invoiceBox: {
+    backgroundColor: "#F9FAFB",
+    borderRadius: 8,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#F3F4F6",
+    marginTop: 4,
+  },
+  invoiceRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  invoiceTotalLabel: { fontSize: 13, color: "#4B5563", fontWeight: "700" },
+  invoiceSubLabel: { 
+    fontSize: 11, 
+    color: "#9CA3AF", 
+    fontWeight: "500", 
+    marginTop: 2 
+  },
+  invoiceTotalValue: { fontSize: 18, color: "#2E7D32", fontWeight: "900" },
+
+  // Footer Actions
   cardFooter: { marginTop: 4 },
   primaryButton: {
-    backgroundColor: BuyerColors.primaryGreen,
+    backgroundColor: "#2E7D32", // Forest Green
     paddingVertical: 14,
-    borderRadius: 12,
+    borderRadius: 24,
     alignItems: "center",
     justifyContent: "center",
   },
-  primaryButtonText: { color: "#ffffff", fontSize: 15, fontWeight: "bold" },
+  primaryButtonText: { color: "#FFFFFF", fontSize: 14, fontWeight: "700", letterSpacing: 0.5 },
 
   // Status Indicator States
   statusContainer: {
-    paddingVertical: 14,
-    borderRadius: 12,
+    paddingVertical: 12,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
   },
-  statusText: { fontSize: 14, fontWeight: "700" },
-  statusWarning: { backgroundColor: "#FEF9C3" },
-  statusWarningText: { color: "#CA8A04" },
-  statusSuccess: { backgroundColor: "#F0FDF4" },
-  statusSuccessText: { color: "#16A34A" },
-  statusError: { backgroundColor: "#FEF2F2" },
+  statusText: { fontSize: 13, fontWeight: "700", letterSpacing: 0.5 },
+  statusWarning: { backgroundColor: "#FFFBEB", borderColor: "#FEF08A" },
+  statusWarningText: { color: "#B45309" },
+  statusSuccess: { backgroundColor: "#ECFDF5", borderColor: "#A7F3D0" },
+  statusSuccessText: { color: "#059669" },
+  statusError: { backgroundColor: "#FEF2F2", borderColor: "#FECACA" },
   statusErrorText: { color: "#DC2626" },
 
-  // Image Gallery Modal
-  imageModalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.95)",
-    justifyContent: "center",
-  },
-  imageModalClose: {
-    position: "absolute",
-    top: 52,
-    right: 20,
-    zIndex: 10,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  imageModalCloseText: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "bold",
-  },
-  imageModalCounter: {
-    position: "absolute",
-    top: 58,
-    left: 0,
-    right: 0,
-    textAlign: "center",
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "600",
-    zIndex: 10,
-  },
-  imageModalPage: {
-    width: SCREEN_WIDTH,
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  imageModalFull: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_WIDTH * 1.2,
-  },
+  // Image Modal
+  imageModalOverlay: { flex: 1, backgroundColor: "rgba(17,24,39,0.95)", justifyContent: "center" },
+  imageModalClose: { position: "absolute", top: 52, right: 20, zIndex: 10, width: 36, height: 36, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.2)", justifyContent: "center", alignItems: "center" },
+  imageModalCloseText: { color: "#fff", fontSize: 18, fontWeight: "bold" },
+  imageModalCounter: { position: "absolute", top: 58, left: 0, right: 0, textAlign: "center", color: "#fff", fontSize: 14, fontWeight: "600", zIndex: 10 },
+  imageModalPage: { width: SCREEN_WIDTH, flex: 1, justifyContent: "center", alignItems: "center" },
+  imageModalFull: { width: SCREEN_WIDTH, height: SCREEN_WIDTH * 1.2 },
 });

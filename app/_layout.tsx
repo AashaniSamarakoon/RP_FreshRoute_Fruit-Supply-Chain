@@ -137,7 +137,7 @@ export default function RootLayout() {
             <Stack.Screen name="transporter" options={{ headerShown: false }} />
           </Stack>
           <NotificationBannerHost />
-          <StatusBar style="inverted" />
+          <StatusBar style="inverted"/>
         </ThemeProvider>
       </TranslationProvider>
     </GestureHandlerRootView>

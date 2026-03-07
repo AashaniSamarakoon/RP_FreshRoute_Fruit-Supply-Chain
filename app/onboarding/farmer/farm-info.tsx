@@ -84,7 +84,7 @@ export default function FarmInfoStep() {
   return (
     <OnboardingShell
       step={2}
-      hideBack
+      // hideBack
       footer={
         <TouchableOpacity
           style={[styles.primaryButton, saving && { opacity: 0.7 }]}

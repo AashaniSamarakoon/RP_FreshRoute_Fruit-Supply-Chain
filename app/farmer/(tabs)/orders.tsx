@@ -90,7 +90,7 @@ type StatusMeta = { label: string; color: string; bg: string };
 const HARVEST_STATUS: Record<string, StatusMeta> = {
   OPEN:     { label: "Open",     color: "#B45309", bg: "#FEF3C7" },
   FRESH:    { label: "Fresh",    color: "#B45309", bg: "#FEF3C7" },
-  RESERVED: { label: "Reserved", color: "#0F766E", bg: "#CCFBF1" },
+  // RESERVED: { label: "Reserved", color: "#0F766E", bg: "#CCFBF1" },
   MATCHED:  { label: "Matched",  color: "#166534", bg: "#BBF7D0" },
 };
 const DEFAULT_STATUS = HARVEST_STATUS.OPEN;
@@ -349,9 +349,9 @@ const HarvestCard = React.memo(({
 
   return (
     <TouchableOpacity style={styles.card} activeOpacity={0.85} onPress={onPress}>
-      {proposals.length > 0 && (
+      {pendingCount > 0 && (
         <View style={styles.cardCountBadge}>
-          <Text style={styles.cardCountBadgeText}>{proposals.length}</Text>
+          <Text style={styles.cardCountBadgeText}>{pendingCount}</Text>
         </View>
       )}
       <View style={styles.cardHeader}>
@@ -400,11 +400,6 @@ const StandaloneProposalCard = React.memo(({
   onViewProfile: () => void;
 }) => (
   <View style={styles.card}>
-    {proposal.status === "PENDING_FARMER" && (
-      <View style={styles.cardCountBadge}>
-        <Text style={styles.cardCountBadgeText}>1</Text>
-      </View>
-    )}
     <TouchableOpacity style={styles.cardHeader} activeOpacity={0.7} onPress={onViewProfile}>
       <View style={[styles.fruitIcon, styles.personIconBg]}>
         <Ionicons name="person" size={20} color={PRIMARY_GREEN} />
@@ -724,7 +719,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 5,
     zIndex: 10,
     borderWidth: 2,
-    borderColor: "#FFFFFF",
+    borderColor: "#EF4444",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.2,
