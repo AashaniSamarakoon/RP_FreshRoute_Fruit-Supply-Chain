@@ -38,7 +38,6 @@ export default function JobMap() {
     try {
       const data = await api.get(`/api/transporter/jobs/${id}`);
 
-      // --- FIX: Ensure lat/lng are Numbers, not Strings ---
       const rawManifest = data.route_manifest || [];
       const cleanManifest = rawManifest
         .map((item: any) => ({

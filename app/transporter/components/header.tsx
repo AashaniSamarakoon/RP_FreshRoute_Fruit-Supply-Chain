@@ -1,5 +1,4 @@
 // components/Header.tsx
-import api from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -54,8 +53,8 @@ export default function Header({ onSearch }: HeaderProps) {
 
         // 2. Get Notifications (Switched to transporter endpoint)
         try {
-          const data = await api.get(`/api/transporter/notifications`);
-          setUnreadCount(data.unreadCount || 0);
+          //const data = await api.get(`/api/transporter/notifications`);
+          //setUnreadCount(data.unreadCount || 0);
         } catch (_e) {
           // ignore
         }
