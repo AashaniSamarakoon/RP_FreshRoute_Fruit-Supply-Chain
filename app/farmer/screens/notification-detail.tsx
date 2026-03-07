@@ -3,15 +3,15 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Linking,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Linking,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { useTranslation } from "../../../hooks/farmer/useTranslation";
 
@@ -94,13 +94,16 @@ export default function NotificationDetailScreen() {
 
         // mark as read
         if (!n.read_at) {
-          try {
-            await api.put(
-              `/api/farmer/notifications/${n.id || n._id}/read`,
-              null,
-            );
-          } catch (markErr) {
-            console.log("[NOTIFICATION-DETAIL] mark read failed", markErr);
+          const notifId = n.id || n._id;
+          if (notifId) {
+            try {
+              await api.put(
+                `/api/farmer/notifications/${notifId}/read`,
+                {},
+              );
+            } catch (markErr) {
+              console.log("[NOTIFICATION-DETAIL] mark read failed", markErr);
+            }
           }
         }
       } catch (err) {

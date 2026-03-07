@@ -103,9 +103,21 @@ export default function ProfileScreen() {
         setUser(JSON.parse(userJson));
       }
 
+      // Load cached profile data from AsyncStorage
       const profileJson = await AsyncStorage.getItem("profile_data");
       if (profileJson) {
         setProfileData(JSON.parse(profileJson));
+      }
+
+      // Fetch farmer profile from API
+      try {
+        const profileResponse = await api.get("/api/auth/farmer/profile");
+        if (profileResponse) {
+          setProfileData(profileResponse);
+          await AsyncStorage.setItem("profile_data", JSON.stringify(profileResponse));
+        }
+      } catch (apiErr) {
+        console.error("[Profile] Failed to fetch from API, using cached data:", apiErr);
       }
 
       // Fetch order statistics
@@ -117,21 +129,21 @@ export default function ProfileScreen() {
 
   const fetchOrderStats = async () => {
     try {
-      // call backend; if it 404s or returns invalid JSON we fall back
-      const stats = await api.get(`/api/farmer/orders/stats`);
-      // the api helper already parses JSON and throws on non-ok status
-      setOrderStats({
-        completedCount: stats.completedCount ?? demoOrderStats.completedCount,
-        lastCompletedDate: stats.lastCompletedDate
-          ? new Date(stats.lastCompletedDate).toLocaleDateString()
-          : demoOrderStats.lastCompletedDate,
-        nextOrderDate: stats.nextOrderDate
-          ? new Date(stats.nextOrderDate).toLocaleDateString()
-          : demoOrderStats.nextOrderDate,
-      });
+      // backend endpoint not available yet, using demo data
+      setOrderStats(demoOrderStats);
+      // Uncomment below when /api/farmer/orders/stats endpoint is available
+      // const stats = await api.get(`/api/farmer/orders/stats`);
+      // setOrderStats({
+      //   completedCount: stats.completedCount ?? demoOrderStats.completedCount,
+      //   lastCompletedDate: stats.lastCompletedDate
+      //     ? new Date(stats.lastCompletedDate).toLocaleDateString()
+      //     : demoOrderStats.lastCompletedDate,
+      //   nextOrderDate: stats.nextOrderDate
+      //     ? new Date(stats.nextOrderDate).toLocaleDateString()
+      //     : demoOrderStats.nextOrderDate,
+      // });
     } catch (err) {
       console.error("Error fetching order stats:", err);
-      // use local demo data if the endpoint doesn't exist or fails
       setOrderStats(demoOrderStats);
     }
   };
@@ -190,9 +202,9 @@ export default function ProfileScreen() {
         >
           {/* Profile Header Component */}
           <ProfileHeader
-            userName={profileData?.name || user?.name || "Chaminda Wathuhewa"}
+            userName={profileData?.name || user?.name || ""}
             farmName={
-              profileData?.farmName || user?.farmName || "Pineaplle Farm"
+              profileData?.farmName || user?.farmName || ""
             }
             memberSince={
               profileData?.memberSince ||
@@ -247,10 +259,10 @@ export default function ProfileScreen() {
             longitude={79.8612}
             address={
               profileData?.location ||
-              "125 Greenfield Lane, Orchard Valley, CA 98765"
+              "No location set"
             }
             farmName={
-              profileData?.farmName || user?.farmName || "Dumas Family Farm"
+              profileData?.farmName || user?.farmName || ""
             }
           />
 

@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
-import { Search, Bell } from "lucide-react-native";
+import { Colors } from "@/constants/theme";
+import api from "@/services/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import { Colors } from "@/constants/theme";
+import { Bell, Search } from "lucide-react-native";
+import React, { useEffect, useState } from "react";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 interface UserData {
   name?: string;
@@ -11,8 +12,13 @@ interface UserData {
   role?: string;
 }
 
+interface HomeData {
+  greeting?: string;
+}
+
 const DashboardHeader = () => {
   const [user, setUser] = useState<UserData | null>(null);
+  const [greeting, setGreeting] = useState<string>("Good morning");
   const router = useRouter();
 
   useEffect(() => {
@@ -25,14 +31,34 @@ const DashboardHeader = () => {
     loadUser();
   }, []);
 
-  const userName = user?.name?.split(" ")[0] || "User";
+  useEffect(() => {
+    const fetchGreeting = async () => {
+      try {
+        const response = await api.get("/api/farmer/home");
+        if (response?.greeting) {
+          // Extract first name only from greeting
+          const parts = response.greeting.split(", ");
+          if (parts.length > 1) {
+            const fullName = parts[1];
+            const firstName = fullName.split(" ")[0];
+            const greetingWithFirstName = `${parts[0]}, ${firstName}`;
+            setGreeting(greetingWithFirstName);
+          } else {
+            setGreeting(response.greeting);
+          }
+        }
+      } catch (error) {
+        console.error("[DashboardHeader] Failed to fetch greeting:", error);
+      }
+    };
+    fetchGreeting();
+  }, []);
 
   return (
     <View style={styles.header}>
       <View>
         <Text style={styles.logo}>🍃 FreshRoute</Text>
-        {/* <Text style={styles.greeting}>Good morning, {userName}</Text> */}
-        <Text style={styles.greeting}>Good morning, Akalanka</Text>
+        <Text style={styles.greeting}>{greeting}</Text>
 
       </View>
       <View style={styles.headerIcons}>
