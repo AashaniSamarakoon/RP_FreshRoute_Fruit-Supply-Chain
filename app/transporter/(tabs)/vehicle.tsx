@@ -227,7 +227,7 @@ export default function VehicleScreen() {
           <View style={styles.mapCard}>
             <View style={styles.mapHeader}>
               <Ionicons name="location-sharp" size={18} color="#e53e3e" />
-              <Text style={styles.mapLabel}>Current Vehicle Location</Text>
+              <Text style={styles.mapLabel}>Current Location</Text>
             </View>
 
             <View style={styles.mapContainer}>

@@ -5,7 +5,10 @@ import PreapprovalConsentModal from "@/components/modals/PreapprovalConsentModal
 import SuccessModal from "@/components/modals/SuccessModal";
 import { BuyerColors } from "@/constants/theme";
 import api from "@/services/api";
-import { startPayHerePayment, startPayHerePreapproval } from "@/services/payhereService";
+import {
+  startPayHerePayment,
+  startPayHerePreapproval,
+} from "@/services/payhereService";
 import { FarmerInfo, PlacedOrder, TransporterInfo } from "@/types";
 import { formatCurrency, formatDate } from "@/utils/formatters";
 import { Ionicons } from "@expo/vector-icons";
@@ -57,7 +60,11 @@ const getStatusStyles = (status: string) => {
       return { bg: "#EFF6FF", text: "#3B82F6", label: "In Transit" };
     case "PACKING":
     case "READY_FOR_PICKUP":
-      return { bg: "#EFF6FF", text: "#3B82F6", label: status.replace(/_/g, " ") };
+      return {
+        bg: "#EFF6FF",
+        text: "#3B82F6",
+        label: status.replace(/_/g, " "),
+      };
     case "DELIVERED":
     case "COMPLETED":
       return { bg: "#F0FDF4", text: "#22C55E", label: "Completed" };
@@ -89,7 +96,8 @@ export default function OrderDetailScreen() {
   const [harvestDate, setHarvestDate] = useState<string | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
-  const [preapprovalConsentVisible, setPreapprovalConsentVisible] = useState(false);
+  const [preapprovalConsentVisible, setPreapprovalConsentVisible] =
+    useState(false);
   const [preapprovalLoading, setPreapprovalLoading] = useState(false);
   const [isPriceLocked, setIsPriceLocked] = useState(false);
   const [lockedUnitPrice, setLockedUnitPrice] = useState<number | null>(null);
@@ -97,8 +105,15 @@ export default function OrderDetailScreen() {
   const [isFetchingForecast, setIsFetchingForecast] = useState(false);
   const [payherePaymentId, setPayherePaymentId] = useState<string | null>(null);
   const [preapprovalAuthorized, setPreapprovalAuthorized] = useState(false);
-  const [successModal, setSuccessModal] = useState<{ title: string; message: string; onClose?: () => void } | null>(null);
-  const [errorModal, setErrorModal] = useState<{ title: string; message: string } | null>(null);
+  const [successModal, setSuccessModal] = useState<{
+    title: string;
+    message: string;
+    onClose?: () => void;
+  } | null>(null);
+  const [errorModal, setErrorModal] = useState<{
+    title: string;
+    message: string;
+  } | null>(null);
 
   // ── accordion + proof-of-harvest state ──
   // Start expanded; collapse automatically once the order is paid and in-transit
@@ -242,9 +257,9 @@ export default function OrderDetailScreen() {
 
       setHarvestDate(
         data.harvestDate ||
-        orderData?.harvest_date ||
-        orderData?.estimated_harvest_date ||
-        null,
+          orderData?.harvest_date ||
+          orderData?.estimated_harvest_date ||
+          null,
       );
 
       // Harvest proof images
@@ -341,14 +356,16 @@ export default function OrderDetailScreen() {
           setPreapprovalAuthorized(true);
           setSuccessModal({
             title: "Auto-Payment Scheduled",
-            message: "Your card has been authorized. We\u2019ll automatically charge you on delivery day \u2014 no action needed.",
+            message:
+              "Your card has been authorized. We\u2019ll automatically charge you on delivery day \u2014 no action needed.",
             onClose: () => fetchOrderDetails(),
           });
         },
         (error) => {
           setErrorModal({
             title: "Authorization Failed",
-            message: error || "Unable to start authorization. Please try again.",
+            message:
+              error || "Unable to start authorization. Please try again.",
           });
         },
         () => {
@@ -358,7 +375,8 @@ export default function OrderDetailScreen() {
     } catch (error: any) {
       setErrorModal({
         title: "Authorization Failed",
-        message: error?.message || "Unable to start authorization. Please try again.",
+        message:
+          error?.message || "Unable to start authorization. Please try again.",
       });
     } finally {
       setPreapprovalLoading(false);
@@ -453,6 +471,7 @@ export default function OrderDetailScreen() {
     "IN_TRANSIT",
     "DELIVERED",
     "COMPLETED",
+    "PICKED_UP",
   ].includes(order?.status ?? "");
 
   if (loading && !refreshing) {
@@ -644,7 +663,9 @@ export default function OrderDetailScreen() {
               {displayPaymentRef ? (
                 <View>
                   <Text style={styles.orderIdLabel}>PAYMENT REF</Text>
-                  <Text style={styles.paymentRefValue}>{displayPaymentRef}</Text>
+                  <Text style={styles.paymentRefValue}>
+                    {displayPaymentRef}
+                  </Text>
                 </View>
               ) : null}
               <View style={[styles.badge, { backgroundColor: statusStyle.bg }]}>
@@ -929,7 +950,11 @@ export default function OrderDetailScreen() {
                 activeOpacity={(primaryAction as any).disabled ? 1 : 0.8}
               >
                 {(primaryAction as any).disabled ? (
-                  <Ionicons name="calendar-outline" size={18} color="rgba(255,255,255,0.85)" />
+                  <Ionicons
+                    name="calendar-outline"
+                    size={18}
+                    color="rgba(255,255,255,0.85)"
+                  />
                 ) : (
                   (primaryAction as any).icon && (
                     <Ionicons
@@ -942,7 +967,8 @@ export default function OrderDetailScreen() {
                 <Text
                   style={[
                     styles.primaryBtnText,
-                    (primaryAction as any).disabled && styles.primaryBtnScheduledText,
+                    (primaryAction as any).disabled &&
+                      styles.primaryBtnScheduledText,
                   ]}
                 >
                   {primaryAction.label}

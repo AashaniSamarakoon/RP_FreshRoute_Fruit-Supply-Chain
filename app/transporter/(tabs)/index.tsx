@@ -27,23 +27,51 @@ interface Job {
 export default function TransporterDashboard() {
   const router = useRouter();
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [filteredJobs, setFilteredJobs] = useState<Job[]>([]); // For search
+  const [filteredJobs, setFilteredJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [vehicleInfo, setVehicleInfo] = useState<any>(null);
 
+  // New state for graceful error handling
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
   const fetchData = async () => {
     try {
-      try {
-        const data = await api.get(`/api/transporter/jobs`);
-        setJobs(data.jobs || []);
-        setFilteredJobs(data.jobs || []);
-        setVehicleInfo(data.vehicle);
-      } catch (err) {
-        console.error("Failed to load dashboard data", err);
+      setErrorMessage(null); // Clear previous errors
+
+      const data = await api.get(`/api/transporter/jobs`);
+
+      const allJobs = data.data?.jobs || data.jobs || [];
+      const activeJobs = allJobs.filter((j: Job) => j.status !== "COMPLETED");
+
+      setJobs(activeJobs);
+      setFilteredJobs(activeJobs);
+      setVehicleInfo(data.data?.vehicle || data.vehicle);
+    } catch (error: any) {
+      // Safely parse the error message coming from your Node backend
+      const backendErrorMsg =
+        error?.response?.data?.message ||
+        error?.message ||
+        JSON.stringify(error);
+
+      // Check if it's the expected "No vehicle" error
+      if (backendErrorMsg.includes("No vehicle assigned")) {
+        // Quietly handle the expected business logic without a red console error
+        setErrorMessage(
+          "You haven't been assigned a vehicle yet. Please contact your dispatch manager.",
+        );
+      } else {
+        // It's a real network/server failure, so we log it and show the generic message
+        console.error("Failed to load dashboard data", error);
+        setErrorMessage(
+          "We couldn't connect to the server. Please pull down to refresh.",
+        );
       }
-    } catch (error) {
-      console.error("Failed to load dashboard data", error);
+
+      // Ensure the lists are cleared out on error
+      setJobs([]);
+      setFilteredJobs([]);
+      setVehicleInfo(null);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -52,7 +80,7 @@ export default function TransporterDashboard() {
 
   useFocusEffect(
     useCallback(() => {
-      setLoading(true); // Optional: shows spinner briefly when returning
+      setLoading(true);
       fetchData();
     }, []),
   );
@@ -97,7 +125,6 @@ export default function TransporterDashboard() {
         onPress={() => router.push(`/transporter/job/${item.id}`)}
       >
         <View style={styles.cardHeader}>
-          {/* FIX: Wrapped title in a flex container to prevent badge push-out */}
           <View style={styles.titleContainer}>
             <Text style={styles.routeTitle} numberOfLines={2}>
               {item.route_name}
@@ -176,7 +203,18 @@ export default function TransporterDashboard() {
               <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
             }
             ListEmptyComponent={
-              <Text style={styles.emptyText}>No active jobs assigned.</Text>
+              <View style={styles.emptyContainer}>
+                <Ionicons
+                  name={errorMessage ? "alert-circle-outline" : "bus-outline"}
+                  size={60}
+                  color={errorMessage ? "#f87171" : "#cbd5e0"}
+                />
+                <Text
+                  style={[styles.emptyText, errorMessage && styles.errorText]}
+                >
+                  {errorMessage || "No active jobs assigned."}
+                </Text>
+              </View>
             }
             contentContainerStyle={{ paddingBottom: 20 }}
             showsVerticalScrollIndicator={false}
@@ -188,7 +226,7 @@ export default function TransporterDashboard() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f8fafc" }, // Softer overall background
+  container: { flex: 1, backgroundColor: "#f8fafc" },
   content: { flex: 1, paddingHorizontal: 16 },
 
   // Sub Header Styles
@@ -211,7 +249,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#e2e8f0",
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 20, // Pill shape
+    borderRadius: 20,
   },
   vehicleText: {
     fontSize: 12,
@@ -224,10 +262,9 @@ const styles = StyleSheet.create({
   // Card Styles
   card: {
     backgroundColor: "#fff",
-    borderRadius: 16, // Smoother corners
+    borderRadius: 16,
     padding: 20,
     marginBottom: 16,
-    // Upgraded shadow for a "floating" effect
     shadowColor: "#64748b",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
@@ -244,7 +281,7 @@ const styles = StyleSheet.create({
   },
   titleContainer: {
     flex: 1,
-    marginRight: 12, // Gives the badge breathing room
+    marginRight: 12,
   },
   routeTitle: {
     fontSize: 18,
@@ -256,7 +293,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 12,
-    alignSelf: "flex-start", // Prevents stretching
+    alignSelf: "flex-start",
   },
   badgeText: {
     fontSize: 11,
@@ -265,7 +302,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   infoGrid: {
-    gap: 12, // React Native flex gap for clean spacing
+    gap: 12,
   },
   row: {
     flexDirection: "row",
@@ -293,18 +330,31 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     borderTopWidth: 1,
     borderTopColor: "#f1f5f9",
-    borderStyle: "dashed", // Makes the card feel like a ticket
+    borderStyle: "dashed",
   },
   clickHint: {
     fontSize: 13,
     color: "#94a3b8",
     fontWeight: "600",
   },
+
+  // Empty State Styles
+  emptyContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 80,
+    paddingHorizontal: 30,
+  },
   emptyText: {
-    textAlign: "center",
-    marginTop: 60,
-    color: "#94a3b8",
+    marginTop: 16,
+    color: "#64748b",
     fontSize: 16,
     fontWeight: "500",
+    textAlign: "center",
+    lineHeight: 24,
+  },
+  errorText: {
+    color: "#dc2626",
+    fontWeight: "600",
   },
 });
