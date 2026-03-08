@@ -2,6 +2,7 @@ import DashboardHeader from "@/components/DashboardHeader";
 import { BuyerColors } from "@/constants/theme";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
+import { MessageSquare, Package, ShoppingCart, Users } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
   RefreshControl,
@@ -13,7 +14,6 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { MessageSquare, Package, ShoppingCart, Users } from "lucide-react-native";
 
 interface UserData {
   name?: string;
