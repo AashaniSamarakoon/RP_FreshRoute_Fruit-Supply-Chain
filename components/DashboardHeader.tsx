@@ -1,5 +1,4 @@
 import { Colors } from "@/constants/theme";
-import { Colors } from "@/constants/theme";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { Bell, Search } from "lucide-react-native";
@@ -23,7 +22,6 @@ const DashboardHeader = () => {
     loadGreeting();
   }, []);
 
->>>>>>> bdee95167fedbda28a897b40dffec522c033d68a
   return (
     <View style={styles.header}>
       <View>

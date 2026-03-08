@@ -4,17 +4,17 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { Sprout } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  FlatList,
-  Image,
-  Modal,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    FlatList,
+    Image,
+    Modal,
+    RefreshControl,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "../../../components/Header";
@@ -588,7 +588,8 @@ const renderProposal = useCallback(
 
       const handleCardPress = () => {
         if (isOrderPhase && item.order_id) {
-          router.push(`/buyer/screens/OrderDetailScreen?orderId=${encodeURIComponent(String(item.order_id))}`);
+          // navigate to farmer-specific detail screen instead of buyer
+          router.push(`/farmer/screens/OrderDetailScreen?orderId=${encodeURIComponent(String(item.order_id))}`);
         } else {
           const harvestToPass = harvests.find(h => h.id === item.stock_id) || {
             id: item.stock_id,
