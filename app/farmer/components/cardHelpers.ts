@@ -30,3 +30,16 @@ export const getFruitMeta = (name: string): FruitMeta => {
     const lc = name?.toLowerCase() || "";
     return FRUIT_MAP.find(([keys]) => keys.some((k) => lc.includes(k)))?.[1] ?? DEFAULT_FRUIT;
 };
+
+// status mapping reused by multiple components
+export type StatusMeta = { label: string; color: string; bg: string };
+
+export const ORDER_STATUS_META: Record<string, StatusMeta> = {
+    AWAITING_PAYMENT: { label: "Payment Due", color: "#BE123C", bg: "#FFE4E6" },
+    READY_FOR_PICKUP: { label: "Ready for Pickup", color: "#065F46", bg: "#D1FAE5" },
+    IN_TRANSIT: { label: "In Transit", color: "#1D4ED8", bg: "#DBEAFE" },
+    DELIVERED: { label: "Delivered", color: "#166534", bg: "#BBF7D0" },
+    COMPLETED: { label: "Completed", color: "#166534", bg: "#BBF7D0" },
+    AUTHORIZED_PAYMENT: { label: "Authorized", color: "#B45309", bg: "#FEF3C7" },
+    PICKED_UP: { label: "Picked Up", color: "#4F46E5", bg: "#E0E7FF" },
+};

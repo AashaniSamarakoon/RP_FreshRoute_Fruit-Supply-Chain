@@ -2,7 +2,7 @@ import api from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Sprout } from "lucide-react-native";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
@@ -59,7 +59,12 @@ interface ProposalOrder {
   fruit_type: string;
   required_date: string;
   delivery_location: string;
-  status?: string; 
+  status?: string;
+  // optional image fields that may come from /api/farmer/orders
+  product_images?: any;
+  productImages?: any;
+  image_url?: any;
+  images?: any;
 }
 
 interface Proposal {
@@ -119,7 +124,6 @@ type StatusMeta = { label: string; color: string; bg: string };
 
 const ORDER_STATUS_META: Record<string, StatusMeta> = {
   AWAITING_PAYMENT: { label: "Payment Due", color: "#BE123C", bg: "#FFE4E6" },
-  PACKING: { label: "Packing", color: "#92400E", bg: "#FEF3C7" },
   READY_FOR_PICKUP: { label: "Ready", color: "#065F46", bg: "#D1FAE5" },
   IN_TRANSIT: { label: "In Transit", color: "#1D4ED8", bg: "#DBEAFE" },
   DELIVERED: { label: "Delivered", color: "#166534", bg: "#BBF7D0" },
@@ -165,7 +169,7 @@ const getProposalTabKey = (p: Proposal): TabKey | null => {
       return "completed";
     }
     
-    // Everything else (AUTHORIZED_PAYMENT, PACKING, READY_FOR_PICKUP) goes to Processing
+    // Everything else (AUTHORIZED_PAYMENT, READY_FOR_PICKUP) goes to Processing
     return "processing"; 
   }
   
@@ -176,6 +180,7 @@ const getProposalTabKey = (p: Proposal): TabKey | null => {
 function useOrdersData() {
   const [harvests, setHarvests] = useState<Harvest[]>([]);
   const [proposals, setProposals] = useState<Proposal[]>([]);
+  const [ordersMapState, setOrdersMapState] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -204,24 +209,30 @@ function useOrdersData() {
         let ordersRes: any = null;
         try {
           ordersRes = await api.get("/api/farmer/orders");
+          console.log("[DEBUG] /api/farmer/orders response", ordersRes);
         } catch (err) {
+          console.warn("[DEBUG] failed to fetch farmer orders", err);
           ordersRes = null;
         }
 
         const ordersArr: any[] = Array.isArray(ordersRes)
           ? ordersRes
           : (ordersRes?.orders ?? ordersRes ?? []);
+        console.log("[DEBUG] parsed ordersArr", ordersArr);
         
         const ordersMap: Record<string, any> = {};
         ordersArr.forEach((o: any) => { if (o && o.id) ordersMap[String(o.id)] = o; });
+        console.log("[DEBUG] ordersMap keys", Object.keys(ordersMap));
+        setOrdersMapState(ordersMap);
 
         const rawProposals: Proposal[] = proposalRes?.proposals ?? [];
         
         const mergedProposals = rawProposals.map((p: Proposal) => {
           const orderFromApi = ordersMap[String(p.order_id)];
+          // merge fields from API response (status plus any images or other updates)
           const mergedOrder = {
             ...(p.order || {}),
-            status: orderFromApi?.status ?? p.order?.status,
+            ...(orderFromApi || {}),
           };
           return { ...p, order: mergedOrder } as Proposal;
         });
@@ -248,6 +259,9 @@ function useOrdersData() {
               required_date: o.required_date,
               delivery_location: o.delivery_location,
               status: o.status,
+              // forward any image fields the API returns
+              product_images: o.product_images ?? o.images ?? null,
+              image_url: o.image_url ?? null,
             }
           } as Proposal));
 
@@ -295,17 +309,6 @@ function useOrdersData() {
   }, []);
 
   // ─── NEW RESTORED: Status Transition APIs ───
-  const startPacking = useCallback(async (orderId: string) => {
-    setProcessing(orderId, true);
-    try {
-      await api.patch(`/api/farmer/orders/${orderId}/packing`, {});
-      await load(true);
-    } catch (err: any) {
-      Alert.alert("Error", err?.message || "Failed to update status");
-    } finally {
-      setProcessing(orderId, false);
-    }
-  }, [load]);
 
   const markReady = useCallback(async (orderId: string) => {
     setProcessing(orderId, true);
@@ -329,6 +332,7 @@ function useOrdersData() {
   return {
     harvests,
     proposals,
+    ordersMap: ordersMapState,
     loading,
     refreshing,
     error,
@@ -337,175 +341,84 @@ function useOrdersData() {
     refresh,
     acceptProposal,
     rejectProposal,
-    startPacking, // Restored!
     markReady,    // Restored!
   };
 }
 
-// ─── ActiveOrderCard (Handles Statuses and Footer Buttons) ────────────────────
-
-const ActiveOrderCard = React.memo(({
-  proposal,
-  harvest,
-  processing,
-  onPress,
-  onImagePress,
-  onStartPacking,
-  onMarkReady,
-}: {
-  proposal: Proposal;
-  harvest?: Harvest;
-  processing: boolean;
-  onPress: () => void;
-  onImagePress: (imageUrls: string[]) => void;
-  onStartPacking: () => void;
-  onMarkReady: () => void;
-}) => {
-  const fruit_type = proposal.order?.fruit_type || harvest?.fruit_type || "Product";
-  const variant = proposal.order?.variant || harvest?.variant || "";
-  const grade = proposal.order?.grade || harvest?.grade || "";
-  const quantity = proposal.order?.quantity || proposal.quantity_proposed;
-  const status = proposal.order?.status || proposal.status;
-  const reqDate = proposal.order?.required_date || proposal.created_at;
-
-  const fruit = getFruitMeta(fruit_type);
-  const statusMeta = ORDER_STATUS_META[status] || { label: status.replace(/_/g, ' '), color: "#4B5563", bg: "#F3F4F6" };
-  
-  const images = parseImageUrls(harvest?.image_url);
-  const buyerName = proposal.order?.buyer?.company_name || proposal.order?.buyer?.user?.first_name || "Verified Buyer";
-
-  return (
-    <View style={styles.card}>
-      {/* Top Section navigates to Order Details */}
-      <TouchableOpacity style={styles.cardStretchContainer} activeOpacity={0.85} onPress={onPress}> 
-        <TouchableOpacity 
-          style={styles.imageWrapper} 
-          activeOpacity={0.8}
-          onPress={() => images.length > 0 && onImagePress(images)}
-          disabled={images.length === 0}
-        >
-          {images.length > 0 ? (
-            <>
-              <Image source={{ uri: images[0] }} style={styles.productImage} />
-              {images.length > 1 && (
-                <View style={styles.imageCountBadge}>
-                  <Ionicons name="image-outline" size={10} color="#fff" style={{ marginRight: 2 }} />
-                  <Text style={styles.imageCountText}>+{images.length - 1}</Text>
-                </View>
-              )}
-            </>
-          ) : (
-            <View style={[styles.avatarFallback, { backgroundColor: fruit.bg }]}>
-              <Text style={styles.avatarEmoji}>{fruit.emoji}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-
-        <View style={styles.cardRightColumn}>
-          <View style={styles.cardBody}>
-            <View style={styles.titleRow}>
-              <Text style={styles.cardTitle}>{fruit_type}</Text>
-              <View style={[styles.statusPill, { backgroundColor: statusMeta.bg }]}>
-                <Text style={[styles.statusLabel, { color: statusMeta.color }]}>
-                  {statusMeta.label}
-                </Text>
-              </View>
-            </View>
-            <Text style={styles.cardSubtitle}>{variant} · Grade {grade}</Text>
-            <View style={styles.metricsRow}>
-              <View style={styles.metricChip}>
-                <Ionicons name="scale-outline" size={12} color="#6B7280" />
-                <Text style={styles.metricText}>{quantity} kg</Text>
-              </View>
-              <View style={styles.metricChip}>
-                <Ionicons name="calendar-outline" size={12} color="#6B7280" />
-                <Text style={styles.metricText}>{formatDate(reqDate, FULL_DATE_FMT)}</Text>
-              </View>
-            </View>
-            
-            <View style={styles.buyerInfoRow}>
-              <Ionicons name="person-circle-outline" size={14} color="#6B7280" />
-              <Text style={styles.buyerInfoText} numberOfLines={1}>{buyerName}</Text>
-            </View>
-          </View>
-
-          <View style={styles.chevronPadding}>
-            <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
-          </View>
-        </View>
-      </TouchableOpacity>
-
-      {/* Conditional Action Buttons at the bottom */}
-      {(status === "AUTHORIZED_PAYMENT" || status === "PACKING") && (
-        <View style={styles.activeOrderFooter}>
-          {status === "AUTHORIZED_PAYMENT" && (
-            <TouchableOpacity style={styles.fullWidthBtn} onPress={onStartPacking} disabled={processing}>
-              {processing ? <ActivityIndicator color="#fff" /> : (
-                <>
-                  <Ionicons name="cube-outline" size={18} color="#fff" />
-                  <Text style={styles.fullWidthBtnText}>Start Packing</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          )}
-          {status === "PACKING" && (
-            <TouchableOpacity style={styles.fullWidthBtn} onPress={onMarkReady} disabled={processing}>
-              {processing ? <ActivityIndicator color="#fff" /> : (
-                <>
-                  <Ionicons name="checkmark-done-outline" size={18} color="#fff" />
-                  <Text style={styles.fullWidthBtnText}>Mark Ready for Pickup</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
-    </View>
-  );
-});
-
-// ─── EmptyState ───────────────────────────────────────────────────────────────
-
-const EmptyState = React.memo(({
-  icon,
-  title,
-  subtitle,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  subtitle: string;
-}) => (
-  <View style={styles.stateView}>
-    <View style={styles.emptyIconBox}>{icon}</View>
-    <Text style={styles.emptyTitle}>{title}</Text>
-    <Text style={styles.emptySubtitle}>{subtitle}</Text>
-  </View>
-));
-
-// ─── Main screen ──────────────────────────────────────────────────────────────
-
+// ─── Component ─────────────────────────────────────────────────────────────
 export default function OrdersTab() {
   const router = useRouter();
   const {
-    harvests, proposals, loading, refreshing, error, processingIds,
-    load, refresh, acceptProposal, rejectProposal, startPacking, markReady
+    harvests,
+    proposals,
+    ordersMap,
+    loading,
+    refreshing,
+    error,
+    processingIds,
+    load,
+    refresh,
+    acceptProposal,
+    rejectProposal,
+    markReady,
   } = useOrdersData();
-  
+
   const [activeTab, setActiveTab] = useState<TabKey>("harvests");
-  
   const [imageModalVisible, setImageModalVisible] = useState(false);
   const [currentImages, setCurrentImages] = useState<string[]>([]);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
-  const handleImagePress = useCallback((imageUrls: string[]) => {
-    setCurrentImages(imageUrls);
-    setCurrentImageIndex(0);
-    setImageModalVisible(true);
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  const proposalsByStock = useMemo(() => {
+    const map: Record<string, Proposal[]> = {};
+    proposals.forEach((p) => {
+      const sid = String(p.stock_id || "");
+      if (!map[sid]) map[sid] = [];
+      map[sid].push(p);
+    });
+    return map;
+  }, [proposals]);
 
-  const tabCount = useMemo(() => {
+  const handleHarvestPress = (h: Harvest) => {
+    router.push({
+      pathname: "/farmer/screens/harvest-proposals" as any,
+      params: {
+        harvestId: h.id,
+        fruitType: h.fruit_type,
+        variant: h.variant,
+        grade: h.grade,
+        quantity: String(h.quantity),
+        harvestDate: h.estimated_harvest_date,
+      },
+    });
+  };
+
+  const handleImagePress = (urls: string[]) => {
+    if (urls && urls.length > 0) {
+      setCurrentImages(urls);
+      setCurrentImageIndex(0);
+      setImageModalVisible(true);
+    }
+  };
+
+  const handleViewProfile = (proposal: Proposal) => {
+    router.push({
+      pathname: `/farmer/screens/buyer-trust-profile/${proposal.order?.buyer?.id}` as any,
+      params: {
+        buyerName: proposal.order?.buyer?.company_name || "Buyer",
+        buyerLocation: proposal.order?.delivery_location || "Location not specified",
+        trustScore: "Not rated",
+      },
+    });
+  };
+
+  // compute how many items each tab currently has so we can hide empty tabs
+  const tabCounts = useMemo(() => {
     const counts: Record<TabKey, number> = {
       harvests: harvests.length,
       pending: 0,
@@ -515,76 +428,39 @@ export default function OrdersTab() {
       rejected: 0,
     };
     proposals.forEach((p) => {
-      const tab = getProposalTabKey(p);
-      if (tab && tab !== "harvests") {
-        counts[tab] += 1;
+      const key = getProposalTabKey(p);
+      if (key && key in counts) {
+        counts[key as TabKey] = (counts[key as TabKey] || 0) + 1;
       }
     });
     return counts;
   }, [harvests, proposals]);
 
   const tabData = useMemo(() => {
-    return TAB_CONFIG.map((t) => ({
-      ...t,
-      count: tabCount[t.key],
-    })).filter((t) => t.key === "harvests" || t.count > 0);
-  }, [tabCount]);
-
-  useEffect(() => {
-    if (!tabData.some((t) => t.key === activeTab)) {
-      setActiveTab("harvests");
-    }
-  }, [tabData, activeTab]);
-
-  const proposalsByStock = useMemo(() => {
-    const map: Record<string, Proposal[]> = {};
-    proposals.forEach((p) => { (map[p.stock_id] ??= []).push(p); });
-    return map;
-  }, [proposals]);
-
-  const handleViewProfile = useCallback((proposal: Proposal) => {
-    router.push({
-      pathname: `/farmer/screens/buyer-trust-profile/${proposal.order?.buyer?.id}` as any,
-      params: {
-        buyerName: proposal.order?.buyer?.company_name || "Buyer",
-        buyerLocation: proposal.order?.delivery_location || "Location not specified",
-        trustScore: "Not rated",
-      },
-    });
-  }, [router]);
-
-  const handleHarvestPress = useCallback((harvest: Harvest) => {
-    router.push({
-      pathname: "/farmer/screens/harvest-proposals" as any,
-      params: {
-        harvestId: harvest.id,
-        fruitType: harvest.fruit_type,
-        variant: harvest.variant,
-        grade: harvest.grade,
-        quantity: String(harvest.quantity),
-        harvestDate: harvest.estimated_harvest_date,
-      },
-    });
-  }, [router]);
+    return TAB_CONFIG
+      .map((t) => ({ ...t, count: tabCounts[t.key] || 0 }))
+      .filter((t) => t.count! > 0);
+  }, [tabCounts]);
 
   const renderHarvest = useCallback(
-    ({ item }: { item: Harvest }) => {
-      return (
-        <HarvestCard
-          harvest={item}
-          proposals={proposalsByStock[item.id] ?? []}
-          onPress={() => handleHarvestPress(item)}
-          onImagePress={handleImagePress}
-        />
-      );
-    },
-    [proposalsByStock, handleHarvestPress, handleImagePress],
-  );
+  ({ item }: { item: Harvest }) => {
+    return (
+      <HarvestCard
+        harvest={item}
+        proposals={proposalsByStock[item.id] ?? []}
+        onPress={() => handleHarvestPress(item)}
+        onImagePress={handleImagePress}
+      />
+    );
+  },
+  [proposalsByStock, handleHarvestPress, handleImagePress],
+);
 
 const renderProposal = useCallback(
     ({ item }: { item: Proposal }) => {
       const tabKey = getProposalTabKey(item);
       const isOrderPhase = tabKey === "payment_due" || tabKey === "processing" || tabKey === "completed";
+      console.log("[DEBUG] renderProposal called", item.id, "tabKey", tabKey, "isOrderPhase", isOrderPhase);
 
       const handleCardPress = () => {
         if (isOrderPhase && item.order_id) {
@@ -605,17 +481,52 @@ const renderProposal = useCallback(
       };
 
       if (isOrderPhase) {
-         // Using the inline ActiveOrderCard handles Orders flawlessly!
-         const harvest = harvests.find(h => h.id === item.stock_id);
+         // reuse HarvestCard for orders; pass earning and images plus status
+         const apiOrder = ordersMap[String(item.order_id)] || item.order || {};
+
+         // find matching harvest if still cached, otherwise build a minimal object
+         const harvestFromList = harvests.find(h => h.id === item.stock_id);
+         const fallbackHarvest: Harvest = {
+           id: String(item.stock_id || apiOrder.harvest_id || ""),
+           fruit_type: apiOrder.fruit_type || item.order?.fruit_type || "",
+           variant: apiOrder.variant || item.order?.variant || "",
+           grade: apiOrder.grade || item.order?.grade || "",
+           quantity: apiOrder.quantity || item.order?.quantity || item.quantity_proposed,
+           estimated_harvest_date:
+             apiOrder.harvestDate || apiOrder.required_date || item.order?.required_date || "",
+           status: apiOrder.status || item.order?.status || "",
+           created_at: apiOrder.created_at || "",
+           price_per_kg: apiOrder.pricing?.unitPrice || item.pricing?.unitPrice || 0,
+         };
+         const harvest = harvestFromList || fallbackHarvest;
+
+         const orderImages = parseImageUrls(
+           apiOrder.productImages ?? apiOrder.product_images ?? apiOrder.image_url ?? apiOrder.images ?? null
+         );
+         const harvestImages = parseImageUrls(harvestFromList?.image_url ?? apiOrder.image_url ?? null);
+         const images = orderImages.length > 0 ? orderImages : harvestImages;
+
+         // ensure card knows about the chosen image(s)
+         if (images.length > 0) {
+           harvest.image_url = images;
+         }
+
+         const earning =
+           apiOrder.pricing?.farmerEarning ??
+           item.pricing?.farmerEarning ??
+           apiOrder.farmer_share_amount ?? null;
+         console.log("[DEBUG] renderProposal images", images, "earn", earning, "apiOrder", apiOrder, "harvest", harvest);
          return (
-           <ActiveOrderCard
-             proposal={item}
+           <HarvestCard
              harvest={harvest}
-             processing={processingIds.has(String(item.order_id))}
+             proposals={[]}
              onPress={handleCardPress}
              onImagePress={handleImagePress}
-             onStartPacking={() => startPacking(String(item.order_id))}
+             activeOrderStatus={apiOrder.status || item.order?.status}
+             processing={processingIds.has(String(item.order_id))}
+             onStartPacking={undefined}
              onMarkReady={() => markReady(String(item.order_id))}
+             earning={earning}
            />
          );
       }
@@ -632,7 +543,7 @@ const renderProposal = useCallback(
         </TouchableOpacity>
       );
     },
-    [processingIds, acceptProposal, rejectProposal, handleViewProfile, router, harvests, handleImagePress, handleHarvestPress, startPacking, markReady],
+    [processingIds, acceptProposal, rejectProposal, handleViewProfile, router, harvests, handleImagePress, handleHarvestPress, markReady],
   );
   
   const refreshControl = (
@@ -679,11 +590,13 @@ const renderProposal = useCallback(
           showsVerticalScrollIndicator={false}
           refreshControl={refreshControl}
           ListEmptyComponent={
-            <EmptyState
-              icon={<Sprout size={36} color="#9CA3AF" />}
-              title="No harvests yet"
-              subtitle="Add an expected harvest to start receiving buyer proposals."
-            />
+            <View style={styles.stateView}>
+              <View style={styles.emptyIconBox}>
+                <Sprout size={36} color="#9CA3AF" />
+              </View>
+              <Text style={styles.emptyTitle}>No harvests yet</Text>
+              <Text style={styles.emptySubtitle}>Add an expected harvest to start receiving buyer proposals.</Text>
+            </View>
           }
         />
       );
@@ -700,11 +613,13 @@ const renderProposal = useCallback(
         showsVerticalScrollIndicator={false}
         refreshControl={refreshControl}
         ListEmptyComponent={
-          <EmptyState
-            icon={<Ionicons name="receipt-outline" size={36} color="#9CA3AF" />}
-            title="No orders found"
-            subtitle="You don't have any orders matching this status."
-          />
+          <View style={styles.stateView}>
+            <View style={styles.emptyIconBox}>
+              <Ionicons name="receipt-outline" size={36} color="#9CA3AF" />
+            </View>
+            <Text style={styles.emptyTitle}>No orders found</Text>
+            <Text style={styles.emptySubtitle}>You don't have any orders matching this status.</Text>
+          </View>
         }
       />
     );
@@ -777,140 +692,6 @@ const styles = StyleSheet.create({
   },
   retryBtnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
 
-  // ── Card shell ────────────────────────────────────────────────────────────
-  card: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 1,
-    marginBottom: 16,
-    overflow: "hidden", 
-  },
-
-  // ── Flush Image Container for HarvestCard & ActiveOrderCard ────────────
-  cardStretchContainer: {
-    flexDirection: "row",
-    alignItems: "stretch", 
-    minHeight: 130, // Keeps the card nice and tall
-  },
-  imageWrapper: {
-    width: 110,
-    backgroundColor: "#F9FAFB",
-    borderRightWidth: 1,
-    borderColor: "#E5E7EB",
-    overflow: "hidden",
-    position: "relative",
-  },
-  productImage: { 
-    ...StyleSheet.absoluteFillObject, 
-    width: "100%", 
-    height: "100%", 
-    resizeMode: "cover" 
-  },
-  imageCountBadge: {
-    position: "absolute",
-    bottom: 8,
-    right: 8,
-    backgroundColor: "rgba(17, 24, 39, 0.75)",
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 4,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  imageCountText: { color: "#fff", fontSize: 10, fontWeight: "bold" },
-  
-  avatarFallback: { 
-    ...StyleSheet.absoluteFillObject, 
-    justifyContent: "center", 
-    alignItems: "center" 
-  },
-  avatarEmoji: { fontSize: 38 },
-
-  // Right column of HarvestCard
-  cardRightColumn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 20,
-    paddingLeft: 16,
-  },
-  cardBody: { flex: 1 },
-  chevronPadding: { paddingRight: 16 },
-
-  // ── Action Footer for ActiveOrderCard ──
-  activeOrderFooter: {
-    padding: 12,
-    borderTopWidth: 1,
-    borderColor: "#E5E7EB",
-    backgroundColor: "#F9FAFB",
-  },
-  fullWidthBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: PRIMARY_GREEN,
-    paddingVertical: 12,
-    borderRadius: 10,
-    gap: 8,
-  },
-  fullWidthBtnText: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-
-  // ── Buyer Info additions to ActiveOrderCard ──
-  buyerInfoRow: { flexDirection: "row", alignItems: "center", marginTop: 8 },
-  buyerInfoText: { fontSize: 13, color: "#4B5563", fontWeight: "600", marginLeft: 4, flex: 1 },
-
-  // ── Title row / metrics ───────────────────────────────────────────────────
-  titleRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" },
-  cardTitle: { fontSize: 17, fontWeight: "800", color: "#111827" },
-  cardSubtitle: { fontSize: 14, color: "#6B7280", fontWeight: "500", marginTop: 4, marginBottom: 10 },
-  metricsRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-
-  // ── Status pill ───────────────────────────────────────────────────────────
-  statusPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
-  statusLabel: { fontSize: 11, fontWeight: "700", textTransform: "uppercase" },
-
-  // ── Metric chip ───────────────────────────────────────────────────────────
-  metricChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F9FAFB",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    gap: 4,
-  },
-  metricText: { fontSize: 12, fontWeight: "600", color: "#4B5563" },
-
-  // ── Card notification count badge (top-right corner) ─────────────────────
-  cardCountBadge: {
-    position: "absolute",
-    top: -6,
-    right: -6,
-    minWidth: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: "#EF4444",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 5,
-    zIndex: 10,
-    borderWidth: 2,
-    borderColor: "#FFFFFF",
-    elevation: 4,
-  },
-  cardCountBadgeText: { fontSize: 11, fontWeight: "800", color: "#FFFFFF" },
 
   // ── Gallery Modal styles ──────────────────────────────────────────────────
   imageModalOverlay: {

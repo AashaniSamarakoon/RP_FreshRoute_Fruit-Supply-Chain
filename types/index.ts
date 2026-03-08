@@ -101,6 +101,17 @@ export interface PlacedOrder {
   deliveryFee?: number;
   totalPrice?: number;
   deliveryType?: string;
+  // pricing object used by farmer endpoint
+  pricing?: {
+    unitPrice?: number;
+    grossEarning?: number;
+    platformFee?: number;
+    platformFeeRate?: number;
+    farmerEarning?: number;
+  };
+  // server may also include productImages
+  productImages?: string[];
+  product_images?: string[];
   // PayHere reference populated by the backend notify webhook after payment
   payhere_payment_id?: string | null;
 }

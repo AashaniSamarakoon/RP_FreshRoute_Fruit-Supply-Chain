@@ -48,7 +48,6 @@ const getStatusStyles = (status: string) => {
     case "PAID_PENDING_DELIVERY":
     case "IN_TRANSIT":
       return { bg: "#EFF6FF", text: "#3B82F6", label: "In Transit" };
-    case "PACKING":
     case "READY_FOR_PICKUP":
       return { bg: "#EFF6FF", text: "#3B82F6", label: status.replace(/_/g, " ") };
     case "DELIVERED":
@@ -145,12 +144,10 @@ export default function OrderDetailScreen() {
           console.warn("Failed to parse farmerPickup from params:", e);
         }
       }
-      // always use farmer endpoint in this screen
-      const all: any = await api.get(`/api/farmer/orders`);
-      const arr: any[] = Array.isArray(all) ? all : (all?.orders ?? all ?? []);
-      const found = arr.find((o) => String(o.id) === String(params.orderId));
-      if (!found) throw new Error("Order not found");
-      data = { order: found };
+      // call single-order endpoint for farmers
+      data = await api.get(`/api/farmer/orders/${params.orderId}`);
+      // some backends wrap object in { order } or return directly
+      if (!data.order) data = { order: data };
 
       console.log("Order details response:", data);
       const orderData = data.order || {};
@@ -199,6 +196,12 @@ export default function OrderDetailScreen() {
           Array.isArray(data.productImages)
             ? data.productImages
             : [data.productImages],
+        );
+      } else if (orderData?.productImages?.length > 0) {
+        setProductImages(
+          Array.isArray(orderData.productImages)
+            ? orderData.productImages
+            : [orderData.productImages],
         );
       } else if (orderData?.product_images) {
         setProductImages(
@@ -537,22 +540,25 @@ export default function OrderDetailScreen() {
 
         {/* --- FIXED BOTTOM SECTION --- */}
         <View style={styles.fixedBottomPanel}>
-          <Text style={styles.sectionTitle}>Payment Summary</Text>
+          <Text style={styles.sectionTitle}>Earning Summary</Text>
 
           <View style={styles.receiptItems}>
-            {order.unitPrice != null && (
-              <View style={styles.receiptRow}>
-                <Text style={styles.receiptLabel}>Unit Price</Text>
-                <Text style={styles.receiptValue}>
-                  Rs. {formatCurrency(order.unitPrice)}
-                </Text>
-              </View>
-            )}
+            {(() => {
+              const uPrice = order.pricing?.unitPrice ?? order.unitPrice ?? null;
+              return uPrice != null ? (
+                <View style={styles.receiptRow}>
+                  <Text style={styles.receiptLabel}>Unit Price</Text>
+                  <Text style={styles.receiptValue}>
+                    Rs. {formatCurrency(uPrice)}
+                  </Text>
+                </View>
+              ) : null;
+            })()}
             {(() => {
               const basePrice =
-                order.basePrice ??
-                (order.unitPrice != null
-                  ? order.unitPrice * order.quantity
+                order.pricing?.grossEarning ??
+                (order.pricing?.unitPrice != null
+                  ? order.pricing.unitPrice * order.quantity
                   : null);
               return basePrice != null ? (
                 <View style={styles.receiptRow}>
@@ -565,30 +571,29 @@ export default function OrderDetailScreen() {
                 </View>
               ) : null;
             })()}
-            {order.serviceCharge != null && (
-              <View style={styles.receiptRow}>
-                <Text style={styles.receiptLabel}>Service Charge</Text>
-                <Text style={styles.receiptValue}>
-                  Rs. {formatCurrency(order.serviceCharge)}
-                </Text>
-              </View>
-            )}
-            {order.deliveryFee != null && (
-              <View style={styles.receiptRow}>
-                <Text style={styles.receiptLabel}>Delivery Fee</Text>
-                <Text
-                  style={styles.receiptValue}
-                >{`Rs. ${formatCurrency(order.deliveryFee)}`}</Text>
-              </View>
-            )}
+            {(() => {
+              const fee = order.pricing?.platformFee ?? order.serviceCharge;
+              return fee != null ? (
+                <View style={styles.receiptRow}>
+                  <Text style={styles.receiptLabel}>Service Charge (1.4%)</Text>
+                  <Text style={styles.receiptValue}>
+                    Rs. {formatCurrency(fee)}
+                  </Text>
+                </View>
+              ) : null;
+            })()}
 
             <View style={styles.dashedReceiptSeparator} />
 
             <View style={styles.receiptTotalRow}>
-              <Text style={styles.receiptTotalLabel}>Total Amount</Text>
+              <Text style={styles.receiptTotalLabel}>Total Earnings</Text>
               <Text style={styles.receiptTotalValue}>
                 Rs.{" "}
-                {order.totalPrice ? formatCurrency(order.totalPrice) : "N/A"}
+                {order.pricing?.farmerEarning != null
+                  ? formatCurrency(order.pricing.farmerEarning)
+                  : order.totalPrice
+                  ? formatCurrency(order.totalPrice)
+                  : "N/A"}
               </Text>
             </View>
           </View>
