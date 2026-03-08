@@ -5,7 +5,6 @@ import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   Alert,
-  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -18,7 +17,7 @@ const PRIMARY_GREEN = "#2f855a";
 export default function ProfileScreen() {
   const router = useRouter();
   const [user, setUser] = useState({
-    name: "Loading...",
+    user_metadata: { first_name: "Loading..." },
     email: "...",
     role: "",
   });
@@ -57,7 +56,7 @@ export default function ProfileScreen() {
             "onboarding_farmer",
             "onboarding_buyer",
           ]);
-          router.replace("/login"); // Adjust route to your actual login path
+          router.replace("/login");
         },
       },
     ]);
@@ -89,17 +88,13 @@ export default function ProfileScreen() {
       {/* 1. Top Profile Header */}
       <View style={styles.headerSection}>
         <View style={styles.avatarContainer}>
-          <Image
-            source={{
-              uri: "https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=400&auto=format&fit=crop&q=60",
-            }}
-            style={styles.avatar}
-          />
-          <View style={styles.editBadge}>
-            <Ionicons name="camera" size={14} color="#fff" />
+          <View style={styles.avatar}>
+            <Ionicons name="person" size={54} color={PRIMARY_GREEN} />
           </View>
         </View>
-        <Text style={styles.userName}>{user.name}</Text>
+        <Text style={styles.userName}>
+          {user.user_metadata?.first_name || "User"}
+        </Text>
         <Text style={styles.userEmail}>{user.email}</Text>
         <View style={styles.roleBadge}>
           <Text style={styles.roleText}>{user.role.toUpperCase()}</Text>
@@ -110,15 +105,18 @@ export default function ProfileScreen() {
       <View style={styles.menuSection}>
         <Text style={styles.sectionTitle}>Account Settings</Text>
 
-        <MenuOption
+        {/* <MenuOption
           icon="person-outline"
           label="Edit Profile"
           onPress={() => console.log("Edit Profile")}
-        />
+        /> */}
         <MenuOption
           icon="notifications-outline"
           label="Notifications"
-          onPress={() => console.log("Notifications")}
+          onPress={() => {
+            console.log("Notifications");
+            router.push("/transporter/notifications");
+          }}
         />
         <MenuOption
           icon="lock-closed-outline"
@@ -146,7 +144,6 @@ export default function ProfileScreen() {
           <Ionicons name="log-out-outline" size={20} color="#e53e3e" />
           <Text style={styles.logoutText}>Log Out</Text>
         </TouchableOpacity>
-        <Text style={styles.versionText}>App Version 1.0.5</Text>
       </View>
     </ScrollView>
   );
@@ -177,9 +174,12 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: "#e6fffa",
+    justifyContent: "center",
+    alignItems: "center",
     borderWidth: 4,
     borderColor: "#f7fafc",
   },

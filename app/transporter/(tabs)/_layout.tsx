@@ -1,5 +1,5 @@
 import { Tabs } from "expo-router";
-import { Home, Truck, User } from "lucide-react-native";
+import { ClipboardList, Home, Truck, User } from "lucide-react-native";
 
 export default function TransporterTabsLayout() {
   return (
@@ -30,6 +30,16 @@ export default function TransporterTabsLayout() {
         options={{
           title: "Home",
           tabBarIcon: ({ color, size }) => <Home size={size} color={color} />,
+        }}
+      />
+
+      <Tabs.Screen
+        name="jobs"
+        options={{
+          title: "Jobs",
+          tabBarIcon: ({ color, size }) => (
+            <ClipboardList size={size} color={color} />
+          ),
         }}
       />
 

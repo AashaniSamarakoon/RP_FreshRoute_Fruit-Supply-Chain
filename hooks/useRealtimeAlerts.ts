@@ -16,9 +16,9 @@ export function useRealtimeAlerts() {
 
           // 2. Show UI Notification (Simple Native Alert for now)
           Alert.alert("⚠️ SHIPMENT ALERT", newAlert.message, [
-            { text: "Check Details" },
+            { text: "close" },
           ]);
-        }
+        },
       )
       .subscribe();
 

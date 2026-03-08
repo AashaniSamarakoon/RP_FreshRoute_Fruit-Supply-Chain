@@ -1,8 +1,8 @@
 // app/transporter/index.tsx
 import api from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -50,9 +50,12 @@ export default function TransporterDashboard() {
     }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      setLoading(true); // Optional: shows spinner briefly when returning
+      fetchData();
+    }, []),
+  );
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -73,78 +76,83 @@ export default function TransporterDashboard() {
     setFilteredJobs(filtered);
   };
 
-  const renderJobCard = ({ item }: { item: Job }) => (
-    <TouchableOpacity
-      style={styles.card}
-      onPress={() => router.push(`/transporter/job/${item.id}`)}
-    >
-      <View style={styles.cardHeader}>
-        <Text style={styles.routeTitle}>{item.route_name}</Text>
-        <View
-          style={[
-            styles.badge,
-            item.status === "SCHEDULED" ? styles.badgeBlue : styles.badgeGreen,
-          ]}
-        >
-          <Text style={styles.badgeText}>{item.status}</Text>
-        </View>
-      </View>
-
-      <View style={styles.row}>
-        <Ionicons name="calendar-outline" size={16} color="#666" />
-        <Text style={styles.infoText}>
-          {new Date(item.job_date).toDateString()}
-        </Text>
-      </View>
-
-      <View style={styles.row}>
-        <Ionicons name="cube-outline" size={16} color="#666" />
-        <Text style={styles.infoText}>Load: {item.total_weight_kg} kg</Text>
-      </View>
-
-      <View style={styles.footer}>
-        <Text style={styles.clickHint}>Tap to view details & route</Text>
-        <Ionicons name="chevron-forward" size={16} color="#999" />
-      </View>
-    </TouchableOpacity>
-  );
-
-  // --- TESTING ONLY: quick open fruit grading with mock IDs. Remove this block when not testing. ---
-  const openFruitGradingTest = () => {
-    router.push({
-      pathname: "/transporter/fruit-grading",
-      params: {
-        job_id: "test-job-mock",
-        order_id: "test-order-mock",
-        pickup_lat: "6.9271",
-        pickup_lng: "79.8612",
-      },
-    });
+  const getStatusStyle = (status: string) => {
+    switch (status.toUpperCase()) {
+      case "SCHEDULED":
+        return { bg: "#fffaf0", text: "#dd6b20" }; // Warm Orange
+      case "COMPLETED":
+        return { bg: "#f0fff4", text: "#2f855a" }; // Green
+      default:
+        return { bg: "#ebf8ff", text: "#3182ce" }; // Blue
+    }
   };
-  // --- END TESTING ONLY ---
 
-  const SubHeader = () => (
-    <>
-      <View style={styles.subHeaderContainer}>
-        <Text style={styles.sectionTitle}>My Jobs</Text>
-        {vehicleInfo && (
-          <View style={styles.vehicleTag}>
-            <Ionicons name="bus-outline" size={14} color="#718096" />
-            <Text style={styles.vehicleText}>
-              {vehicleInfo.vehicle_license_plate}
+  const renderJobCard = ({ item }: { item: Job }) => {
+    const statusStyle = getStatusStyle(item.status);
+
+    return (
+      <TouchableOpacity
+        style={styles.card}
+        activeOpacity={0.7}
+        onPress={() => router.push(`/transporter/job/${item.id}`)}
+      >
+        <View style={styles.cardHeader}>
+          {/* FIX: Wrapped title in a flex container to prevent badge push-out */}
+          <View style={styles.titleContainer}>
+            <Text style={styles.routeTitle} numberOfLines={2}>
+              {item.route_name}
             </Text>
           </View>
-        )}
-      </View>
-      {/* TESTING ONLY - remove this block and openFruitGradingTest + test styles */}
-      <TouchableOpacity
-        style={styles.testGradingBtn}
-        onPress={openFruitGradingTest}
-      >
-        <Ionicons name="camera-outline" size={16} color="#fff" />
-        <Text style={styles.testGradingBtnText}>Test grading</Text>
+
+          <View style={[styles.badge, { backgroundColor: statusStyle.bg }]}>
+            <Text style={[styles.badgeText, { color: statusStyle.text }]}>
+              {item.status}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.infoGrid}>
+          <View style={styles.row}>
+            <View style={styles.iconBox}>
+              <Ionicons
+                name="calendar-clear-outline"
+                size={16}
+                color="#4a5568"
+              />
+            </View>
+            <Text style={styles.infoText}>
+              {new Date(item.job_date).toDateString()}
+            </Text>
+          </View>
+
+          <View style={styles.row}>
+            <View style={styles.iconBox}>
+              <Ionicons name="scale-outline" size={16} color="#4a5568" />
+            </View>
+            <Text style={styles.infoText}>{item.total_weight_kg} kg</Text>
+          </View>
+        </View>
+
+        <View style={styles.footer}>
+          <Text style={styles.clickHint}>View details & route</Text>
+          <Ionicons name="arrow-forward-circle" size={20} color="#cbd5e0" />
+        </View>
       </TouchableOpacity>
-    </>
+    );
+  };
+
+  const SubHeader = () => (
+    <View style={styles.subHeaderContainer}>
+      <Text style={styles.sectionTitle}>Active Deliveries</Text>
+      {vehicleInfo && (
+        <View style={styles.vehicleTag}>
+          <Ionicons name="bus" size={14} color="#4a5568" />
+          <Text style={styles.vehicleText}>
+            {vehicleInfo.vehicle_license_plate}
+          </Text>
+        </View>
+      )}
+    </View>
   );
 
   return (
@@ -180,81 +188,123 @@ export default function TransporterDashboard() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
-  content: { flex: 1, backgroundColor: "#f5f7fa", paddingHorizontal: 16 },
+  container: { flex: 1, backgroundColor: "#f8fafc" }, // Softer overall background
+  content: { flex: 1, paddingHorizontal: 16 },
 
   // Sub Header Styles
   subHeaderContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginVertical: 16,
+    marginTop: 24,
+    marginBottom: 16,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#2d3748",
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#1e293b",
+    letterSpacing: -0.5,
   },
   vehicleTag: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#e2e8f0",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20, // Pill shape
   },
   vehicleText: {
-    fontSize: 13,
-    color: "#4a5568",
-    marginLeft: 4,
-    fontWeight: "600",
+    fontSize: 12,
+    color: "#334155",
+    marginLeft: 6,
+    fontWeight: "700",
+    letterSpacing: 0.5,
   },
 
   // Card Styles
   card: {
     backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 16, // Smoother corners
+    padding: 20,
     marginBottom: 16,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 3,
+    // Upgraded shadow for a "floating" effect
+    shadowColor: "#64748b",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: "#f1f5f9",
   },
   cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 12,
+    alignItems: "flex-start",
+    marginBottom: 16,
   },
-  routeTitle: { fontSize: 18, fontWeight: "bold", color: "#2d3748" },
-  badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  badgeBlue: { backgroundColor: "#bee3f8" },
-  badgeGreen: { backgroundColor: "#c6f6d5" },
-  badgeText: { fontSize: 12, fontWeight: "bold", color: "#2c5282" },
-  row: { flexDirection: "row", alignItems: "center", marginBottom: 8 },
-  infoText: { marginLeft: 8, color: "#4a5568", fontSize: 14 },
+  titleContainer: {
+    flex: 1,
+    marginRight: 12, // Gives the badge breathing room
+  },
+  routeTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#0f172a",
+    lineHeight: 24,
+  },
+  badge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    alignSelf: "flex-start", // Prevents stretching
+  },
+  badgeText: {
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  infoGrid: {
+    gap: 12, // React Native flex gap for clean spacing
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  iconBox: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: "#f8fafc",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  infoText: {
+    color: "#475569",
+    fontSize: 15,
+    fontWeight: "500",
+  },
   footer: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#edf2f7",
-  },
-  clickHint: { fontSize: 12, color: "#a0aec0" },
-  emptyText: { textAlign: "center", marginTop: 50, color: "#a0aec0" },
-
-  // TESTING ONLY - remove with the testing block in JSX
-  testGradingBtn: {
-    flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#805ad5",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    gap: 6,
-    alignSelf: "flex-start",
-    marginBottom: 12,
+    marginTop: 20,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#f1f5f9",
+    borderStyle: "dashed", // Makes the card feel like a ticket
   },
-  testGradingBtnText: { fontSize: 12, color: "#fff", fontWeight: "600" },
+  clickHint: {
+    fontSize: 13,
+    color: "#94a3b8",
+    fontWeight: "600",
+  },
+  emptyText: {
+    textAlign: "center",
+    marginTop: 60,
+    color: "#94a3b8",
+    fontSize: 16,
+    fontWeight: "500",
+  },
 });

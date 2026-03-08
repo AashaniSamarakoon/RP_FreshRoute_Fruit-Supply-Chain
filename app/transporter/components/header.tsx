@@ -1,5 +1,5 @@
 // components/Header.tsx
-import api from "@/services/api";
+import { supabase } from "@/utils/supabaseClient";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -11,8 +11,12 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-// Assuming you have this context, otherwise you can remove the hook and hardcode text
 import { useTranslationContext } from "../../../context/TranslationContext";
+import {
+  isTrackingActive,
+  startLocationTracking,
+  stopLocationTracking,
+} from "../../../utils/locationTask";
 
 const PRIMARY_GREEN = "#2f855a";
 const LIGHT_GRAY = "#f5f5f5";
@@ -23,51 +27,131 @@ interface HeaderProps {
 
 export default function Header({ onSearch }: HeaderProps) {
   const router = useRouter();
-  // If you don't have translation context set up for transporter yet,
-  // you can remove t/locale logic and just use English strings.
-  const { t, locale, setLocale } = useTranslationContext();
+  const { t } = useTranslationContext();
 
   const [unreadCount, setUnreadCount] = useState(0);
   const [userName, setUserName] = useState("Transporter");
+  const [isTracking, setIsTracking] = useState(false);
+  const [greeting, setGreeting] = useState("Hello");
+
+  // Dynamic Greeting Logic
+  useEffect(() => {
+    const hour = new Date().getHours();
+    if (hour < 12) setGreeting("Good Morning");
+    else if (hour < 18) setGreeting("Good Afternoon");
+    else setGreeting("Good Evening");
+  }, []);
 
   useEffect(() => {
-    const loadData = async () => {
+    let alertSubscription: any;
+
+    const setupHeader = async () => {
+      // 1. Check Tracking Status
+      const isCurrentlyActive = await isTrackingActive();
+      const wantsTracking = await AsyncStorage.getItem("auto_track_enabled");
+
+      if (isCurrentlyActive) {
+        setIsTracking(true);
+      } else if (wantsTracking === "true") {
+        const started = await startLocationTracking();
+        setIsTracking(started);
+      } else {
+        setIsTracking(false);
+      }
+
+      // 2. Load User Data
+      const userStr = await AsyncStorage.getItem("user");
+      if (!userStr) return;
+
+      const user = JSON.parse(userStr);
+      const firstName = user.user_metadata?.first_name;
+      const lastName = user.user_metadata?.last_name;
+
+      if (firstName) {
+        setUserName(`${firstName} ${lastName || ""}`.trim());
+      }
+
+      // 3. Fetch Assigned Vehicle and Unread Alerts Count
       try {
-        const token = await AsyncStorage.getItem("token");
-        const userStr = await AsyncStorage.getItem("user");
+        const { data: tData } = await supabase
+          .from("transporter")
+          .select("vehicle_id")
+          .eq("user_id", user.id)
+          .single();
 
-        // 1. Get Name from Local Storage
-        if (userStr) {
-          const user = JSON.parse(userStr);
-          // Extracting from user_metadata based on your specific log
-          const firstName = user.user_metadata?.first_name;
-          const lastName = user.user_metadata?.last_name;
+        if (tData?.vehicle_id) {
+          // Count unread alerts for this vehicle
+          const { count } = await supabase
+            .from("alerts")
+            .select("*", { count: "exact", head: true })
+            .eq("vehicle_id", tData.vehicle_id)
+            .eq("is_read", false);
 
-          if (firstName) {
-            setUserName(`${firstName} ${lastName || ""}`.trim());
-          } else {
-            setUserName("Transporter");
-          }
-        }
+          setUnreadCount(count || 0);
 
-        if (!token) return;
+          // 4. Setup Realtime Subscription for new alerts
+          alertSubscription = supabase
+            .channel(`public:alerts:${tData.vehicle_id}`)
+            .on(
+              "postgres_changes",
+              {
+                event: "INSERT",
+                schema: "public",
+                table: "alerts",
+                filter: `vehicle_id=eq.${tData.vehicle_id}`,
+              },
+              (payload) => {
+                const newAlert = payload.new;
+                console.log("Realtime Alert Received:", newAlert);
 
-        // 2. Get Notifications (Switched to transporter endpoint)
-        try {
-          const data = await api.get(`/api/transporter/notifications`);
-          setUnreadCount(data.unreadCount || 0);
-        } catch (_e) {
-          // ignore
+                // Increment badge counter
+                setUnreadCount((prev) => prev + 1);
+
+                // Show Native Popup
+                // Alert.alert(
+                //   "⚠️ SHIPMENT ALERT",
+                //   newAlert.message ||
+                //     "A temperature issue was detected with your shipment.",
+                //   [{ text: "Close", style: "cancel" }],
+                // );
+              },
+            )
+            .subscribe();
         }
       } catch (err) {
-        console.error("[Header] Failed to load header data", err);
+        console.error("[Header] Failed to fetch alerts", err);
       }
     };
 
-    loadData();
-    const interval = setInterval(loadData, 30000); // Refresh every 30s
-    return () => clearInterval(interval);
-  }, []);
+    setupHeader();
+
+    // Cleanup subscription on unmount
+    return () => {
+      if (alertSubscription) {
+        supabase.removeChannel(alertSubscription);
+      }
+    };
+  }, [router]);
+
+  const toggleTracking = async () => {
+    if (isTracking) {
+      await stopLocationTracking();
+      await AsyncStorage.setItem("auto_track_enabled", "false");
+      setIsTracking(false);
+    } else {
+      const started = await startLocationTracking();
+      if (started) {
+        await AsyncStorage.setItem("auto_track_enabled", "true");
+        setIsTracking(true);
+      }
+    }
+  };
+
+  const handleNotificationPress = () => {
+    // Optimistically clear badge when clicking to view notifications
+    setUnreadCount(0);
+    router.push("/transporter/notifications" as any);
+  };
 
   return (
     <>
@@ -76,35 +160,44 @@ export default function Header({ onSearch }: HeaderProps) {
         <View>
           <Text style={styles.logo}>🍃 FreshRoute</Text>
           <Text style={styles.greeting}>
-            {/* Fallback to English if translation key missing */}
+            {/* If translation exists use it, otherwise fallback to dynamic English greeting */}
             {t
-              ? t("farmer.greeting", { name: userName })
-              : `Hello, ${userName}`}
+              ? t("farmer.greeting", { name: userName }) // Update translation key if needed
+              : `${greeting}, ${userName}`}
           </Text>
         </View>
+
         <View style={styles.headerIcons}>
+          {/* Location Tracking Toggle */}
           <TouchableOpacity
-            onPress={() => router.push("/transporter/notifications" as any)} // Adjust route as needed
-            style={styles.notificationButton}
+            style={[
+              styles.iconButton,
+              { backgroundColor: isTracking ? "#e6fffa" : "transparent" },
+            ]}
+            onPress={toggleTracking}
+          >
+            <Ionicons
+              name={isTracking ? "location" : "location-outline"}
+              size={24}
+              color={isTracking ? PRIMARY_GREEN : "#666"}
+            />
+            {isTracking && <View style={styles.trackingDot} />}
+          </TouchableOpacity>
+
+          {/* Notifications */}
+          <TouchableOpacity
+            onPress={handleNotificationPress}
+            style={[styles.iconButton, { marginLeft: 8 }]}
           >
             <Ionicons name="notifications-outline" size={24} color="#000" />
             {unreadCount > 0 && (
               <View style={styles.badge}>
-                <View style={styles.badgeDot} />
+                {/* Display actual count if under 100, otherwise 99+ */}
+                <Text style={styles.badgeText}>
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </Text>
               </View>
             )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.langToggle, { marginLeft: 12 }]}
-            onPress={() => {
-              const nextLocale = locale === "en" ? "si" : "en";
-              setLocale(nextLocale);
-            }}
-          >
-            <Text style={styles.langToggleText}>
-              {locale === "en" ? "සි" : "EN"}
-            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -126,7 +219,7 @@ export default function Header({ onSearch }: HeaderProps) {
 const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 16,
-    paddingTop: 50, // Safe area padding
+    paddingTop: 50,
     paddingBottom: 20,
     flexDirection: "row",
     justifyContent: "space-between",
@@ -149,40 +242,44 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
-  notificationButton: {
+  iconButton: {
     position: "relative",
-    padding: 4,
+    padding: 8,
+    borderRadius: 50,
   },
-  badge: {
+  trackingDot: {
     position: "absolute",
-    top: 0,
-    right: 0,
-    backgroundColor: "#fff",
-    borderRadius: 8,
-    padding: 2,
-  },
-  badgeDot: {
+    bottom: 6,
+    right: 6,
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "#ef4444",
-  },
-  langToggle: {
+    backgroundColor: PRIMARY_GREEN,
     borderWidth: 1,
-    borderColor: "#d1d5db",
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: "#fff",
+    borderColor: "#fff",
   },
-  langToggleText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: PRIMARY_GREEN,
+  badge: {
+    position: "absolute",
+    top: 2,
+    right: 2,
+    backgroundColor: "#ef4444",
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: "#fff",
+  },
+  badgeText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "bold",
   },
   searchContainer: {
     marginHorizontal: 16,
-    marginBottom: 10, // Reduced margin
+    marginBottom: 10,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: LIGHT_GRAY,
