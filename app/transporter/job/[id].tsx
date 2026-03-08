@@ -1,6 +1,7 @@
 // import api from "@/services/api";
 // import { Ionicons } from "@expo/vector-icons";
 // import AsyncStorage from "@react-native-async-storage/async-storage";
+// import * as Location from "expo-location";
 // import {
 //   Stack,
 //   useFocusEffect,
@@ -29,6 +30,7 @@
 //   lat: number;
 //   lng: number;
 //   location?: string;
+//   address?: string; // Newly added for reverse geocoding
 //   distance_from_last_km: number;
 //   order_id: string;
 //   is_completed?: boolean;
@@ -58,6 +60,7 @@
 //   const [ordersData, setOrdersData] = useState<Record<string, OrderInfo>>({});
 //   const [loading, setLoading] = useState(true);
 //   const [actionLoading, setActionLoading] = useState(false);
+//   const [jobStatusLoading, setJobStatusLoading] = useState(false);
 //   const [verifiedOrders, setVerifiedOrders] = useState<Set<string>>(new Set());
 //   const [modalVisible, setModalVisible] = useState(false);
 //   const [selectedOrder, setSelectedOrder] = useState<OrderInfo | null>(null);
@@ -85,10 +88,46 @@
 //     }, [id]),
 //   );
 
+//   const reverseGeocodeStops = async (cleanManifest: ManifestItem[]) => {
+//     try {
+//       const { status } = await Location.requestForegroundPermissionsAsync();
+//       if (status !== "granted") return cleanManifest;
+
+//       const updatedManifest = await Promise.all(
+//         cleanManifest.map(async (stop) => {
+//           try {
+//             const geocode = await Location.reverseGeocodeAsync({
+//               latitude: stop.lat,
+//               longitude: stop.lng,
+//             });
+//             if (geocode.length > 0) {
+//               const place = geocode[0];
+//               // Format: "123 Main St, City, Region"
+//               const addressStr = [place.street, place.city, place.region]
+//                 .filter(Boolean)
+//                 .join(", ");
+//               return { ...stop, address: addressStr };
+//             }
+//           } catch (e) {
+//             console.warn("Geocoding failed for a stop", e);
+//           }
+//           return stop; // Return original if geocoding fails
+//         }),
+//       );
+//       return updatedManifest;
+//     } catch (e) {
+//       console.error("Geocoding permission error:", e);
+//       return cleanManifest;
+//     }
+//   };
+
 //   const fetchJobDetails = async () => {
 //     try {
 //       const data: any = await api.get(`/api/transporter/jobs/${id}`);
+
+//       // 1. UPDATE JOB STATE IMMEDIATELY so the UI reacts instantly
 //       setJob(data);
+//       setOrdersData(data.orders_data || {});
 
 //       const cleanManifest = (data.route_manifest || []).map((item: any) => ({
 //         ...item,
@@ -96,11 +135,18 @@
 //         lng: parseFloat(item.lng),
 //       }));
 
+//       // 2. Set the manifest with raw coordinates first
 //       setManifest(cleanManifest);
-//       setOrdersData(data.orders_data || {});
+
+//       // We can stop the loading spinner now because the core data is here
+//       setLoading(false);
+
+//       // 3. Kick off reverse geocoding in the background without awaiting it here
+//       reverseGeocodeStops(cleanManifest).then((manifestWithAddresses) => {
+//         setManifest(manifestWithAddresses);
+//       });
 //     } catch (error) {
 //       Alert.alert("Error", "Failed to load details");
-//     } finally {
 //       setLoading(false);
 //     }
 //   };
@@ -128,7 +174,62 @@
 //     });
 //   };
 
-//   // --- TEMPORARY TESTING VERSION (Bypasses Camera) ---
+//   // --- JOB STATUS ACTIONS ---
+//   const updateJobStatus = async (newStatus: "IN_TRANSIT" | "COMPLETED") => {
+//     const actionText =
+//       newStatus === "IN_TRANSIT"
+//         ? "start this job"
+//         : "mark this job as completed";
+
+//     Alert.alert("Confirm Action", `Are you sure you want to ${actionText}?`, [
+//       { text: "Cancel", style: "cancel" },
+//       {
+//         text: "Confirm",
+//         onPress: async () => {
+//           try {
+//             setJobStatusLoading(true);
+
+//             // Call the backend
+//             const response: any = await api.put(
+//               `/api/transporter/jobs/${id}/status`,
+//               { status: newStatus },
+//             );
+
+//             // Broaden the check to catch however your Axios interceptor returns data
+//             if (
+//               response.success ||
+//               response.data?.success ||
+//               response.message ||
+//               response.status === 200
+//             ) {
+//               // 1. Force the UI to update instantly (Optimistic Update)
+//               setJob((prevJob: any) => ({
+//                 ...prevJob,
+//                 status: newStatus,
+//               }));
+
+//               Alert.alert(
+//                 "Success",
+//                 `Job ${newStatus === "IN_TRANSIT" ? "Started" : "Completed"}!`,
+//               );
+
+//               // Notice we are NOT calling fetchJobDetails() here anymore.
+//               // This prevents a race condition where the backend returns stale data
+//               // before it finishes processing the PUT request.
+//             } else {
+//               throw new Error("API did not return a success flag");
+//             }
+//           } catch (error) {
+//             console.error("Status update error:", error);
+//             Alert.alert("Error", `Failed to update job status`);
+//           } finally {
+//             setJobStatusLoading(false);
+//           }
+//         },
+//       },
+//     ]);
+//   };
+
 //   const handleVerifyQuality = async (orderId: string) => {
 //     try {
 //       const updatedVerifiedOrders = new Set(verifiedOrders);
@@ -148,25 +249,6 @@
 //       console.error("Error saving test verification:", error);
 //       Alert.alert("Error", "Could not bypass verification.");
 //     }
-
-//     /* // --- ORIGINAL CAMERA ROUTING (Keep for later) ---
-//     const pickupStop = manifest.find(
-//       (stop) => stop.type === "PICKUP" && stop.order_id === orderId,
-//     );
-//     if (!pickupStop) {
-//       Alert.alert("Error", "Pickup location not found.");
-//       return;
-//     }
-//     router.push({
-//       pathname: "/transporter/fruit-grading",
-//       params: {
-//         job_id: id as string,
-//         order_id: orderId,
-//         pickup_lat: pickupStop.lat.toString(),
-//         pickup_lng: pickupStop.lng.toString(),
-//       },
-//     });
-//     */
 //   };
 
 //   const handleAction = (
@@ -189,7 +271,7 @@
 //           onPress: async () => {
 //             try {
 //               setActionLoading(true);
-//               const response = await api.post(
+//               const response: any = await api.post(
 //                 `/api/transporter/jobs/${id}/action`,
 //                 {
 //                   orderId: orderId,
@@ -197,9 +279,12 @@
 //                 },
 //               );
 
-//               if (response.success) {
+//               if (response.success || response.data?.success) {
 //                 await fetchJobDetails();
-//                 Alert.alert("Success", response.message);
+//                 Alert.alert(
+//                   "Success",
+//                   response.message || response.data?.message,
+//                 );
 //               }
 //             } catch (error) {
 //               console.error(error);
@@ -229,6 +314,9 @@
 //         <ActivityIndicator size="large" color="#16a34a" />
 //       </View>
 //     );
+
+//   const isJobActive = job?.status === "IN_TRANSIT";
+//   const isJobCompleted = job?.status === "COMPLETED";
 
 //   return (
 //     <View style={styles.container}>
@@ -270,20 +358,54 @@
 //               <Text style={styles.statLabel}>Stops</Text>
 //               <Text style={styles.statValue}>{manifest.length}</Text>
 //             </View>
-//             <View style={styles.statDivider} />
-//             {/* <View style={styles.statBox}>
-//               <Text style={styles.statLabel}>Status</Text>
-//               <Text
+//           </View>
+
+//           {/* JOB STATUS BUTTON */}
+//           <View style={{ marginTop: 20 }}>
+//             {jobStatusLoading ? (
+//               <View
+//                 style={[styles.jobStatusBtn, { backgroundColor: "#e2e8f0" }]}
+//               >
+//                 <ActivityIndicator size="small" color="#64748b" />
+//               </View>
+//             ) : isJobCompleted ? (
+//               <View
 //                 style={[
-//                   styles.statValue,
-//                   {
-//                     color: job?.status === "COMPLETED" ? "#16a34a" : "#ea580c",
-//                   },
+//                   styles.jobStatusBtn,
+//                   { backgroundColor: "#dcfce7", borderColor: "#22c55e" },
 //                 ]}
 //               >
-//                 {job?.status || "SCHEDULED"}
-//               </Text>
-//             </View> */}
+//                 <Ionicons name="checkmark-circle" size={20} color="#15803d" />
+//                 <Text
+//                   style={[
+//                     styles.jobStatusText,
+//                     { color: "#15803d", marginLeft: 8 },
+//                   ]}
+//                 >
+//                   Job Completed
+//                 </Text>
+//               </View>
+//             ) : isJobActive ? (
+//               <TouchableOpacity
+//                 style={[
+//                   styles.jobStatusBtn,
+//                   { backgroundColor: "#dc2626", borderColor: "#b91c1c" },
+//                 ]}
+//                 onPress={() => updateJobStatus("COMPLETED")}
+//               >
+//                 <Text style={styles.jobStatusText}>Mark as Completed</Text>
+//               </TouchableOpacity>
+//             ) : (
+//               <TouchableOpacity
+//                 style={[
+//                   styles.jobStatusBtn,
+//                   { backgroundColor: "#2563eb", borderColor: "#1d4ed8" },
+//                 ]}
+//                 onPress={() => updateJobStatus("IN_TRANSIT")}
+//               >
+//                 <Text style={styles.jobStatusText}>Start Job</Text>
+//               </TouchableOpacity>
+//             )}
 //           </View>
 //         </View>
 
@@ -308,6 +430,12 @@
 
 //         {/* --- Timeline / Manifest --- */}
 //         <Text style={styles.sectionTitle}>Route Manifest</Text>
+//         {!isJobActive && !isJobCompleted && (
+//           <Text style={styles.warningText}>
+//             Start the job to unlock actions.
+//           </Text>
+//         )}
+
 //         <View style={styles.timeline}>
 //           {manifest.map((stop, index) => {
 //             const isLast = index === manifest.length - 1;
@@ -339,7 +467,12 @@
 //                 </View>
 
 //                 {/* Stop Card */}
-//                 <View style={styles.stopContent}>
+//                 <View
+//                   style={[
+//                     styles.stopContent,
+//                     !isJobActive && !isJobCompleted && { opacity: 0.7 },
+//                   ]}
+//                 >
 //                   <View style={styles.stopHeader}>
 //                     <View
 //                       style={[
@@ -363,9 +496,18 @@
 //                     </Text>
 //                   </View>
 
-//                   <Text style={styles.stopCoords}>
-//                     Lat: {stop.lat.toFixed(4)}, Lng: {stop.lng.toFixed(4)}
-//                   </Text>
+//                   <View style={styles.addressContainer}>
+//                     <Ionicons
+//                       name="location-outline"
+//                       size={16}
+//                       color="#64748b"
+//                       style={{ marginTop: 2 }}
+//                     />
+//                     <Text style={styles.stopAddress}>
+//                       {stop.address ||
+//                         `Lat: ${stop.lat.toFixed(4)}, Lng: ${stop.lng.toFixed(4)}`}
+//                     </Text>
+//                   </View>
 
 //                   {/* Actions Row */}
 //                   <View style={styles.stopButtons}>
@@ -395,28 +537,49 @@
 //                       </View>
 //                     ) : isPickup && !verifiedOrders.has(stop.order_id) ? (
 //                       <TouchableOpacity
-//                         style={[styles.actionBtn, styles.verifyBtn]}
+//                         style={[
+//                           styles.actionBtn,
+//                           styles.verifyBtn,
+//                           !isJobActive && styles.disabledBtn,
+//                         ]}
 //                         onPress={() => handleVerifyQuality(stop.order_id)}
+//                         disabled={!isJobActive}
 //                       >
 //                         <Ionicons
 //                           name="scan-outline"
 //                           size={16}
-//                           color="#15803d"
+//                           color={isJobActive ? "#15803d" : "#94a3b8"}
 //                         />
-//                         <Text style={styles.verifyBtnText}>Verify Quality</Text>
+//                         <Text
+//                           style={[
+//                             styles.verifyBtnText,
+//                             !isJobActive && { color: "#94a3b8" },
+//                           ]}
+//                         >
+//                           Verify Quality
+//                         </Text>
 //                       </TouchableOpacity>
 //                     ) : (
 //                       <TouchableOpacity
-//                         style={[styles.actionBtn, styles.primaryActionBtn]}
+//                         style={[
+//                           styles.actionBtn,
+//                           styles.primaryActionBtn,
+//                           !isJobActive && styles.disabledBtn,
+//                         ]}
 //                         onPress={() =>
 //                           handleAction(stop.type, stop.sequence, stop.order_id)
 //                         }
-//                         disabled={actionLoading}
+//                         disabled={!isJobActive || actionLoading}
 //                       >
 //                         {actionLoading ? (
 //                           <ActivityIndicator size="small" color="#fff" />
 //                         ) : (
-//                           <Text style={styles.primaryActionBtnText}>
+//                           <Text
+//                             style={[
+//                               styles.primaryActionBtnText,
+//                               !isJobActive && { color: "#94a3b8" },
+//                             ]}
+//                           >
 //                             Confirm {isPickup ? "Pickup" : "Drop"}
 //                           </Text>
 //                         )}
@@ -544,7 +707,6 @@
 //                       </View>
 //                     )}
 
-//                     {/* Handling Guidelines Array */}
 //                     {selectedOrder.specs.handling_guidelines &&
 //                       selectedOrder.specs.handling_guidelines.length > 0 && (
 //                         <View style={styles.guidelinesBox}>
@@ -585,7 +747,7 @@
 
 //   // Header
 //   customHeader: {
-//     backgroundColor: "#166534", // Deep premium green
+//     backgroundColor: "#166534",
 //     paddingTop:
 //       Platform.OS === "android" ? (StatusBar.currentHeight || 40) + 10 : 50,
 //     paddingBottom: 20,
@@ -641,6 +803,22 @@
 //   },
 //   statValue: { fontSize: 16, fontWeight: "800", color: "#0f172a" },
 
+//   // Job Status Button
+//   jobStatusBtn: {
+//     flexDirection: "row",
+//     alignItems: "center",
+//     justifyContent: "center",
+//     paddingVertical: 14,
+//     borderRadius: 12,
+//     borderWidth: 1,
+//   },
+//   jobStatusText: {
+//     color: "#fff",
+//     fontWeight: "800",
+//     fontSize: 16,
+//     letterSpacing: 0.5,
+//   },
+
 //   // Action Row
 //   actionRow: {
 //     flexDirection: "row",
@@ -683,9 +861,16 @@
 //   sectionTitle: {
 //     fontSize: 18,
 //     fontWeight: "800",
-//     marginBottom: 16,
+//     marginBottom: 4,
 //     color: "#0f172a",
 //     letterSpacing: -0.5,
+//   },
+//   warningText: {
+//     fontSize: 13,
+//     color: "#ea580c",
+//     fontWeight: "600",
+//     marginBottom: 16,
+//     fontStyle: "italic",
 //   },
 
 //   // Timeline
@@ -738,7 +923,7 @@
 //     flexDirection: "row",
 //     justifyContent: "space-between",
 //     alignItems: "center",
-//     marginBottom: 8,
+//     marginBottom: 12,
 //   },
 //   typeTag: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
 //   typeTagGreen: { backgroundColor: "#ecfdf5" },
@@ -752,7 +937,21 @@
 //   typeTextGreen: { color: "#059669" },
 //   typeTextBlue: { color: "#2563eb" },
 //   stopDist: { fontSize: 13, color: "#94a3b8", fontWeight: "600" },
-//   stopCoords: { color: "#64748b", fontSize: 13, marginBottom: 16 },
+
+//   addressContainer: {
+//     flexDirection: "row",
+//     alignItems: "flex-start",
+//     marginBottom: 16,
+//     paddingRight: 8,
+//   },
+//   stopAddress: {
+//     color: "#475569",
+//     fontSize: 13,
+//     fontWeight: "500",
+//     marginLeft: 6,
+//     flex: 1,
+//     lineHeight: 18,
+//   },
 
 //   stopButtons: { flexDirection: "row", gap: 8 },
 //   infoBtn: {
@@ -781,8 +980,13 @@
 //     justifyContent: "center",
 //     flexDirection: "row",
 //   },
-//   primaryActionBtn: { backgroundColor: "#0f172a" }, // Dark slate for primary action
+//   primaryActionBtn: { backgroundColor: "#0f172a" },
 //   primaryActionBtnText: { color: "#fff", fontWeight: "700", fontSize: 13 },
+//   disabledBtn: {
+//     backgroundColor: "#f1f5f9",
+//     borderColor: "#e2e8f0",
+//     borderWidth: 1,
+//   },
 
 //   verifyBtn: {
 //     backgroundColor: "#dcfce7",
@@ -929,6 +1133,7 @@
 // });
 
 import api from "@/services/api";
+import { supabase } from "@/utils/supabaseClient";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from "expo-location";
@@ -960,10 +1165,11 @@ interface ManifestItem {
   lat: number;
   lng: number;
   location?: string;
-  address?: string; // Newly added for reverse geocoding
+  address?: string;
   distance_from_last_km: number;
   order_id: string;
   is_completed?: boolean;
+  allocated_quantity?: number;
 }
 
 interface OrderInfo {
@@ -971,6 +1177,7 @@ interface OrderInfo {
   fruit_type: string;
   fruit_variant: string;
   quantity: number;
+  status?: string;
   farmer: { name: string; phone: string } | null;
   buyer: { name: string; phone: string } | null;
   specs: {
@@ -992,8 +1199,14 @@ export default function JobDetails() {
   const [actionLoading, setActionLoading] = useState(false);
   const [jobStatusLoading, setJobStatusLoading] = useState(false);
   const [verifiedOrders, setVerifiedOrders] = useState<Set<string>>(new Set());
+
+  // --- NEW: Keep track of rejected orders locally to prevent UI flickering ---
+  const [rejectedOrders, setRejectedOrders] = useState<Set<string>>(new Set());
+
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<OrderInfo | null>(null);
+  const [selectedAllocatedQuantity, setSelectedAllocatedQuantity] =
+    useState<number>(0);
 
   useEffect(() => {
     fetchJobDetails();
@@ -1032,7 +1245,6 @@ export default function JobDetails() {
             });
             if (geocode.length > 0) {
               const place = geocode[0];
-              // Format: "123 Main St, City, Region"
               const addressStr = [place.street, place.city, place.region]
                 .filter(Boolean)
                 .join(", ");
@@ -1041,7 +1253,7 @@ export default function JobDetails() {
           } catch (e) {
             console.warn("Geocoding failed for a stop", e);
           }
-          return stop; // Return original if geocoding fails
+          return stop;
         }),
       );
       return updatedManifest;
@@ -1055,7 +1267,6 @@ export default function JobDetails() {
     try {
       const data: any = await api.get(`/api/transporter/jobs/${id}`);
 
-      // 1. UPDATE JOB STATE IMMEDIATELY so the UI reacts instantly
       setJob(data);
       setOrdersData(data.orders_data || {});
 
@@ -1063,15 +1274,12 @@ export default function JobDetails() {
         ...item,
         lat: parseFloat(item.lat),
         lng: parseFloat(item.lng),
+        allocated_quantity: item.allocated_quantity || 0,
       }));
 
-      // 2. Set the manifest with raw coordinates first
       setManifest(cleanManifest);
-
-      // We can stop the loading spinner now because the core data is here
       setLoading(false);
 
-      // 3. Kick off reverse geocoding in the background without awaiting it here
       reverseGeocodeStops(cleanManifest).then((manifestWithAddresses) => {
         setManifest(manifestWithAddresses);
       });
@@ -1104,8 +1312,6 @@ export default function JobDetails() {
     });
   };
 
-  // --- JOB STATUS ACTIONS ---
-  // --- JOB STATUS ACTIONS ---
   const updateJobStatus = async (newStatus: "IN_TRANSIT" | "COMPLETED") => {
     const actionText =
       newStatus === "IN_TRANSIT"
@@ -1120,20 +1326,17 @@ export default function JobDetails() {
           try {
             setJobStatusLoading(true);
 
-            // Call the backend
             const response: any = await api.put(
               `/api/transporter/jobs/${id}/status`,
               { status: newStatus },
             );
 
-            // Broaden the check to catch however your Axios interceptor returns data
             if (
               response.success ||
               response.data?.success ||
               response.message ||
               response.status === 200
             ) {
-              // 1. Force the UI to update instantly (Optimistic Update)
               setJob((prevJob: any) => ({
                 ...prevJob,
                 status: newStatus,
@@ -1143,10 +1346,6 @@ export default function JobDetails() {
                 "Success",
                 `Job ${newStatus === "IN_TRANSIT" ? "Started" : "Completed"}!`,
               );
-
-              // Notice we are NOT calling fetchJobDetails() here anymore.
-              // This prevents a race condition where the backend returns stale data
-              // before it finishes processing the PUT request.
             } else {
               throw new Error("API did not return a success flag");
             }
@@ -1182,12 +1381,10 @@ export default function JobDetails() {
     }
   };
 
-  const handleAction = (
-    type: "PICKUP" | "DROP",
-    seq: number,
-    orderId: string,
-  ) => {
-    if (type === "PICKUP" && !verifiedOrders.has(orderId)) {
+  const handleAction = (stop: ManifestItem) => {
+    const { type, order_id, allocated_quantity } = stop;
+
+    if (type === "PICKUP" && !verifiedOrders.has(order_id)) {
       Alert.alert("Verification Required", "Please verify the quality first.");
       return;
     }
@@ -1205,12 +1402,44 @@ export default function JobDetails() {
               const response: any = await api.post(
                 `/api/transporter/jobs/${id}/action`,
                 {
-                  orderId: orderId,
+                  orderId: order_id,
                   type: type,
                 },
               );
 
               if (response.success || response.data?.success) {
+                if (type === "DROP") {
+                  const { data: orderData, error: fetchError } = await supabase
+                    .from("orders")
+                    .select("quantity, delivered_quantity")
+                    .eq("id", order_id)
+                    .single();
+
+                  if (fetchError) {
+                    console.error("Failed fetching order data:", fetchError);
+                  } else {
+                    const currentDelivered = orderData.delivered_quantity || 0;
+                    const amountToDrop = allocated_quantity || 0;
+                    const newDelivered = currentDelivered + amountToDrop;
+                    const totalQuantity = orderData.quantity;
+
+                    const updates: any = { delivered_quantity: newDelivered };
+
+                    if (newDelivered >= totalQuantity) {
+                      updates.status = "completed";
+                    }
+
+                    const { error: updateError } = await supabase
+                      .from("orders")
+                      .update(updates)
+                      .eq("id", order_id);
+
+                    if (updateError) {
+                      console.error("Failed to update order:", updateError);
+                    }
+                  }
+                }
+
                 await fetchJobDetails();
                 Alert.alert(
                   "Success",
@@ -1229,10 +1458,61 @@ export default function JobDetails() {
     );
   };
 
-  const viewOrderInfo = (orderId: string) => {
-    const info = ordersData[orderId];
+  // --- REJECT LOGIC FIXED ---
+  const handleRejectOrder = (orderId: string) => {
+    Alert.alert(
+      "Reject Pickup",
+      "Are you sure you want to reject this pickup? This action cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Reject",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setActionLoading(true);
+              const { error } = await supabase
+                .from("orders")
+                .update({ status: "rejected" })
+                .eq("id", orderId);
+
+              if (error) {
+                console.error("Supabase update error:", error);
+                throw error;
+              }
+
+              // 1. Lock the rejected state locally so it CANNOT flicker
+              setRejectedOrders((prev) => new Set(prev).add(orderId));
+
+              // 2. Optimistically update ordersData
+              setOrdersData((prev) => ({
+                ...prev,
+                [orderId]: { ...prev[orderId], status: "rejected" },
+              }));
+
+              // 3. DO NOT call fetchJobDetails() here anymore.
+              // Calling it causes a race condition where it pulls stale backend data
+              Alert.alert("Success", "Pickup has been rejected.");
+            } catch (err: any) {
+              Alert.alert(
+                "Error",
+                err.message ||
+                  "Failed to reject pickup. Check database constraints.",
+              );
+            } finally {
+              setActionLoading(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const viewOrderInfo = (stop: ManifestItem) => {
+    const info = ordersData[stop.order_id];
     if (info) {
       setSelectedOrder(info);
+      setSelectedAllocatedQuantity(stop.allocated_quantity || 0);
       setModalVisible(true);
     } else {
       Alert.alert("Info", "Order details not available.");
@@ -1371,6 +1651,20 @@ export default function JobDetails() {
           {manifest.map((stop, index) => {
             const isLast = index === manifest.length - 1;
             const isPickup = stop.type === "PICKUP";
+            const orderInfo = ordersData[stop.order_id];
+
+            // FIXED: Now we check our local rejectedOrders Set as well!
+            const isOrderRejected =
+              orderInfo?.status === "rejected" ||
+              orderInfo?.status === "REJECTED" ||
+              rejectedOrders.has(stop.order_id);
+
+            // Find if the corresponding pickup for this exact order ID is completed
+            const relatedPickupStop = manifest.find(
+              (s) => s.order_id === stop.order_id && s.type === "PICKUP",
+            );
+            const isPickupCompleted = !!relatedPickupStop?.is_completed;
+            const canDrop = isPickupCompleted;
 
             return (
               <View key={index} style={styles.stopItem}>
@@ -1381,10 +1675,14 @@ export default function JobDetails() {
                       styles.dot,
                       isPickup ? styles.dotGreen : styles.dotBlue,
                       stop.is_completed && styles.dotCompleted,
+                      isOrderRejected && styles.dotRejected,
                     ]}
                   >
-                    {stop.is_completed && (
+                    {stop.is_completed && !isOrderRejected && (
                       <Ionicons name="checkmark" size={12} color="#fff" />
+                    )}
+                    {isOrderRejected && (
+                      <Ionicons name="close" size={12} color="#fff" />
                     )}
                   </View>
                   {!isLast && (
@@ -1392,6 +1690,7 @@ export default function JobDetails() {
                       style={[
                         styles.line,
                         stop.is_completed && styles.lineCompleted,
+                        isOrderRejected && styles.lineRejected,
                       ]}
                     />
                   )}
@@ -1401,20 +1700,30 @@ export default function JobDetails() {
                 <View
                   style={[
                     styles.stopContent,
-                    !isJobActive && !isJobCompleted && { opacity: 0.7 },
+                    (!isJobActive && !isJobCompleted) || isOrderRejected
+                      ? { opacity: 0.6 }
+                      : {},
                   ]}
                 >
                   <View style={styles.stopHeader}>
                     <View
                       style={[
                         styles.typeTag,
-                        isPickup ? styles.typeTagGreen : styles.typeTagBlue,
+                        isOrderRejected
+                          ? styles.typeTagRejected
+                          : isPickup
+                            ? styles.typeTagGreen
+                            : styles.typeTagBlue,
                       ]}
                     >
                       <Text
                         style={[
                           styles.typeTagText,
-                          isPickup ? styles.typeTextGreen : styles.typeTextBlue,
+                          isOrderRejected
+                            ? styles.typeTextRejected
+                            : isPickup
+                              ? styles.typeTextGreen
+                              : styles.typeTextBlue,
                         ]}
                       >
                         {stop.sequence}. {stop.type}
@@ -1434,7 +1743,14 @@ export default function JobDetails() {
                       color="#64748b"
                       style={{ marginTop: 2 }}
                     />
-                    <Text style={styles.stopAddress}>
+                    <Text
+                      style={[
+                        styles.stopAddress,
+                        isOrderRejected && {
+                          textDecorationLine: "line-through",
+                        },
+                      ]}
+                    >
                       {stop.address ||
                         `Lat: ${stop.lat.toFixed(4)}, Lng: ${stop.lng.toFixed(4)}`}
                     </Text>
@@ -1444,7 +1760,7 @@ export default function JobDetails() {
                   <View style={styles.stopButtons}>
                     <TouchableOpacity
                       style={styles.infoBtn}
-                      onPress={() => viewOrderInfo(stop.order_id)}
+                      onPress={() => viewOrderInfo(stop)}
                     >
                       <Ionicons
                         name="information-circle-outline"
@@ -1454,68 +1770,123 @@ export default function JobDetails() {
                       <Text style={styles.infoBtnText}>Details</Text>
                     </TouchableOpacity>
 
-                    {/* Button Logic Flow */}
-                    {stop.is_completed ? (
-                      <View style={[styles.actionBtn, styles.completedBtn]}>
-                        <Ionicons
-                          name="checkmark-done"
-                          size={18}
-                          color="#15803d"
-                        />
-                        <Text style={styles.completedBtnText}>
-                          {isPickup ? "Picked Up" : "Delivered"}
-                        </Text>
-                      </View>
-                    ) : isPickup && !verifiedOrders.has(stop.order_id) ? (
-                      <TouchableOpacity
-                        style={[
-                          styles.actionBtn,
-                          styles.verifyBtn,
-                          !isJobActive && styles.disabledBtn,
-                        ]}
-                        onPress={() => handleVerifyQuality(stop.order_id)}
-                        disabled={!isJobActive}
-                      >
-                        <Ionicons
-                          name="scan-outline"
-                          size={16}
-                          color={isJobActive ? "#15803d" : "#94a3b8"}
-                        />
-                        <Text
-                          style={[
-                            styles.verifyBtnText,
-                            !isJobActive && { color: "#94a3b8" },
-                          ]}
-                        >
-                          Verify Quality
-                        </Text>
-                      </TouchableOpacity>
-                    ) : (
-                      <TouchableOpacity
-                        style={[
-                          styles.actionBtn,
-                          styles.primaryActionBtn,
-                          !isJobActive && styles.disabledBtn,
-                        ]}
-                        onPress={() =>
-                          handleAction(stop.type, stop.sequence, stop.order_id)
-                        }
-                        disabled={!isJobActive || actionLoading}
-                      >
-                        {actionLoading ? (
-                          <ActivityIndicator size="small" color="#fff" />
-                        ) : (
+                    {/* Action Buttons Wrapper */}
+                    <View style={styles.actionWrapper}>
+                      {/* 1. Handling Rejected States */}
+                      {isOrderRejected ? (
+                        <View style={[styles.actionBtn, styles.disabledBtn]}>
+                          <Ionicons
+                            name="close-circle"
+                            size={18}
+                            color="#94a3b8"
+                          />
                           <Text
                             style={[
-                              styles.primaryActionBtnText,
+                              styles.completedBtnText,
+                              { color: "#94a3b8" },
+                            ]}
+                          >
+                            Order Rejected
+                          </Text>
+                        </View>
+                      ) : stop.is_completed ? (
+                        /* 2. Handling Completed Stops */
+                        <View style={[styles.actionBtn, styles.completedBtn]}>
+                          <Ionicons
+                            name="checkmark-done"
+                            size={18}
+                            color="#15803d"
+                          />
+                          <Text style={styles.completedBtnText}>
+                            {isPickup ? "Picked Up" : "Delivered"}
+                          </Text>
+                        </View>
+                      ) : !isPickup && !canDrop ? (
+                        /* 3. Handling Dependent Drop Constraints */
+                        <View style={[styles.actionBtn, styles.disabledBtn]}>
+                          <Ionicons
+                            name="time-outline"
+                            size={18}
+                            color="#94a3b8"
+                          />
+                          <Text
+                            style={[
+                              styles.completedBtnText,
+                              { color: "#94a3b8" },
+                            ]}
+                          >
+                            Awaiting Pickup
+                          </Text>
+                        </View>
+                      ) : isPickup && !verifiedOrders.has(stop.order_id) ? (
+                        /* 4. Quality Verification Gate */
+                        <TouchableOpacity
+                          style={[
+                            styles.actionBtn,
+                            styles.verifyBtn,
+                            !isJobActive && styles.disabledBtn,
+                          ]}
+                          onPress={() => handleVerifyQuality(stop.order_id)}
+                          disabled={!isJobActive}
+                        >
+                          <Ionicons
+                            name="scan-outline"
+                            size={16}
+                            color={isJobActive ? "#15803d" : "#94a3b8"}
+                          />
+                          <Text
+                            style={[
+                              styles.verifyBtnText,
                               !isJobActive && { color: "#94a3b8" },
                             ]}
                           >
-                            Confirm {isPickup ? "Pickup" : "Drop"}
+                            Verify Quality
                           </Text>
+                        </TouchableOpacity>
+                      ) : (
+                        /* 5. Final Confirmation Button */
+                        <TouchableOpacity
+                          style={[
+                            styles.actionBtn,
+                            styles.primaryActionBtn,
+                            !isJobActive && styles.disabledBtn,
+                          ]}
+                          onPress={() => handleAction(stop)}
+                          disabled={!isJobActive || actionLoading}
+                        >
+                          {actionLoading ? (
+                            <ActivityIndicator size="small" color="#fff" />
+                          ) : (
+                            <Text
+                              style={[
+                                styles.primaryActionBtnText,
+                                !isJobActive && { color: "#94a3b8" },
+                              ]}
+                            >
+                              Confirm {isPickup ? "Pickup" : "Drop"}
+                            </Text>
+                          )}
+                        </TouchableOpacity>
+                      )}
+
+                      {/* Direct Reject Button */}
+                      {isPickup &&
+                        !stop.is_completed &&
+                        !isOrderRejected &&
+                        isJobActive && (
+                          <TouchableOpacity
+                            style={styles.rejectBtn}
+                            onPress={() => handleRejectOrder(stop.order_id)}
+                            disabled={actionLoading}
+                          >
+                            <Ionicons
+                              name="trash-outline"
+                              size={20}
+                              color="#ef4444"
+                            />
+                          </TouchableOpacity>
                         )}
-                      </TouchableOpacity>
-                    )}
+                    </View>
                   </View>
                 </View>
               </View>
@@ -1547,6 +1918,17 @@ export default function JobDetails() {
               <ScrollView showsVerticalScrollIndicator={false}>
                 <View style={styles.infoSection}>
                   <Text style={styles.sectionHeader}>Cargo Info</Text>
+
+                  {/* Show tag if rejected in details */}
+                  {(selectedOrder.status === "rejected" ||
+                    selectedOrder.status === "REJECTED" ||
+                    rejectedOrders.has(selectedOrder.id)) && (
+                    <View style={[styles.alertBox, { marginBottom: 12 }]}>
+                      <Ionicons name="close-circle" size={16} color="#dc2626" />
+                      <Text style={styles.alertText}>ORDER WAS REJECTED</Text>
+                    </View>
+                  )}
+
                   <Text style={styles.infoText}>
                     Product:{" "}
                     <Text style={styles.bold}>
@@ -1554,9 +1936,21 @@ export default function JobDetails() {
                     </Text>
                   </Text>
                   <Text style={styles.infoText}>
-                    Quantity:{" "}
-                    <Text style={styles.bold}>{selectedOrder.quantity} kg</Text>
+                    Pickup Quantity:{" "}
+                    <Text style={styles.bold}>
+                      {selectedAllocatedQuantity} kg
+                    </Text>
                   </Text>
+                  {selectedAllocatedQuantity !== selectedOrder.quantity && (
+                    <Text
+                      style={[
+                        styles.infoText,
+                        { fontSize: 13, color: "#64748b" },
+                      ]}
+                    >
+                      (Total Order Request: {selectedOrder.quantity} kg)
+                    </Text>
+                  )}
                 </View>
 
                 <View style={styles.infoSection}>
@@ -1827,6 +2221,11 @@ const styles = StyleSheet.create({
     borderColor: "#dbeafe",
   },
   dotCompleted: { backgroundColor: "#16a34a", borderWidth: 0 },
+  dotRejected: {
+    backgroundColor: "#cbd5e1",
+    borderWidth: 4,
+    borderColor: "#f1f5f9",
+  },
   line: {
     width: 2,
     flex: 1,
@@ -1836,6 +2235,7 @@ const styles = StyleSheet.create({
     bottom: -24,
   },
   lineCompleted: { backgroundColor: "#16a34a" },
+  lineRejected: { backgroundColor: "#cbd5e1", borderStyle: "dashed" },
 
   stopContent: {
     flex: 1,
@@ -1859,6 +2259,7 @@ const styles = StyleSheet.create({
   typeTag: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   typeTagGreen: { backgroundColor: "#ecfdf5" },
   typeTagBlue: { backgroundColor: "#eff6ff" },
+  typeTagRejected: { backgroundColor: "#f1f5f9" },
   typeTagText: {
     fontWeight: "700",
     fontSize: 11,
@@ -1867,6 +2268,7 @@ const styles = StyleSheet.create({
   },
   typeTextGreen: { color: "#059669" },
   typeTextBlue: { color: "#2563eb" },
+  typeTextRejected: { color: "#64748b" },
   stopDist: { fontSize: 13, color: "#94a3b8", fontWeight: "600" },
 
   addressContainer: {
@@ -1903,6 +2305,7 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
 
+  actionWrapper: { flex: 1, flexDirection: "row", gap: 8 },
   actionBtn: {
     flex: 1,
     paddingVertical: 10,
@@ -1941,6 +2344,16 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 13,
     marginLeft: 6,
+  },
+
+  rejectBtn: {
+    width: 44,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#fef2f2",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#fecaca",
   },
 
   // Modal

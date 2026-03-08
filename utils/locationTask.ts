@@ -23,7 +23,7 @@ const pingLocation = async () => {
       `📍 Scheduled location synced: ${location.coords.latitude}, ${location.coords.longitude}`,
     );
   } catch (err) {
-    console.error("Failed to sync scheduled location:", err);
+    //console.error("Failed to sync scheduled location:", err);
   }
 };
 
