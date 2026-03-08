@@ -16,12 +16,25 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import {
+  openGoogleMapsToLocation,
+  verifyLocation,
+} from "../../../utils/locationVerification";
 
 const TOTAL_IMAGES = 5;
 
 export default function ComplaintCamera() {
   const router = useRouter();
-  const params = useLocalSearchParams();
+  const params = useLocalSearchParams<{
+    orderId?: string;
+    reason?: string;
+    fromAddComplaint?: string;
+    pickup_lat?: string;
+    pickup_lng?: string;
+  }>();
+  const pickupLat = params.pickup_lat ? parseFloat(params.pickup_lat) : null;
+  const pickupLng = params.pickup_lng ? parseFloat(params.pickup_lng) : null;
+
   const [facing, setFacing] = useState<CameraType>("back");
   const [permission, requestPermission] = useCameraPermissions();
   const [capturedImages, setCapturedImages] = useState<string[]>([]);
@@ -32,9 +45,40 @@ export default function ComplaintCamera() {
   const [gridEnabled, setGridEnabled] = useState(false);
   const [showSettingsTray, setShowSettingsTray] = useState(false);
   const [showVerifyingPopup, setShowVerifyingPopup] = useState(false);
+  const [showLocationVerification, setShowLocationVerification] = useState(false);
+  const [isVerifyingLocation, setIsVerifyingLocation] = useState(false);
+  const [locationVerified, setLocationVerified] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [locationDistance, setLocationDistance] = useState<number | null>(null);
   const trayAnimation = useRef(new Animated.Value(0)).current;
   const scanAnimation = useRef(new Animated.Value(0)).current;
+  const locationScanAnimation = useRef(new Animated.Value(0)).current;
   const cameraRef = useRef<CameraView>(null);
+
+  const handleVerifyLocation = async () => {
+    if (pickupLat === null || pickupLng === null) {
+      setLocationVerified(true);
+      setShowLocationVerification(false);
+      return;
+    }
+    setIsVerifyingLocation(true);
+    setLocationError(null);
+    const result = await verifyLocation(pickupLat, pickupLng, 100);
+    setLocationDistance(result.distance);
+    if (result.success) {
+      setLocationVerified(true);
+      setLocationError(null);
+      setIsVerifyingLocation(false);
+      setTimeout(() => setShowLocationVerification(false), 1000);
+    } else {
+      setLocationError(result.error || "Location verification failed.");
+      setIsVerifyingLocation(false);
+    }
+  };
+
+  const handleOpenGoogleMaps = () => {
+    openGoogleMapsToLocation(pickupLat, pickupLng);
+  };
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -45,11 +89,19 @@ export default function ComplaintCamera() {
           return;
         }
         const user = JSON.parse(userJson);
-        if (user.role !== "buyer") {
+        const role = (user.role ?? user.user_metadata?.role ?? "").toString().toLowerCase();
+        const fromAddComplaintFlow = params.fromAddComplaint === "1" || !!params.orderId;
+        if (role !== "buyer" && !fromAddComplaintFlow) {
           router.replace("/buyer");
           return;
         }
         setIsAuthenticated(true);
+        if (pickupLat !== null && pickupLng !== null) {
+          setShowLocationVerification(true);
+          handleVerifyLocation();
+        } else {
+          setLocationVerified(true);
+        }
       } catch (e) {
         router.replace("/login");
       } finally {
@@ -57,7 +109,7 @@ export default function ComplaintCamera() {
       }
     };
     checkAuth();
-  }, [router]);
+  }, [router, pickupLat, pickupLng, params.fromAddComplaint, params.orderId]);
 
   useEffect(() => {
     Animated.spring(trayAnimation, {
@@ -67,6 +119,27 @@ export default function ComplaintCamera() {
       friction: 7,
     }).start();
   }, [showSettingsTray, trayAnimation]);
+
+  useEffect(() => {
+    if (isVerifyingLocation) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(locationScanAnimation, {
+            toValue: 1,
+            duration: 2000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(locationScanAnimation, {
+            toValue: 0,
+            duration: 0,
+            useNativeDriver: true,
+          }),
+        ]),
+      ).start();
+    } else {
+      locationScanAnimation.setValue(0);
+    }
+  }, [isVerifyingLocation, locationScanAnimation]);
 
   useEffect(() => {
     if (showVerifyingPopup) {
@@ -91,7 +164,13 @@ export default function ComplaintCamera() {
 
   const takePicture = async () => {
     if (!cameraRef.current || capturedImages.length >= TOTAL_IMAGES) return;
-
+    if (!locationVerified) {
+      Alert.alert(
+        "Location Not Verified",
+        "Please verify your location first before capturing images.",
+      );
+      return;
+    }
     try {
       if (!soundEnabled) {
         try {
@@ -101,7 +180,6 @@ export default function ComplaintCamera() {
 
       const photo = await cameraRef.current.takePictureAsync({
         quality: 0.8,
-        base64: true,
         skipProcessing: false,
       });
 
@@ -114,43 +192,53 @@ export default function ComplaintCamera() {
   };
 
   const removeImage = (index: number) => {
-    const newImages = capturedImages.filter((_, i) => i !== index);
-    setCapturedImages(newImages);
+    setCapturedImages(capturedImages.filter((_, i) => i !== index));
   };
 
-  const handleVerify = async () => {
+  const fromAddComplaint = params.fromAddComplaint === "1";
+
+  const handleOK = () => {
     if (capturedImages.length !== TOTAL_IMAGES) {
       Alert.alert(
         "Incomplete",
-        `Please capture all ${TOTAL_IMAGES} images before verifying.`,
+        `Please capture all ${TOTAL_IMAGES} images before continuing.`,
       );
       return;
     }
 
-    setShowVerifyingPopup(true);
-
-    try {
-      // Simulate verification
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
+    if (fromAddComplaint) {
       setShowVerifyingPopup(false);
-
-      // Navigate to final complaint received page
-      router.push({
-        pathname: "/buyer/complaint-received",
+      router.replace({
+        pathname: "/buyer/add-complaint" as any,
         params: {
-          orderId: params.orderId as string,
-          reason: params.reason as string,
-          description: params.description as string,
-          date: params.date as string,
-          images: JSON.stringify(capturedImages),
+          orderId: (params.orderId as string) || "",
+          reason: (params.reason as string) || "",
+          imageUris: JSON.stringify(capturedImages),
         },
       });
-    } catch (error) {
-      console.error("Verification error:", error);
-      setShowVerifyingPopup(false);
-      Alert.alert("Error", "Failed to verify images. Please try again.");
+      return;
     }
+
+    setShowVerifyingPopup(true);
+    (async () => {
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        setShowVerifyingPopup(false);
+        router.push({
+          pathname: "/buyer/complaint-received" as any,
+          params: {
+            orderId: params.orderId as string,
+            reason: params.reason as string,
+            description: params.description as string,
+            date: params.date as string,
+            images: JSON.stringify(capturedImages),
+          },
+        });
+      } catch (error) {
+        setShowVerifyingPopup(false);
+        Alert.alert("Error", "Failed to verify images. Please try again.");
+      }
+    })();
   };
 
   const toggleSound = async () => {
@@ -384,13 +472,114 @@ export default function ComplaintCamera() {
               capturedImages.length !== TOTAL_IMAGES &&
                 styles.verifyButtonDisabled,
             ]}
-            onPress={handleVerify}
+            onPress={handleOK}
             disabled={capturedImages.length !== TOTAL_IMAGES}
           >
-            <Text style={styles.verifyButtonText}>Verify</Text>
+            <Text style={styles.verifyButtonText}>
+              {fromAddComplaint ? "OK" : "Verify"}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Location Verification Popup */}
+      {showLocationVerification && (
+        <View style={styles.verifyingOverlay}>
+          <View style={styles.verifyingPopup}>
+            {isVerifyingLocation ? (
+              <>
+                <View style={styles.scanningContainer}>
+                  <View style={styles.scanningFrame}>
+                    <Animated.View
+                      style={[
+                        styles.scanningBeam,
+                        {
+                          opacity: locationScanAnimation.interpolate({
+                            inputRange: [0, 0.5, 1],
+                            outputRange: [0.4, 1, 0.4],
+                          }),
+                          transform: [
+                            {
+                              translateY: locationScanAnimation.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: [-50, 50],
+                              }),
+                            },
+                          ],
+                        },
+                      ]}
+                    />
+                    <Animated.View
+                      style={[
+                        styles.scanningCircle,
+                        {
+                          transform: [
+                            {
+                              rotate: locationScanAnimation.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: ["0deg", "360deg"],
+                              }),
+                            },
+                          ],
+                        },
+                      ]}
+                    >
+                      <MaterialIcons name="location-on" size={40} color="#2f855a" />
+                    </Animated.View>
+                  </View>
+                </View>
+                <Text style={styles.verifyingText}>Verifying location…</Text>
+              </>
+            ) : locationError ? (
+              <>
+                <MaterialIcons name="location-off" size={64} color="#e53e3e" />
+                <Text style={styles.verifyingText}>Location Not Matching</Text>
+                <Text style={styles.locationErrorText}>{locationError}</Text>
+                {locationDistance !== null && (
+                  <Text style={styles.distanceText}>
+                    Distance:{" "}
+                    {locationDistance < 1000
+                      ? `${locationDistance.toFixed(0)}m`
+                      : `${(locationDistance / 1000).toFixed(2)} km`}
+                  </Text>
+                )}
+                <View style={styles.locationButtonContainer}>
+                  <TouchableOpacity
+                    style={styles.goToLocationButton}
+                    onPress={handleOpenGoogleMaps}
+                  >
+                    <View style={styles.goToLocationButtonContent}>
+                      <Text style={styles.buttonText}>Go to Correct Location</Text>
+                    </View>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.retryButton}
+                    onPress={handleVerifyLocation}
+                  >
+                    <View style={styles.retryButtonContent}>
+                      <Text style={styles.buttonText}>Retry</Text>
+                    </View>
+                  </TouchableOpacity>
+                </View>
+                <TouchableOpacity
+                  style={styles.cancelButton}
+                  onPress={() => {
+                    setShowLocationVerification(false);
+                    setLocationVerified(true);
+                  }}
+                >
+                  <Text style={styles.cancelButtonText}>Cancel (Testing)</Text>
+                </TouchableOpacity>
+              </>
+            ) : locationVerified ? (
+              <>
+                <MaterialIcons name="check-circle" size={64} color="#2f855a" />
+                <Text style={styles.verifyingText}>Location Verified</Text>
+              </>
+            ) : null}
+          </View>
+        </View>
+      )}
 
       {showVerifyingPopup && (
         <View style={styles.verifyingOverlay}>
@@ -491,6 +680,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: "center",
+    paddingBottom: 180,
     zIndex: 1,
     pointerEvents: "none",
   },
@@ -681,6 +871,8 @@ const styles = StyleSheet.create({
   buttonText: {
     color: "#fff",
     fontWeight: "bold",
+    textAlign: "center",
+    width: "100%",
   },
   message: {
     fontSize: 16,
@@ -703,7 +895,8 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 32,
     alignItems: "center",
-    minWidth: 280,
+    minWidth: 240,
+    maxWidth: "85%",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -754,5 +947,69 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#11181C",
     textAlign: "center",
+  },
+  cancelButton: {
+    marginTop: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    backgroundColor: "#e53e3e",
+    borderRadius: 8,
+    alignItems: "center",
+    alignSelf: "center",
+  },
+  cancelButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 14,
+    textAlign: "center",
+  },
+  locationErrorText: {
+    marginTop: 12,
+    marginBottom: 8,
+    fontSize: 14,
+    color: "#e53e3e",
+    textAlign: "center",
+    paddingHorizontal: 16,
+  },
+  distanceText: {
+    marginBottom: 20,
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#666",
+    textAlign: "center",
+  },
+  locationButtonContainer: {
+    width: "100%",
+    gap: 12,
+  },
+  goToLocationButton: {
+    backgroundColor: "#2f855a",
+    padding: 16,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+    minHeight: 52,
+  },
+  goToLocationButtonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+  },
+  retryButton: {
+    backgroundColor: "#3182ce",
+    padding: 16,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+    minHeight: 52,
+  },
+  retryButtonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
   },
 });

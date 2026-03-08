@@ -3,11 +3,16 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
+    "prestart": "node ./scripts/update-backend-url.js",
     "start": "expo start",
-    "reset-project": "node ./scripts/reset-project.js",
+    "preandroid": "node ./scripts/update-backend-url.js",
     "android": "expo run:android",
+    "preios": "node ./scripts/update-backend-url.js",
     "ios": "expo run:ios",
+    "preweb": "node ./scripts/update-backend-url.js",
     "web": "expo start --web",
+    "update-url": "node ./scripts/update-backend-url.js",
+    "reset-project": "node ./scripts/reset-project.js",
     "lint": "expo lint"
   },
   "dependencies": {

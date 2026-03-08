@@ -6,7 +6,7 @@ import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 
-type Role = "farmer" | "transporter" | "buyer";
+type Role = "farmer" | "transporter" | "buyer" | "admin";
 
 /**
  * Checks whether the current session user has completed onboarding.
@@ -96,7 +96,7 @@ export default function Index() {
         // No active Supabase session — send to login
         router.replace("/login");
       } catch (e) {
-        router.replace("/login");
+        router.replace("/landing" as any);
       } finally {
         setChecking(false);
       }
@@ -124,6 +124,8 @@ function getDashboardRoute(role: Role) {
       return "/transporter";
     case "buyer":
       return "/buyer";
+    case "admin":
+      return "/admin";
     default:
       return "/login";
   }

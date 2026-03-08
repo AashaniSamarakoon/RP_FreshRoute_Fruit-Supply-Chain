@@ -94,7 +94,7 @@ export default function MyComplaints() {
 
   const handleChatAgent = (complaintId: string) => {
     router.push({
-      pathname: "/buyer/chat",
+      pathname: "/buyer/chat" as any,
       params: { complaintId },
     });
   };

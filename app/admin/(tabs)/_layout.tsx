@@ -1,7 +1,7 @@
 import { Tabs } from "expo-router";
-import { Home, MessageSquare, ShoppingCart, Tag, User } from "lucide-react-native";
+import { Home, MessageSquare, User } from "lucide-react-native";
 
-export default function BuyerLayout() {
+export default function AdminTabsLayout() {
   return (
     <Tabs
       screenOptions={{
@@ -37,33 +37,6 @@ export default function BuyerLayout() {
         options={{
           title: "Home",
           tabBarIcon: ({ color, size }) => <Home size={size} color={color} />,
-        }}
-      />
-      {/* <Tabs.Screen
-        name="marketPrice"
-        options={{
-          title: "Market Price",
-          tabBarIcon: ({ color, size }) => (
-            <Package size={size} color={color} />
-          ),
-        }}
-      /> */}
-      <Tabs.Screen
-        name="freshroutePrices"
-        options={{
-          title: "FreshRoute Price",
-          tabBarIcon: ({ color, size }) => (
-            <Tag size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="orders"
-        options={{
-          title: "Orders",
-          tabBarIcon: ({ color, size }) => (
-            <ShoppingCart size={size} color={color} />
-          ),
         }}
       />
       <Tabs.Screen

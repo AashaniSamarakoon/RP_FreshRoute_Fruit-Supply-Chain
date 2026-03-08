@@ -41,11 +41,15 @@ export default function RootLayout() {
               name="modal"
               options={{ presentation: "modal", title: "Modal" }}
             />
+            <Stack.Screen name="landing" options={{ headerShown: false }} />
+            <Stack.Screen name="onboarding-one" options={{ headerShown: false }} />
+            <Stack.Screen name="onboarding-two" options={{ headerShown: false }} />
             <Stack.Screen name="login" options={{ headerShown: false }} />
             <Stack.Screen name="signup" options={{ headerShown: false }} />
             <Stack.Screen name="farmer" options={{ headerShown: false }} />
             <Stack.Screen name="buyer" options={{ headerShown: false }} />
             <Stack.Screen name="transporter" options={{ headerShown: false }} />
+            <Stack.Screen name="admin" options={{ headerShown: false }} />
           </Stack>
           <NotificationBannerHost />
           <StatusBar barStyle="dark-content"/>

@@ -29,6 +29,21 @@ const getFruitMeta = (fruit: string) => {
   return { emoji: "📦", bg: "#F3F4F6", text: "#6B7280" };
 };
 
+/** Humanized "time since" for complaint window messaging (e.g. "2 days passed", "5 hours passed") */
+function getTimePassedSince(isoDate: string): string {
+  const ms = Date.now() - new Date(isoDate).getTime();
+  if (ms < 0) return "just now";
+  const mins = Math.floor(ms / (60 * 1000));
+  const hours = Math.floor(ms / (60 * 60 * 1000));
+  const days = Math.floor(ms / (24 * 60 * 60 * 1000));
+  if (days > 0) return `${days} day${days === 1 ? "" : "s"} passed`;
+  if (hours > 0) return `${hours} hour${hours === 1 ? "" : "s"} passed`;
+  if (mins > 0) return `${mins} min${mins === 1 ? "" : "s"} passed`;
+  return "just now";
+}
+
+const COMPLAINT_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 const getStatusStyles = (status: string) => {
   switch (status) {
     case "AWAITING_PAYMENT":

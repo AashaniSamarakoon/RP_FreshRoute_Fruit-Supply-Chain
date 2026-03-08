@@ -17,7 +17,7 @@ import {
   View,
 } from "react-native";
 
-type Role = "farmer" | "transporter" | "buyer";
+type Role = "farmer" | "transporter" | "buyer" | "admin";
 
 export default function Login() {
   const router = useRouter();
@@ -54,26 +54,13 @@ export default function Login() {
         console.log("[Login] User data stored in AsyncStorage", user);
       }
 
-      const userRole = (
-        (user.user_metadata?.role as string) || "buyer"
-      ).toLowerCase() as Role;
-
-      // Cache the onboarding flag so _layout.tsx doesn't redirect back to
-      // onboarding on the next app launch when AsyncStorage is cold.
-      try {
-        const resp: any = await api.get("/api/auth/me");
-        const serverOnboarded =
-          resp?.isOnboarded ||
-          resp?.is_onboarded ||
-          resp?.profile?.is_onboarded ||
-          resp?.profile?.isOnboarded;
-        if (serverOnboarded) {
-          await AsyncStorage.setItem("onboarded", "true");
-        } else {
-          await AsyncStorage.removeItem("onboarded");
-        }
-      } catch {
-        // If we can't reach the server just leave the flag as-is
+      // Ensure admin user has role in metadata so backend JWT sees it
+      const rawRole =
+        (user.user_metadata?.role as string) ||
+        (user.email === "admin@gmail.com" ? "admin" : "buyer");
+      const userRole = rawRole.toLowerCase() as Role;
+      if (userRole === "admin" && user?.user_metadata?.role !== "admin") {
+        await supabase.auth.updateUser({ data: { role: "admin" } });
       }
 
       const route = getDashboardRoute(userRole);
@@ -212,6 +199,8 @@ function getDashboardRoute(role: Role) {
       return "/transporter";
     case "buyer":
       return "/buyer";
+    case "admin":
+      return "/admin";
     default:
       return "/login";
   }

@@ -39,6 +39,7 @@ interface PlacedOrder {
   quality_confirmed_at: string | null;
   delivered_at: string | null;
   delivery_notes: string | null;
+  completed_at: string | null;
   farmerPickup?: {
     latitude: number;
     longitude: number;
@@ -46,7 +47,7 @@ interface PlacedOrder {
   };
 }
 
-type TabKey = "all" | "pending" | "payment_due" | "processing" | "in_delivery";
+type TabKey = "all" | "pending" | "payment_due" | "processing" | "in_delivery"| "completed";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "all", label: "All" },
@@ -54,6 +55,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "payment_due", label: "Payment Due" },
   { key: "processing", label: "Processing" },
   { key: "in_delivery", label: "In Delivery" },
+  { key: "completed", label: "Completed" },
 ];
 
 const TAB_STATUS_MAP: Record<TabKey, string[]> = {
@@ -62,14 +64,12 @@ const TAB_STATUS_MAP: Record<TabKey, string[]> = {
   payment_due: ["AWAITING_PAYMENT"],
   processing: ["AUTHORIZED_PAYMENT", "PACKING", "READY_FOR_PICKUP"],
   in_delivery: [
-    "PAID_PENDING_DELIVERY",
-    "PACKING",
-    "READY_FOR_PICKUP",
     "PICKED_UP",
     "IN_TRANSIT",
     "DELIVERED",
-    "COMPLETED",
   ],
+  completed: ["COMPLETED"],
+
 };
 
 // Simplified fruit meta for a cleaner look
@@ -282,6 +282,7 @@ export default function BuyerOrders() {
       payment_due: 0,
       processing: 0,
       in_delivery: 0,
+      completed: 0,
     };
     orders.forEach((o) => {
       (Object.keys(TAB_STATUS_MAP) as TabKey[]).forEach((key) => {
@@ -479,6 +480,28 @@ export default function BuyerOrders() {
               <Ionicons name="arrow-forward" size={16} color="#0D9488" />
             </View>
           )}
+
+          {item.status === "COMPLETED" && (
+            <TouchableOpacity
+              style={[
+                styles.ctaBanner,
+                { backgroundColor: "#ECFDF5", borderColor: "#A7F3D0" },
+              ]}
+              onPress={(e) => {
+                e?.stopPropagation?.();
+                handlePress(item);
+              }}
+              activeOpacity={0.85}
+            >
+              <View style={styles.ctaBannerContent}>
+                <Ionicons name="document-text-outline" size={16} color="#059669" />
+                <Text style={[styles.ctaText, { color: "#047857" }]}>
+                  View details
+                </Text>
+              </View>
+              <Ionicons name="arrow-forward" size={16} color="#059669" />
+            </TouchableOpacity>
+          )}
         </View>
       </TouchableOpacity>
     );
@@ -535,7 +558,9 @@ export default function BuyerOrders() {
               <Text style={styles.emptySubtitle}>
                 {activeTab === "all"
                   ? "When you place a wholesale order, it will appear here."
-                  : "You don't have any orders matching this status."}
+                  : activeTab === "completed"
+                    ? "You don't have any completed orders yet."
+                    : "You don't have any orders matching this status."}
               </Text>
             </View>
           }
@@ -770,5 +795,22 @@ const styles = StyleSheet.create({
     color: "#6B7280",
     textAlign: "center",
     lineHeight: 20,
+  },
+
+  cardButton: {
+    marginTop: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    alignItems: "center",
+    backgroundColor: BuyerColors.primaryGreen,
+  },
+  cardButtonComplaint: {
+    backgroundColor: "#3182ce",
+  },
+  cardButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#fff",
   },
 });

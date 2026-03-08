@@ -92,6 +92,7 @@ export interface PlacedOrder {
   quality_confirmed_at: string | null;
   delivered_at: string | null;
   delivery_notes: string | null;
+  completed_at?: string | null;
   picked_up_at?: string | null;
   // additional pricing breakdown fields returned by backend
   unitPrice?: number;

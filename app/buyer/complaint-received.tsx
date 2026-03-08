@@ -1,20 +1,25 @@
-import React, { useState, useEffect } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-} from "react-native";
-import { useRouter, useLocalSearchParams } from "expo-router";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import Header from "@/components/Header";
+import { BuyerColors } from "@/constants/theme";
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
+import {
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function ComplaintReceived() {
   const router = useRouter();
-  const params = useLocalSearchParams();
+  const params = useLocalSearchParams<{ orderId?: string; fromAdd?: string }>();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
+
+  const fromAdd = params.fromAdd === "1";
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -25,7 +30,8 @@ export default function ComplaintReceived() {
           return;
         }
         const user = JSON.parse(userJson);
-        if (user.role !== "buyer") {
+        const role = (user.role ?? user.user_metadata?.role ?? "").toString().toLowerCase();
+        if (role !== "buyer") {
           router.replace("/buyer");
           return;
         }
@@ -39,78 +45,77 @@ export default function ComplaintReceived() {
     checkAuth();
   }, [router]);
 
-  const handleProceed = () => {
-    router.replace("/buyer/my-complaints");
+  const handleViewComplaints = () => {
+    // Leave empty – implement complaints list page later
+  };
+
+  const handleViewOrders = () => {
+    router.replace("/buyer/(tabs)/orders" as any);
   };
 
   if (checkingAuth || !isAuthenticated) {
     return (
-      <View style={styles.centerContainer}>
-        <Text>Loading...</Text>
-      </View>
+      <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
+        <Header title="Complaint Received" showBackButton />
+        <View style={styles.centerContainer}>
+          <Text>Loading...</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.content}>
+    <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
+      <Header title="Complaint Received" showBackButton />
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         <View style={styles.iconContainer}>
-          <Ionicons name="checkmark-circle" size={80} color="#2f855a" />
+          <Ionicons name="checkmark-circle" size={80} color={BuyerColors.primaryGreen} />
         </View>
 
-        <Text style={styles.title}>Complaint Received</Text>
+        <Text style={styles.title}>Complaint added successfully</Text>
         <Text style={styles.subtitle}>
-          Your complaint has been successfully submitted and is under review.
+          An admin will review and get back to you.
         </Text>
 
-        <View style={styles.infoContainer}>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Order ID:</Text>
-            <Text style={styles.infoValue}>{params.orderId}</Text>
+        {!fromAdd && params.orderId && (
+          <View style={styles.infoContainer}>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Order ID:</Text>
+              <Text style={styles.infoValue}>{params.orderId}</Text>
+            </View>
           </View>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Reason:</Text>
-            <Text style={styles.infoValue}>{params.reason}</Text>
-          </View>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Date:</Text>
-            <Text style={styles.infoValue}>
-              {params.date
-                ? new Date(params.date as string).toLocaleDateString()
-                : "N/A"}
-            </Text>
-          </View>
-        </View>
+        )}
 
-        <TouchableOpacity style={styles.proceedButton} onPress={handleProceed}>
-          <Text style={styles.proceedButtonText}>Proceed</Text>
+        <TouchableOpacity style={styles.actionButton} onPress={handleViewComplaints}>
+          <Text style={styles.actionButtonText}>View complaints</Text>
         </TouchableOpacity>
-      </View>
-    </ScrollView>
+
+        <TouchableOpacity style={[styles.actionButton, styles.actionButtonPrimary]} onPress={handleViewOrders}>
+          <Text style={styles.actionButtonTextPrimary}>View orders</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#fff",
+  safe: { flex: 1, backgroundColor: "#fff" },
+  container: { flex: 1 },
+  content: {
+    padding: 24,
+    alignItems: "center",
   },
   centerContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#fff",
-  },
-  content: {
-    padding: 24,
-    alignItems: "center",
   },
   iconContainer: {
-    marginTop: 40,
+    marginTop: 24,
     marginBottom: 24,
   },
   title: {
-    fontSize: 28,
+    fontSize: 22,
     fontWeight: "bold",
     marginBottom: 12,
     textAlign: "center",
@@ -118,47 +123,44 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 16,
-    color: "#666",
+    color: "#6B7280",
     textAlign: "center",
     marginBottom: 32,
     paddingHorizontal: 20,
   },
   infoContainer: {
     width: "100%",
-    backgroundColor: "#f5f5f5",
+    backgroundColor: "#F9FAFB",
     padding: 20,
     borderRadius: 10,
-    marginBottom: 32,
+    marginBottom: 24,
   },
   infoRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     marginBottom: 12,
   },
-  infoLabel: {
-    fontSize: 16,
-    color: "#666",
-    fontWeight: "500",
-  },
-  infoValue: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#11181C",
-    flex: 1,
-    textAlign: "right",
-  },
-  proceedButton: {
-    backgroundColor: "#2f855a",
+  infoLabel: { fontSize: 16, color: "#6B7280", fontWeight: "500" },
+  infoValue: { fontSize: 16, fontWeight: "600", color: "#11181C", flex: 1, textAlign: "right" },
+  actionButton: {
+    backgroundColor: "#F3F4F6",
     padding: 16,
-    borderRadius: 10,
+    borderRadius: 12,
     alignItems: "center",
     width: "100%",
-    marginTop: 24,
+    marginTop: 12,
   },
-  proceedButtonText: {
+  actionButtonPrimary: {
+    backgroundColor: BuyerColors.primaryGreen,
+  },
+  actionButtonText: {
+    color: "#374151",
+    fontWeight: "600",
+    fontSize: 16,
+  },
+  actionButtonTextPrimary: {
     color: "#fff",
-    fontWeight: "bold",
+    fontWeight: "600",
     fontSize: 16,
   },
 });
-
