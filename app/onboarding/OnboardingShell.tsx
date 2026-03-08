@@ -39,7 +39,13 @@ export default function OnboardingShell({
       <View style={styles.header}>
         {!hideBack && (
           <TouchableOpacity
-            onPress={() => router.back()}
+            onPress={() => {
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                router.push("/login");
+              }
+            }}
             style={styles.backButton}
           >
             <Ionicons name="arrow-back" size={24} color="#111827" />

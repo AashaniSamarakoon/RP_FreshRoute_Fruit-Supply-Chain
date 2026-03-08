@@ -17,13 +17,20 @@ const LIGHT_GRAY = "#f5f5f5";
 
 interface HeaderProps {
   userName: string;
+  greeting?: string;
   onSearch?: (text: string) => void;
+  searchText?: string;
+  onSearchClear?: () => void;
 }
 
-export default function Header({ userName, onSearch }: HeaderProps) {
+export default function Header({ userName, greeting, onSearch, searchText: externalSearchText, onSearchClear }: HeaderProps) {
   const router = useRouter();
   const { t, locale, setLocale } = useTranslationContext();
   const [unreadCount, setUnreadCount] = useState(0);
+  const [internalSearchText, setInternalSearchText] = useState("");
+  
+  const currentSearchText = externalSearchText !== undefined ? externalSearchText : internalSearchText;
+  const [searchText, setSearchText] = useState("");
 
   useEffect(() => {
     const loadUnreadCount = async () => {
@@ -55,7 +62,7 @@ export default function Header({ userName, onSearch }: HeaderProps) {
         <View>
           <Text style={styles.logo}>🍃 FreshRoute</Text>
           <Text style={styles.greeting}>
-            {t("farmer.greeting", { name: userName })}
+            {greeting || t("farmer.greeting", { name: userName })}
           </Text>
         </View>
         <View style={styles.headerIcons}>
@@ -100,8 +107,31 @@ export default function Header({ userName, onSearch }: HeaderProps) {
           style={styles.searchInput}
           placeholder={t("farmer.searchPlaceholder")}
           placeholderTextColor="#999"
-          onChangeText={onSearch}
+          value={currentSearchText}
+          onChangeText={(text) => {
+            if (externalSearchText !== undefined) {
+              onSearch?.(text);
+            } else {
+              setInternalSearchText(text);
+              onSearch?.(text);
+            }
+          }}
         />
+        {currentSearchText.length > 0 && (
+          <TouchableOpacity
+            onPress={() => {
+              if (externalSearchText !== undefined) {
+                onSearchClear?.();
+              } else {
+                setInternalSearchText("");
+                onSearch?.("");
+              }
+            }}
+            style={styles.clearButton}
+          >
+            <Ionicons name="close" size={18} color="#999" />
+          </TouchableOpacity>
+        )}
       </View>
     </>
   );
@@ -181,5 +211,9 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontSize: 16,
     color: "#000",
+  },
+  clearButton: {
+    marginLeft: 8,
+    padding: 2,
   },
 });

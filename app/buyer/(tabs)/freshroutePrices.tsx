@@ -342,7 +342,7 @@ export default function FreshroutePricesForBuyer() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
+  container: { flex: 1, backgroundColor: "#fff", paddingBottom: 100 },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
@@ -460,19 +460,23 @@ const styles = StyleSheet.create({
   },
   placeOrderButton: {
     backgroundColor: PRIMARY_GREEN,
-    paddingVertical: 12,
-    borderRadius: 12,
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    borderRadius: 25,
     alignItems: "center",
     justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   placeOrderText: {
     color: "#fff",
-    fontSize: 16,
+    fontSize: 19,
     fontWeight: "700",
   },
   placeOrderContainer: {
     paddingHorizontal: 16,
-    paddingTop: 6,
-    paddingBottom: 16,
   },
 });

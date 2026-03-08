@@ -5,6 +5,9 @@ import { supabase } from "@/utils/supabaseClient";
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const PayHere = require("@payhere/payhere-mobilesdk-reactnative").default;
 
+/** Merchant ID lives in the frontend env; merchant secret lives only on the backend. */
+const MERCHANT_ID = process.env.EXPO_PUBLIC_PAYHERE_MERCHANT_ID!;
+
 /** Set to false for production. */
 export const PAYHERE_IS_SANDBOX = true;
 
@@ -41,29 +44,34 @@ export async function startPayHerePayment(
     const phone = meta.phone || "0700000000";
 
     const rawAmount = params.totalPrice ? Number(params.totalPrice) : 0;
-    // In sandbox mode use a small fixed amount to stay within free-tier limits.
-    const amount = PAYHERE_IS_SANDBOX ? "100.00" : rawAmount.toFixed(2);
+    // PayHere sandbox accounts have a per-transaction limit (~Rs.1,000).
+    // In sandbox we use a small test amount; production uses the real invoice total.
+    // The backend will always capture the REAL market price on delivery (not this hold amount).
+    const SANDBOX_TEST_AMOUNT = "100.00";
+    const amount = PAYHERE_IS_SANDBOX ? SANDBOX_TEST_AMOUNT : rawAmount.toFixed(2);
     const currency = "LKR";
-    const items = `${params.fruitType}${params.variant ? ` (${params.variant})` : ""
-        } - ${params.quantity}kg`;
+    const items = `${params.fruitType}${params.variant ? ` (${params.variant})` : ""} - ${params.quantity}kg`;
 
-    // Fetch the server-generated hash — merchant_secret MUST stay on the backend only.
-    // Passing merchant_secret="" tells the SDK to skip its own client-side check;
-    // PayHere's server validates the hash field we supply instead.
-    const { hash, merchantId } = await api.post("/api/payhere/hash", {
+    // Backend generates the hash using merchant_secret (never exposed to client).
+    // We supply the merchant_id from our env — both sides use the same value.
+    // ask backend for hash (and authoritative amount string)
+    const { hash, amount: serverAmount } = await api.post("/api/payhere/hash", {
         orderId: params.orderId,
         amount,
         currency,
     });
+    // use serverAmount when building payment object to guarantee match
+    console.log(`[PayHere] authorize=true sandbox=${PAYHERE_IS_SANDBOX} merchantId=${MERCHANT_ID} clientAmount=${amount} serverAmount=${serverAmount}`);
 
     const paymentObject = {
         sandbox: PAYHERE_IS_SANDBOX,
-        merchant_id: merchantId,
-        merchant_secret: "",   // intentionally blank — server hash field is used
+        authorize: true,       // Hold on Card — card is NOT charged now; backend captures on delivery
+        merchant_id: MERCHANT_ID,
+        merchant_secret: "",   // intentionally blank — server-generated hash is used
         notify_url: `${BACKEND_URL}/api/payhere/notify`,
         order_id: params.orderId,
         items,
-        amount,
+        amount: serverAmount,
         currency,
         hash,
         first_name: firstName,
@@ -102,13 +110,67 @@ export interface PreapprovalParams {
 }
 
 /**
- * Asks the backend to create a PayHere preapproval session.
- * The backend generates the hash (merchant_secret never leaves the server).
- * Returns a URL pointing to a backend-hosted HTML page that auto-submits
- * the PayHere preapproval form. Open it with expo-web-browser.
+ * Initiates a PayHere preapproval (tokenization) flow via the native SDK.
+ * A Rs.1 authorization charge is made and immediately refunded — PayHere
+ * stores the card token so the backend can charge the actual market price
+ * on the scheduled delivery date without further buyer interaction.
  */
-export async function initiatePreapproval(
+export async function startPayHerePreapproval(
     params: PreapprovalParams,
-): Promise<{ url: string }> {
-    return api.post("/api/payhere/preapproval-init", params);
+    onSuccess: (paymentId: string) => void,
+    onError: (error: string) => void,
+    onDismiss: () => void,
+): Promise<void> {
+    const {
+        data: { session },
+    } = await supabase.auth.getSession();
+    const user = session?.user;
+    const meta = user?.user_metadata ?? {};
+
+    const fullName: string = meta.name || meta.full_name || "Buyer";
+    const nameParts = fullName.trim().split(" ");
+    const firstName = nameParts[0] || "Buyer";
+    const lastName = nameParts.slice(1).join(" ") || "User";
+    const email = user?.email || "buyer@freshroutemobile.com";
+    const phone = meta.phone || "0700000000";
+
+    // Rs.1 auth — PayHere immediately refunds this; it just validates the card.
+    const amount = "1.00";
+    const currency = "LKR";
+    const items = `${params.fruitType}${params.variant ? ` (${params.variant})` : ""} - ${params.quantity}kg (Preapproval)`;
+
+    const { hash } = await api.post("/api/payhere/hash", {
+        orderId: params.orderId,
+        amount,
+        currency,
+    });
+
+    console.log(`[PayHere Preapproval] sandbox=${PAYHERE_IS_SANDBOX} merchantId=${MERCHANT_ID} orderId=${params.orderId}`);
+
+    const paymentObject = {
+        sandbox: PAYHERE_IS_SANDBOX,
+        preapprove: true,           // enables card tokenization mode
+        merchant_id: MERCHANT_ID,
+        merchant_secret: "",        // intentionally blank — server-generated hash is used
+        notify_url: `${BACKEND_URL}/api/payhere/notify`,
+        order_id: params.orderId,
+        items,
+        amount,
+        currency,
+        hash,
+        first_name: firstName,
+        last_name: lastName,
+        email,
+        phone,
+        address: params.deliveryLocation || "FreshRoute Platform",
+        city: "Colombo",
+        country: "Sri Lanka",
+        delivery_address: params.deliveryLocation || "",
+        delivery_city: "Colombo",
+        delivery_country: "Sri Lanka",
+        custom_1: "",
+        custom_2: "",
+    };
+
+    PayHere.startPayment(paymentObject, onSuccess, onError, onDismiss);
 }

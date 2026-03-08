@@ -1,19 +1,19 @@
 import Header from "@/components/Header";
+import ErrorModal from "@/components/modals/ErrorModal";
 import PaymentInfoModal from "@/components/modals/PaymentInfoModal";
 import PreapprovalConsentModal from "@/components/modals/PreapprovalConsentModal";
+import SuccessModal from "@/components/modals/SuccessModal";
 import { BuyerColors } from "@/constants/theme";
 import api from "@/services/api";
-import { initiatePreapproval, startPayHerePayment } from "@/services/payhereService";
+import { startPayHerePayment, startPayHerePreapproval } from "@/services/payhereService";
 import { FarmerInfo, PlacedOrder, TransporterInfo } from "@/types";
 import { formatCurrency, formatDate } from "@/utils/formatters";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import * as WebBrowser from "expo-web-browser";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Dimensions,
   Image,
   Modal,
@@ -36,8 +36,6 @@ const getFruitMeta = (fruit: string) => {
     return { emoji: "🥭", bg: "#FFEDD5", text: "#EA580C" };
   if (f.includes("pineapple"))
     return { emoji: "🍍", bg: "#FEF08A", text: "#A16207" };
-  if (f.includes("papaya"))
-    return { emoji: "🥥", bg: "#FFEDD5", text: "#EA580C" };
   return { emoji: "📦", bg: "#F3F4F6", text: "#6B7280" };
 };
 
@@ -46,6 +44,8 @@ const getStatusStyles = (status: string) => {
     case "AWAITING_PAYMENT":
     case "UNPAID":
       return { bg: "#FEF2F2", text: "#EF4444", label: "Awaiting Payment" };
+    case "AUTHORIZED_PAYMENT":
+      return { bg: "#FEF2F2", text: "#F59E0B", label: "Authorized" };
     case "OPEN":
     case "PENDING_BUYER":
     case "PENDING_FARMER":
@@ -55,6 +55,9 @@ const getStatusStyles = (status: string) => {
     case "PAID_PENDING_DELIVERY":
     case "IN_TRANSIT":
       return { bg: "#EFF6FF", text: "#3B82F6", label: "In Transit" };
+    case "PACKING":
+    case "READY_FOR_PICKUP":
+      return { bg: "#EFF6FF", text: "#3B82F6", label: status.replace(/_/g, " ") };
     case "DELIVERED":
     case "COMPLETED":
       return { bg: "#F0FDF4", text: "#22C55E", label: "Completed" };
@@ -93,6 +96,9 @@ export default function OrderDetailScreen() {
   const [predictedPrice, setPredictedPrice] = useState<number>(0);
   const [isFetchingForecast, setIsFetchingForecast] = useState(false);
   const [payherePaymentId, setPayherePaymentId] = useState<string | null>(null);
+  const [preapprovalAuthorized, setPreapprovalAuthorized] = useState(false);
+  const [successModal, setSuccessModal] = useState<{ title: string; message: string; onClose?: () => void } | null>(null);
+  const [errorModal, setErrorModal] = useState<{ title: string; message: string } | null>(null);
 
   // ── accordion + proof-of-harvest state ──
   // Start expanded; collapse automatically once the order is paid and in-transit
@@ -176,7 +182,7 @@ export default function OrderDetailScreen() {
       let data: any = await api.get(
         `/api/buyer/place-order/details/${params.orderId}`,
       );
-
+      console.log("Order details response:", data);
       const orderData = data.order || {};
       const merged: any = { ...orderData };
 
@@ -218,7 +224,13 @@ export default function OrderDetailScreen() {
         }
       }
 
-      if (orderData?.product_images) {
+      if (data.productImages?.length > 0) {
+        setProductImages(
+          Array.isArray(data.productImages)
+            ? data.productImages
+            : [data.productImages],
+        );
+      } else if (orderData?.product_images) {
         setProductImages(
           Array.isArray(orderData.product_images)
             ? orderData.product_images
@@ -229,7 +241,10 @@ export default function OrderDetailScreen() {
       }
 
       setHarvestDate(
-        orderData?.harvest_date || orderData?.estimated_harvest_date || null,
+        data.harvestDate ||
+        orderData?.harvest_date ||
+        orderData?.estimated_harvest_date ||
+        null,
       );
 
       // Harvest proof images
@@ -305,52 +320,46 @@ export default function OrderDetailScreen() {
     setPreapprovalConsentVisible(true);
   };
 
-  /** User confirmed consent — call backend, open PayHere preapproval in-app browser */
+  /** User confirmed consent — launch PayHere native preapproval sheet */
   const handlePreapprovalConfirm = async () => {
     if (!order) return;
-    // No price is locked here. The backend will fetch the actual market unit price
-    // on the delivery date (order.required_date) and charge that amount.
-    // predictedPrice is only passed as an estimate for display/record purposes.
-
+    setPreapprovalConsentVisible(false);
     setPreapprovalLoading(true);
     try {
-      const { url } = await initiatePreapproval({
-        orderId: order.id,
-        fruitType: order.fruit_type,
-        variant: order.variant ?? null,
-        quantity: order.quantity,
-        estimatedUnitPrice: predictedPrice > 0 ? predictedPrice : null,
-        deliveryDate: order.required_date ?? null,
-        deliveryLocation: order.delivery_location ?? null,
-      });
-
-      setPreapprovalConsentVisible(false);
-
-      // ── DEBUG: log the URL so we can verify return_url is HTTPS, not a deep link ──
-      console.log("[Preapproval] opening URL:", url);
-
-      const result = await WebBrowser.openAuthSessionAsync(
-        url,
-        "freshroutemobile://preapproval-success",
+      await startPayHerePreapproval(
+        {
+          orderId: order.id,
+          fruitType: order.fruit_type,
+          variant: order.variant ?? null,
+          quantity: order.quantity,
+          estimatedUnitPrice: predictedPrice > 0 ? predictedPrice : null,
+          deliveryDate: order.required_date ?? null,
+          deliveryLocation: order.delivery_location ?? null,
+        },
+        (paymentId) => {
+          console.log("[Preapproval] authorized, paymentId:", paymentId);
+          setPreapprovalAuthorized(true);
+          setSuccessModal({
+            title: "Auto-Payment Scheduled",
+            message: "Your card has been authorized. We\u2019ll automatically charge you on delivery day \u2014 no action needed.",
+            onClose: () => fetchOrderDetails(),
+          });
+        },
+        (error) => {
+          setErrorModal({
+            title: "Authorization Failed",
+            message: error || "Unable to start authorization. Please try again.",
+          });
+        },
+        () => {
+          // User intentionally dismissed — no notification needed
+        },
       );
-
-      if (result.type === "success") {
-        Alert.alert(
-          "Auto-Payment Scheduled",
-          "Your card has been authorized. We\u2019ll automatically charge you on delivery day \u2014 no action needed.",
-          [{ text: "OK", onPress: () => fetchOrderDetails() }],
-        );
-      } else if (result.type === "cancel") {
-        Alert.alert(
-          "Authorization Cancelled",
-          "You can authorize auto-payment at any time before delivery.",
-        );
-      }
     } catch (error: any) {
-      Alert.alert(
-        "Authorization Failed",
-        error?.message || "Unable to start authorization. Please try again.",
-      );
+      setErrorModal({
+        title: "Authorization Failed",
+        message: error?.message || "Unable to start authorization. Please try again.",
+      });
     } finally {
       setPreapprovalLoading(false);
     }
@@ -384,17 +393,17 @@ export default function OrderDetailScreen() {
       },
       (paymentId) => {
         setPayherePaymentId(paymentId);
-        Alert.alert(
-          "Payment Successful",
-          `Your payment has been received. We'll notify you once it's verified.\n\nPayment ID: ${paymentId}`,
-          [{ text: "OK", onPress: () => fetchOrderDetails() }],
-        );
+        setSuccessModal({
+          title: "Payment Authorized",
+          message: `Your card has been authorized and a hold placed for the order amount. You won't be charged until quality of the harvest is confirmed.\n\nAuthorization ID: ${paymentId}`,
+          onClose: () => fetchOrderDetails(),
+        });
       },
       (error) => {
-        Alert.alert(
-          "Payment Failed",
-          `Something went wrong: ${error}\n\nPlease try again or contact support.`,
-        );
+        setErrorModal({
+          title: "Payment Failed",
+          message: `Something went wrong: ${error}\n\nPlease try again or contact support.`,
+        });
       },
       () => {
         // User dismissed the sheet — no action needed
@@ -404,7 +413,7 @@ export default function OrderDetailScreen() {
 
   const getPrimaryAction = () => {
     if (!order) return null;
-    // Once payment is done (PAID_PENDING_DELIVERY and beyond) no action button is shown
+    // Once payment is done (AUTHORIZED_PAYMENTand beyond) no action button is shown
     // — tracking is handled via the inline mini-map section
     if (
       [
@@ -418,6 +427,15 @@ export default function OrderDetailScreen() {
     }
     switch (order.status) {
       case "AWAITING_PAYMENT":
+        if (order.payment_status === "AUTHORIZED" || preapprovalAuthorized) {
+          return {
+            label: order.required_date
+              ? `Auto-payment scheduled · ${formatDate(order.required_date)}`
+              : "Payment will process automatically",
+            onPress: () => {},
+            disabled: true,
+          };
+        }
         return {
           label: "Proceed to Payment",
           onPress: () => setPaymentModalVisible(true),
@@ -428,7 +446,10 @@ export default function OrderDetailScreen() {
   };
 
   const isOrderTrackable = [
+    "AUTHORIZED_PAYMENT",
     "PAID_PENDING_DELIVERY",
+    "PACKING",
+    "READY_FOR_PICKUP",
     "IN_TRANSIT",
     "DELIVERED",
     "COMPLETED",
@@ -464,6 +485,14 @@ export default function OrderDetailScreen() {
   const primaryAction = getPrimaryAction();
   const statusStyle = getStatusStyles(order.status);
   const fruitMeta = getFruitMeta(order.fruit_type);
+
+  // display a meaningful payment reference; ignore a literal "0" coming from DB
+  const displayPaymentRef = (() => {
+    if (!order) return null;
+    const v = order.payhere_payment_id;
+    if (v && v !== "0") return v;
+    return payherePaymentId;
+  })();
 
   // --- Actual map coordinates (fall back to Colombo area if DB has none) ---
   const farmerMapCoord = farmerCoords ?? {
@@ -612,12 +641,10 @@ export default function OrderDetailScreen() {
                   #{order.id.substring(0, 8).toUpperCase()}
                 </Text>
               </View>
-              {(order.payhere_payment_id ?? payherePaymentId) ? (
+              {displayPaymentRef ? (
                 <View>
                   <Text style={styles.orderIdLabel}>PAYMENT REF</Text>
-                  <Text style={styles.paymentRefValue}>
-                    {order.payhere_payment_id ?? payherePaymentId}
-                  </Text>
+                  <Text style={styles.paymentRefValue}>{displayPaymentRef}</Text>
                 </View>
               ) : null}
               <View style={[styles.badge, { backgroundColor: statusStyle.bg }]}>
@@ -893,17 +920,33 @@ export default function OrderDetailScreen() {
           {primaryAction && (
             <View style={styles.actionContainer}>
               <TouchableOpacity
-                style={styles.primaryBtn}
+                style={[
+                  styles.primaryBtn,
+                  (primaryAction as any).disabled && styles.primaryBtnScheduled,
+                ]}
                 onPress={primaryAction.onPress}
+                disabled={(primaryAction as any).disabled}
+                activeOpacity={(primaryAction as any).disabled ? 1 : 0.8}
               >
-                {(primaryAction as any).icon && (
-                  <Ionicons
-                    name={(primaryAction as any).icon as any}
-                    size={20}
-                    color="#fff"
-                  />
+                {(primaryAction as any).disabled ? (
+                  <Ionicons name="calendar-outline" size={18} color="rgba(255,255,255,0.85)" />
+                ) : (
+                  (primaryAction as any).icon && (
+                    <Ionicons
+                      name={(primaryAction as any).icon as any}
+                      size={20}
+                      color="#fff"
+                    />
+                  )
                 )}
-                <Text style={styles.primaryBtnText}>{primaryAction.label}</Text>
+                <Text
+                  style={[
+                    styles.primaryBtnText,
+                    (primaryAction as any).disabled && styles.primaryBtnScheduledText,
+                  ]}
+                >
+                  {primaryAction.label}
+                </Text>
               </TouchableOpacity>
             </View>
           )}
@@ -1039,6 +1082,30 @@ export default function OrderDetailScreen() {
           )}
         </View>
       </Modal>
+      <SuccessModal
+        visible={!!successModal}
+        title={successModal?.title ?? ""}
+        message={successModal?.message ?? ""}
+        buttonText="OK"
+        onClose={() => {
+          const cb = successModal?.onClose;
+          setSuccessModal(null);
+          cb?.();
+        }}
+        onButtonPress={() => {
+          const cb = successModal?.onClose;
+          setSuccessModal(null);
+          cb?.();
+        }}
+      />
+      <ErrorModal
+        visible={!!errorModal}
+        title={errorModal?.title ?? ""}
+        message={errorModal?.message ?? ""}
+        buttonText="OK"
+        onClose={() => setErrorModal(null)}
+        onButtonPress={() => setErrorModal(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -1242,6 +1309,15 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   primaryBtnText: { fontSize: 15, fontWeight: "bold", color: "#ffffff" },
+  primaryBtnScheduled: {
+    backgroundColor: "#166534",
+    opacity: 0.9,
+  },
+  primaryBtnScheduledText: {
+    fontSize: 13,
+    fontWeight: "600",
+    letterSpacing: 0.1,
+  },
 
   modalBg: {
     flex: 1,

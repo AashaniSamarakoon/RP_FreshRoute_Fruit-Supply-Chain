@@ -46,21 +46,26 @@ interface PlacedOrder {
   };
 }
 
-type TabKey = "all" | "pending" | "payment_due" | "in_delivery";
+type TabKey = "all" | "pending" | "payment_due" | "processing" | "in_delivery";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "all", label: "All" },
-  { key: "pending", label: "Pending" },
+  { key: "pending", label: "Pending Farmer" },
   { key: "payment_due", label: "Payment Due" },
+  { key: "processing", label: "Processing" },
   { key: "in_delivery", label: "In Delivery" },
 ];
 
 const TAB_STATUS_MAP: Record<TabKey, string[]> = {
   all: [],
   pending: ["OPEN", "PENDING_FARMER", "PENDING_BUYER", "MATCHED"],
-  payment_due: ["AWAITING_PAYMENT", "UNPAID"],
+  payment_due: ["AWAITING_PAYMENT"],
+  processing: ["AUTHORIZED_PAYMENT", "PACKING", "READY_FOR_PICKUP"],
   in_delivery: [
     "PAID_PENDING_DELIVERY",
+    "PACKING",
+    "READY_FOR_PICKUP",
+    "PICKED_UP",
     "IN_TRANSIT",
     "DELIVERED",
     "COMPLETED",
@@ -111,53 +116,110 @@ const STATUS_META: Record<
     color: "#BE123C",
     bg: "#FFE4E6",
     icon: "wallet-outline",
-  }, // Rose/Crimson
-  UNPAID: {
-    label: "Payment Due",
-    color: "#BE123C",
-    bg: "#FFE4E6",
-    icon: "wallet-outline",
-  }, // Rose/Crimson
+  },
   PAID_PENDING_DELIVERY: {
     label: "Dispatching",
     color: "#0F766E",
     bg: "#CCFBF1",
     icon: "cube-outline",
-  }, // Deep Teal
+  },
+  PACKING: {
+    label: "Packing",
+    color: "#92400E",
+    bg: "#FEF3C7",
+    icon: "archive-outline",
+  },
+  READY_FOR_PICKUP: {
+    label: "Ready for Pickup",
+    color: "#065F46",
+    bg: "#D1FAE5",
+    icon: "checkmark-done-outline",
+  },
+  PICKED_UP: {
+    label: "Picked Up",
+    color: "#0F766E",
+    bg: "#CCFBF1",
+    icon: "bag-handle-outline",
+  },
   IN_TRANSIT: {
     label: "In Transit",
     color: "#047857",
     bg: "#D1FAE5",
     icon: "bus-outline",
-  }, // Emerald
+  },
   DELIVERED: {
     label: "Delivered",
     color: "#15803D",
     bg: "#DCFCE7",
     icon: "checkmark-circle-outline",
-  }, // Forest Green
+  },
   COMPLETED: {
     label: "Completed",
     color: "#166534",
     bg: "#BBF7D0",
     icon: "shield-checkmark-outline",
-  }, // Dark Green
+  },
+  REJECTED: {
+    label: "Rejected",
+    color: "#991B1B",
+    bg: "#FEE2E2",
+    icon: "close-circle-outline",
+  },
+  DISPUTED: {
+    label: "Disputed",
+    color: "#6D28D9",
+    bg: "#EDE9FE",
+    icon: "warning-outline",
+  },
   CANCELLED: {
     label: "Cancelled",
     color: "#4B5563",
     bg: "#F3F4F6",
     icon: "close-circle-outline",
-  }, // Neutral Gray
+  },
 };
 
-const MATCHING_PHASE = ["OPEN", "PENDING_BUYER", "PENDING_FARMER"];
+const MATCHING_PHASE = ["OPEN", "MATCHED", "PENDING_BUYER", "PENDING_FARMER"];
 
 export default function BuyerOrders() {
   const router = useRouter();
   const [orders, setOrders] = useState<PlacedOrder[]>([]);
+  const [proposalCounts, setProposalCounts] = useState<Record<string, number>>({});
+  const [proposalPrices, setProposalPrices] = useState<Record<string, { min: number; max: number }>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>("all");
+
+  const fetchProposalCounts = async (orderList: PlacedOrder[]) => {
+    const matchingOrders = orderList.filter((o) => MATCHING_PHASE.includes(o.status));
+    if (matchingOrders.length === 0) return;
+    try {
+      const results = await Promise.allSettled(
+        matchingOrders.map((o) => api.get(`/api/buyer/matching/order/${o.id}`)),
+      );
+      const counts: Record<string, number> = {};
+      const prices: Record<string, { min: number; max: number }> = {};
+      results.forEach((result, i) => {
+        if (result.status === "fulfilled") {
+          const data: any = result.value;
+          const proposals: any[] = data?.proposals ?? data?.matches ?? (Array.isArray(data) ? data : []);
+          if (proposals.length > 0) {
+            counts[matchingOrders[i].id] = proposals.length;
+            const pkgPrices = proposals
+              .map((p: any) => Number(p.stock?.price_per_kg ?? p.price_per_kg))
+              .filter((v) => !isNaN(v) && v > 0);
+            if (pkgPrices.length > 0) {
+              prices[matchingOrders[i].id] = { min: Math.min(...pkgPrices), max: Math.max(...pkgPrices) };
+            }
+          }
+        }
+      });
+      setProposalCounts(counts);
+      setProposalPrices(prices);
+    } catch {
+      // silently ignore — counts just won't show
+    }
+  };
 
   const fetchOrders = async (silent = false) => {
     try {
@@ -168,6 +230,7 @@ export default function BuyerOrders() {
         return { ...o, totalPrice: raw != null ? String(raw) : null };
       });
       setOrders(list);
+      fetchProposalCounts(list);
     } catch {
       if (!silent) setOrders([]);
     } finally {
@@ -175,9 +238,29 @@ export default function BuyerOrders() {
     }
   };
 
+  const triggerMatchingForOpenOrders = async (orderList: PlacedOrder[]) => {
+    const openOrders = orderList.filter((o) => o.status === "OPEN");
+    if (openOrders.length === 0) return;
+    await Promise.allSettled(
+      openOrders.map((o) => api.post(`/api/buyer/matching/trigger/${o.id}`, {})),
+    );
+  };
+
   const onRefresh = React.useCallback(async () => {
     setRefreshing(true);
-    await fetchOrders(true);
+    // Fetch current orders first, then trigger matching for open ones
+    try {
+      const body: any = await api.get(`/api/buyer/place-order`);
+      const list: PlacedOrder[] = (body.orders || []).map((o: any) => {
+        const raw = o.totalPrice ?? o.total_price ?? null;
+        return { ...o, totalPrice: raw != null ? String(raw) : null };
+      });
+      await triggerMatchingForOpenOrders(list);
+      // Re-fetch after triggering to get updated statuses
+      await fetchOrders(true);
+    } catch {
+      await fetchOrders(true);
+    }
     setRefreshing(false);
   }, []);
 
@@ -197,6 +280,7 @@ export default function BuyerOrders() {
       all: orders.length,
       pending: 0,
       payment_due: 0,
+      processing: 0,
       in_delivery: 0,
     };
     orders.forEach((o) => {
@@ -228,7 +312,7 @@ export default function BuyerOrders() {
   const handlePress = (item: PlacedOrder) => {
     if (MATCHING_PHASE.includes(item.status)) {
       router.push({
-        pathname: "/buyer/screens/MatchedStocksScreen" as any,
+        pathname: "/buyer/screens/MatchedStocks" as any,
         params: { orderId: item.id },
       });
     } else {
@@ -251,12 +335,23 @@ export default function BuyerOrders() {
       icon: "ellipse-outline",
     };
 
+    const proposalCount = proposalCounts[item.id] ?? 0;
+    const paymentDue = ["AWAITING_PAYMENT"].includes(item.status);
+    const badgeCount = proposalCount > 0 ? proposalCount : (paymentDue ? "!" : null);
+    const isMatchingPhase = MATCHING_PHASE.includes(item.status);
+    const priceRange = proposalPrices[item.id];
+
     return (
       <TouchableOpacity
         style={styles.card}
         activeOpacity={0.8}
         onPress={() => handlePress(item)}
       >
+        {badgeCount !== null && (
+          <View style={styles.cardCountBadge}>
+            <Text style={styles.cardCountBadgeText}>{badgeCount}</Text>
+          </View>
+        )}
         <View style={styles.cardBody}>
           {/* Header Row: Order ID & Status */}
           <View style={styles.cardTopRow}>
@@ -287,10 +382,30 @@ export default function BuyerOrders() {
             </View>
 
             <View style={styles.priceBlock}>
-              <Text style={styles.priceLabel}>Total Amount</Text>
-              <Text style={styles.priceValue}>
-                Rs. {formatCurrency(item.totalPrice)}
-              </Text>
+              {isMatchingPhase ? (
+                priceRange ? (
+                  <>
+                    <Text style={styles.priceLabel}>Proposals From</Text>
+                    <Text style={styles.priceValue}>
+                      Rs. {priceRange.min.toLocaleString()}
+                      {priceRange.max !== priceRange.min ? `–${priceRange.max.toLocaleString()}` : ""}
+                    </Text>
+                    <Text style={styles.pricePerKgLabel}>/kg</Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.priceLabel}>Price</Text>
+                    <Text style={styles.priceAwaitingText}>Awaiting proposals</Text>
+                  </>
+                )
+              ) : (
+                <>
+                  <Text style={styles.priceLabel}>Total Amount</Text>
+                  <Text style={styles.priceValue}>
+                    Rs. {formatCurrency(item.totalPrice)}
+                  </Text>
+                </>
+              )}
             </View>
           </View>
 
@@ -377,12 +492,12 @@ export default function BuyerOrders() {
         onNotificationPress={() => {}}
       />
 
-      <PillTabBar
+<PillTabBar
         tabs={TABS.map((t) => ({
           key: t.key,
           label: t.label,
           count: tabCount[t.key],
-        }))}
+        })).filter(t => t.key === "all" || t.count > 0)} // <--- ONLY RENDER IF count > 0 or "all"
         activeKey={activeTab}
         onPress={setActiveTab}
       />
@@ -435,7 +550,7 @@ const GREEN = BuyerColors.primaryGreen;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: "#ffffff",
   },
 
   // ── List ─────────────────────────────────────────────────────────────────────
@@ -459,7 +574,29 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 8,
     elevation: 1,
+    overflow: "visible",
   },
+  cardCountBadge: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "#EF4444",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 5,
+    zIndex: 10,
+    // borderWidth: 2,
+    // borderColor: "#FFFFFF",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 4,
+  },
+  cardCountBadgeText: { fontSize: 12, fontWeight: "800", color: "#FFFFFF" },
   cardBody: {
     padding: 16,
   },
@@ -537,9 +674,21 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   priceValue: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "900",
     color: GREEN,
+  },
+  pricePerKgLabel: {
+    fontSize: 11,
+    fontWeight: "500",
+    color: "#6B7280",
+    marginTop: 1,
+  },
+  priceAwaitingText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#9CA3AF",
+    fontStyle: "italic",
   },
 
   // Metrics (Chips instead of dividers)

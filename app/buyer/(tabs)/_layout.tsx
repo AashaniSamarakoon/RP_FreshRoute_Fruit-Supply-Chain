@@ -1,5 +1,5 @@
 import { Tabs } from "expo-router";
-import { Home, Package, ShoppingCart, Tag, User } from "lucide-react-native";
+import { Home, ShoppingCart, Tag, User } from "lucide-react-native";
 
 export default function BuyerLayout() {
   return (

@@ -21,8 +21,14 @@ export default function BusinessStep() {
   const [taxTin, setTaxTin] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // location state
-  const [region, setRegion] = useState<Region | null>(null);
+  // location state - default to center of Sri Lanka so map always displays
+  const DEFAULT_REGION: Region = {
+    latitude: 7.8731,
+    longitude: 80.7718,
+    latitudeDelta: 0.5,
+    longitudeDelta: 0.5,
+  };
+  const [region, setRegion] = useState<Region>(DEFAULT_REGION);
   const mapRef = useRef<MapView>(null);
 
   // keep context in sync as user types/chooses location
@@ -32,14 +38,13 @@ export default function BusinessStep() {
 
   // persist map coordinates if user returns from location picker
   useEffect(() => {
-    if (region) {
-      updateBuyerData({ lat: region.latitude, lng: region.longitude });
-    }
+    updateBuyerData({ lat: region.latitude, lng: region.longitude });
   }, [region]);
 
+  // Try to get current location in background, non-blocking
   useEffect(() => {
-    if (!region) {
-      (async () => {
+    (async () => {
+      try {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== "granted") return;
         const loc = await Location.getCurrentPositionAsync({
@@ -51,9 +56,11 @@ export default function BusinessStep() {
           latitudeDelta: 0.01,
           longitudeDelta: 0.01,
         });
-      })();
-    }
-  }, [region]);
+      } catch (err) {
+        console.log("Could not get location, using default", err);
+      }
+    })();
+  }, []);
 
   const onNext = () => {
     if (!company || !taxTin) {
@@ -78,7 +85,7 @@ export default function BusinessStep() {
   return (
     <OnboardingShell
       step={2}
-      hideBack
+      // hideBack
       footer={
         <TouchableOpacity
           style={[styles.primaryButton, saving && { opacity: 0.7 }]}
@@ -110,36 +117,27 @@ export default function BusinessStep() {
         {/* Map Preview Section */}
         <View style={styles.section}>
           <Text style={styles.label}>Business Location Pin</Text>
-          {region ? (
-            <TouchableOpacity
-              style={styles.mapContainer}
-              activeOpacity={0.8}
-              onPress={() => router.push("/onboarding/buyer/location" as any)}
-            >
-              <MapView
-                ref={mapRef}
-                provider={PROVIDER_GOOGLE}
-                style={styles.smallMap}
-                region={region}
-                pointerEvents="none"
-              />
-              <View style={styles.pinContainer}>
-                <Ionicons name="location" size={32} color="#2E7D32" />
-              </View>
-              {/* Edit Overlay Banner */}
-              <View style={styles.mapEditOverlay}>
-                <Ionicons name="pencil" size={14} color="#fff" />
-                <Text style={styles.mapEditText}>Tap to edit location</Text>
-              </View>
-            </TouchableOpacity>
-          ) : (
-            <View style={[styles.mapContainer, styles.mapPlaceholder]}>
-              <Ionicons name="map-outline" size={32} color="#9CA3AF" />
-              <Text style={{ color: "#9CA3AF", marginTop: 8 }}>
-                Locating...
-              </Text>
+          <TouchableOpacity
+            style={styles.mapContainer}
+            activeOpacity={0.8}
+            onPress={() => router.push("/onboarding/buyer/location" as any)}
+          >
+            <MapView
+              ref={mapRef}
+              provider={PROVIDER_GOOGLE}
+              style={styles.smallMap}
+              region={region}
+              pointerEvents="none"
+            />
+            <View style={styles.pinContainer}>
+              <Ionicons name="location" size={32} color="#2E7D32" />
             </View>
-          )}
+            {/* Edit Overlay Banner */}
+            <View style={styles.mapEditOverlay}>
+              <Ionicons name="pencil" size={14} color="#fff" />
+              <Text style={styles.mapEditText}>Tap to edit location</Text>
+            </View>
+          </TouchableOpacity>
         </View>
 
         {/* Form Fields */}

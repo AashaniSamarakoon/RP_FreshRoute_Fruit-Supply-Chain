@@ -99,7 +99,7 @@ export default function DailyPricesScreen() {
       console.log("[FRESHROUTE-PRICES] Fetching freshroute prices");
       let data;
       try {
-        data = await api.get("/api/farmer/prices/freshroute");
+        data = await api.get("/api/prices/freshroute");
         console.log(
           "[FRESHROUTE-PRICES] Response data:",
           JSON.stringify(data, null, 2),

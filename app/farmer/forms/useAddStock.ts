@@ -126,7 +126,7 @@ export const useAddStock = () => {
     }));
   };
 
-  // --- UPDATED: Multi-Image Picker ---
+  // --- UPDATED: Multi-Image Picker (Gallery) ---
   const pickImage = async () => {
     // 1. Check Permissions
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -137,10 +137,10 @@ export const useAddStock = () => {
 
     // 2. Launch Picker
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: "images", // Fixed deprecated Enum
-      allowsMultipleSelection: true, // Allow multiple
-      selectionLimit: 10, // Max 10 at a time
-      quality: 0.5, // Compression
+      mediaTypes: "images",
+      allowsMultipleSelection: true,
+      selectionLimit: 10,
+      quality: 0.5,
     });
 
     if (!result.canceled) {
@@ -150,7 +150,26 @@ export const useAddStock = () => {
         0,
         10,
       );
+      updateField("images", combinedImages);
+    }
+  };
 
+  // --- NEW: Take Photo from Camera ---
+  const takePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission Denied", "We need access to your camera.");
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: "images",
+      quality: 0.5,
+    });
+
+    if (!result.canceled) {
+      const newUri = result.assets[0].uri;
+      const combinedImages = [...state.formData.images, newUri].slice(0, 10);
       updateField("images", combinedImages);
     }
   };
@@ -279,6 +298,7 @@ export const useAddStock = () => {
     ...state,
     updateField,
     pickImage, // <--- Exported
+    takePhoto, // <--- Exported
     removeImage, // <--- Exported
     setDatePickerVisible,
     setDateValue,

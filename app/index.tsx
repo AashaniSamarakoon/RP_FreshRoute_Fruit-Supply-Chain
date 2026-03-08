@@ -1,10 +1,59 @@
 // app/index.tsx
+import api from "@/services/api";
+import { supabase } from "@/utils/supabaseClient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 
 type Role = "farmer" | "transporter" | "buyer";
+
+/**
+ * Checks whether the current session user has completed onboarding.
+ * Resolution order (fastest → slowest):
+ *  1. Local AsyncStorage flag ("onboarded" === "true")
+ *  2. Supabase user_metadata (is_onboarded / isOnboarded)
+ *  3. Backend /api/auth/me (writes flag to cache on success)
+ *
+ * IMPORTANT: defaults to TRUE on any ambiguous / error case so that an
+ * onboarded user is NEVER incorrectly kicked back to the onboarding flow.
+ * Only returns false when the server explicitly says is_onboarded === false.
+ */
+async function resolveOnboardingStatus(session: any): Promise<boolean> {
+  // 1. Local cache
+  const flag = await AsyncStorage.getItem("onboarded");
+  if (flag === "true") return true;
+
+  // 2. Supabase user metadata
+  const meta = session?.user?.user_metadata ?? {};
+  if (meta.is_onboarded || meta.isOnboarded) {
+    await AsyncStorage.setItem("onboarded", "true");
+    return true;
+  }
+
+  // 3. Server check (network)
+  try {
+    const resp: any = await api.get("/api/auth/me");
+    console.log("[index] /api/auth/me ->", resp);
+    const serverOnboarded =
+      resp?.isOnboarded ??
+      resp?.is_onboarded ??
+      resp?.profile?.isOnboarded ??
+      resp?.profile?.is_onboarded;
+
+    if (serverOnboarded === false) {
+      // Explicitly not onboarded — respect it
+      return false;
+    }
+    // Truthy value or undefined/null → treat as onboarded (safe default)
+    await AsyncStorage.setItem("onboarded", "true");
+    return true;
+  } catch (e) {
+    // Network error — don't kick user to onboarding
+    console.warn("[index] could not reach /api/auth/me, assuming onboarded", e);
+    return true;
+  }
+}
 
 export default function Index() {
   const router = useRouter();
@@ -13,14 +62,39 @@ export default function Index() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const userJson = await AsyncStorage.getItem("user");
-        if (!userJson) {
-          router.replace("/login");
+        // Primary: check active Supabase session (persisted by SDK across app restarts)
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (session?.user) {
+          const user = session.user;
+          // Sync into AsyncStorage so other screens that read it still work.
+          await AsyncStorage.setItem("user", JSON.stringify(user));
+          if (session.access_token) {
+            await AsyncStorage.setItem("token", session.access_token);
+          }
+
+          const role = ((user.user_metadata?.role as string) || "buyer").toLowerCase() as Role;
+
+          // Guard: if onboarding isn't complete, send back into the flow.
+          if (role === "farmer" || role === "buyer") {
+            const onboarded = await resolveOnboardingStatus(session);
+            if (!onboarded) {
+              const startPath =
+                role === "farmer"
+                  ? "/onboarding/farmer/farm-info"
+                  : "/onboarding/buyer/business";
+              router.replace(startPath as any);
+              return;
+            }
+          }
+
+          const route = getDashboardRoute(role);
+          router.replace(route as any);
           return;
         }
-        const user = JSON.parse(userJson) as { role: Role };
-        const route = getDashboardRoute(user.role);
-        router.replace(route as any);
+
+        // No active Supabase session — send to login
+        router.replace("/login");
       } catch (e) {
         router.replace("/login");
       } finally {

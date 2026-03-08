@@ -1,38 +1,32 @@
-import React, { useEffect, useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
-import { Search, Bell } from "lucide-react-native";
+import { Colors } from "@/constants/theme";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import { Colors } from "@/constants/theme";
-
-interface UserData {
-  name?: string;
-  email?: string;
-  role?: string;
-}
+import { Bell, Search } from "lucide-react-native";
+import React, { useEffect, useState } from "react";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 const DashboardHeader = () => {
-  const [user, setUser] = useState<UserData | null>(null);
+  const [greeting, setGreeting] = useState<string>("");
   const router = useRouter();
 
   useEffect(() => {
-    const loadUser = async () => {
+    const loadGreeting = async () => {
       const userJson = await AsyncStorage.getItem("user");
-      if (userJson) {
-        setUser(JSON.parse(userJson));
-      }
+      const meta = userJson ? JSON.parse(userJson)?.user_metadata : null;
+      const firstName = meta?.first_name || meta?.name?.split(" ")[0] || "there";
+      const hour = new Date().getHours();
+      const timeGreeting =
+        hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+      setGreeting(`${timeGreeting}, ${firstName}`);
     };
-    loadUser();
+    loadGreeting();
   }, []);
-
-  const userName = user?.name?.split(" ")[0] || "User";
 
   return (
     <View style={styles.header}>
       <View>
         <Text style={styles.logo}>🍃 FreshRoute</Text>
-        {/* <Text style={styles.greeting}>Good morning, {userName}</Text> */}
-        <Text style={styles.greeting}>Good morning, Akalanka</Text>
+        <Text style={styles.greeting}>{greeting}</Text>
 
       </View>
       <View style={styles.headerIcons}>

@@ -120,7 +120,7 @@ export default function BuyerDashboardScreen(): React.JSX.Element {
       <ScrollView
         style={styles.contentContainer}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 100 }}
+        contentContainerStyle={{ paddingBottom: 80 }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}

@@ -1,21 +1,21 @@
 import api from "@/services/api";
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import {
-  Dimensions,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-  ActivityIndicator,
+    ActivityIndicator,
+    Dimensions,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import Svg, {
-  Defs,
-  Line,
-  LinearGradient,
-  Path,
-  Stop,
-  Text as SvgText,
-  TSpan,
+    Defs,
+    Line,
+    LinearGradient,
+    Path,
+    Stop,
+    Text as SvgText,
+    TSpan,
 } from "react-native-svg";
 import { BuyerColors } from "../../../constants/theme";
 
@@ -37,9 +37,12 @@ const weekdayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 async function fetchPrediction(fruit: string): Promise<PredictionData[]> {
   if (!fruit) return [];
   const path = `/api/forecast/7day?fruit=${encodeURIComponent(fruit)}`;
+  console.log("fetching", path);
   try {
     const resp = await api.get(path);
+    console.log("[PricePredictionChart] Raw API response:", resp);
     const arr = resp.days || resp.forecast || [];
+    console.log("[PricePredictionChart] Array to process:", arr);
     return arr.slice(0, 7).map((item: any) => {
       let dayName = item.day;
       if (dayName && dayName.length > 3) {
@@ -73,6 +76,7 @@ export default function PricePredictionChart({}: PricePredictionChartProps): Rea
     setLoading(true);
     fetchPrediction(selectedFruit).then((data) => {
       if (!cancelled) {
+        console.log("[PricePredictionChart] Setting currentData:", data);
         setCurrentData(data);
         setLoading(false);
       }
