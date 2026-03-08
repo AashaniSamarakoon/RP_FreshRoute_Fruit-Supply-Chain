@@ -16,7 +16,7 @@ import {
   View,
 } from "react-native";
 
-type Role = "farmer" | "transporter" | "buyer";
+type Role = "farmer" | "transporter" | "buyer" | "admin";
 
 export default function Login() {
   const router = useRouter();
@@ -52,9 +52,15 @@ export default function Login() {
         await AsyncStorage.setItem("user", JSON.stringify(user));
       }
 
-      const userRole = (
-        (user.user_metadata?.role as string) || "buyer"
-      ).toLowerCase() as Role;
+      // Ensure admin user has role in metadata so backend JWT sees it
+      const rawRole =
+        (user.user_metadata?.role as string) ||
+        (user.email === "admin@gmail.com" ? "admin" : "buyer");
+      const userRole = rawRole.toLowerCase() as Role;
+      if (userRole === "admin" && user?.user_metadata?.role !== "admin") {
+        await supabase.auth.updateUser({ data: { role: "admin" } });
+      }
+
       const route = getDashboardRoute(userRole);
       router.replace(route as any);
     } catch (err: any) {
@@ -191,6 +197,8 @@ function getDashboardRoute(role: Role) {
       return "/transporter";
     case "buyer":
       return "/buyer";
+    case "admin":
+      return "/admin";
     default:
       return "/login";
   }

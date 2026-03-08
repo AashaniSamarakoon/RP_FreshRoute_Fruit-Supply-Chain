@@ -17,6 +17,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { MaterialIcons, Ionicons } from "@expo/vector-icons";
+import Header from "@/components/Header";
+import { BuyerColors } from "@/constants/theme";
 
 interface Message {
   id: string;
@@ -40,9 +42,13 @@ export default function Chat() {
     complaintId?: string;
     orderId?: string;
     buyerId?: string;
+    userName?: string;
+    userEmail?: string;
   }>();
   const orderId = (params.orderId as string) || "";
   const buyerId = (params.buyerId as string) || "";
+  const userName = (params.userName as string) || "";
+  const userEmail = (params.userEmail as string) || "";
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [showSidePanel, setShowSidePanel] = useState(false);
@@ -52,7 +58,6 @@ export default function Chat() {
   );
   const [chats, setChats] = useState<ChatThread[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const sidePanelAnimation = useRef(new Animated.Value(-300)).current;
   const scrollViewRef = useRef<ScrollView>(null);
 
@@ -65,7 +70,10 @@ export default function Chat() {
           return;
         }
         const user = JSON.parse(userJson);
-        if (user.role !== "buyer") {
+        const role = (user.role ?? user.user_metadata?.role ?? "").toString().toLowerCase();
+        // If we have orderId we're coming from buyer order flow — treat as buyer
+        const fromBuyerOrder = !!(params.orderId || params.complaintId);
+        if (role !== "buyer" && !fromBuyerOrder) {
           router.replace("/buyer");
           return;
         }
@@ -77,7 +85,7 @@ export default function Chat() {
       }
     };
     checkAuth();
-  }, [router]);
+  }, [router, params.orderId, params.complaintId]);
 
   useEffect(() => {
     const complaintIdParam = params.complaintId as string;
@@ -86,7 +94,9 @@ export default function Chat() {
       {
         id: "1",
         complaintId: complaintIdParam || orderIdParam || "1",
-        complaintTitle: orderIdParam ? `Order #${orderIdParam}` : "Order ORD-001",
+        complaintTitle: orderIdParam
+          ? `Order #${orderIdParam.slice(0, 8)}`
+          : "Complaint Chat",
         lastMessage: "Thank you for your complaint. We are looking into it.",
         lastMessageTime: new Date(),
         messages: [
@@ -136,27 +146,15 @@ export default function Chat() {
   }, [messages]);
 
   useEffect(() => {
-    const keyboardWillShow = Keyboard.addListener(
+    const subShow = Keyboard.addListener(
       Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
-      (e) => {
-        setKeyboardHeight(e.endCoordinates.height);
+      () => {
         setTimeout(() => {
           scrollViewRef.current?.scrollToEnd({ animated: true });
         }, 100);
       }
     );
-
-    const keyboardWillHide = Keyboard.addListener(
-      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
-      () => {
-        setKeyboardHeight(0);
-      }
-    );
-
-    return () => {
-      keyboardWillShow.remove();
-      keyboardWillHide.remove();
-    };
+    return () => subShow.remove();
   }, []);
 
   const handleSend = () => {
@@ -220,18 +218,19 @@ export default function Chat() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={[]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.menuButton}
-          onPress={() => setShowSidePanel(true)}
-        >
-          <MaterialIcons name="menu" size={28} color="#11181C" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Complaint Chat Agent</Text>
-        <View style={styles.headerSpacer} />
-      </View>
+    <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+      <Header
+        title="Complaint Chat"
+        showBackButton
+        rightComponent={
+          <TouchableOpacity
+            onPress={() => setShowSidePanel(true)}
+            style={styles.headerMenuBtn}
+          >
+            <MaterialIcons name="menu" size={24} color="#000" />
+          </TouchableOpacity>
+        }
+      />
 
       {/* Side Panel */}
       {showSidePanel && (
@@ -255,7 +254,7 @@ export default function Chat() {
             onPress={() => setShowSidePanel(false)}
             style={styles.sidePanelClose}
           >
-            <Ionicons name="close" size={24} color="#11181C" />
+            <Ionicons name="close" size={24} color={BuyerColors.textBlack} />
           </TouchableOpacity>
         </View>
         <ScrollView style={styles.chatList}>
@@ -266,7 +265,7 @@ export default function Chat() {
                 onPress={() => handleChatSelect(chat)}
               >
                 <View style={styles.chatItemAvatar}>
-                  <Ionicons name="chatbubble" size={24} color="#2f855a" />
+                  <Ionicons name="chatbubble" size={24} color={BuyerColors.primaryGreen} />
                 </View>
                 <View style={styles.chatItemInfo}>
                   <Text style={styles.chatItemTitle}>{chat.complaintTitle}</Text>
@@ -279,27 +278,29 @@ export default function Chat() {
                 style={styles.deleteButton}
                 onPress={() => handleDeleteChat(chat.id)}
               >
-                <Ionicons name="trash-outline" size={20} color="#e53e3e" />
+                <Ionicons name="trash-outline" size={20} color="#DC2626" />
               </TouchableOpacity>
             </View>
           ))}
         </ScrollView>
       </Animated.View>
 
-      <View style={styles.chatWrapper}>
-        {/* Chat Messages */}
-        <ScrollView
-          ref={scrollViewRef}
-          style={[
-            styles.messagesContainer,
-            { paddingBottom: keyboardHeight > 0 ? 80 : 0 },
-          ]}
-          contentContainerStyle={styles.messagesContent}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive"
-          showsVerticalScrollIndicator={false}
-        >
-          {messages.map((message) => (
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoid}
+        behavior={Platform.OS === "ios" ? "padding" : "padding"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+      >
+        <View style={styles.chatWrapper}>
+          {/* Chat Messages */}
+          <ScrollView
+            ref={scrollViewRef}
+            style={styles.messagesContainer}
+            contentContainerStyle={styles.messagesContent}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            showsVerticalScrollIndicator={false}
+          >
+            {messages.map((message) => (
             <View
               key={message.id}
               style={[
@@ -340,21 +341,15 @@ export default function Chat() {
               )}
             </View>
           ))}
-        </ScrollView>
-      </View>
+          </ScrollView>
+        </View>
 
-      {/* Message Input */}
-      <View
-        style={[
-          styles.inputContainer,
-          {
-            bottom: keyboardHeight > 0 ? keyboardHeight : 0,
-          },
-        ]}
-      >
+        {/* Message Input - in flow so it sits above keyboard */}
+        <View style={styles.inputContainer}>
           <TextInput
             style={styles.input}
             placeholder="Type your message..."
+            placeholderTextColor={BuyerColors.textGray}
             value={messageText}
             onChangeText={setMessageText}
             multiline
@@ -371,10 +366,11 @@ export default function Chat() {
             <MaterialIcons
               name="send"
               size={24}
-              color={messageText.trim() ? "#fff" : "#ccc"}
+              color={messageText.trim() ? "#fff" : BuyerColors.textGray}
             />
           </TouchableOpacity>
-      </View>
+        </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -382,7 +378,10 @@ export default function Chat() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: BuyerColors.cardWhite,
+  },
+  keyboardAvoid: {
+    flex: 1,
   },
   chatWrapper: {
     flex: 1,
@@ -391,34 +390,10 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#fff",
+    backgroundColor: BuyerColors.cardWhite,
   },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e5e5e5",
-    backgroundColor: "#fff",
-  },
-  menuButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#f5f5f5",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  headerTitle: {
-    flex: 1,
-    fontSize: 18,
-    fontWeight: "bold",
-    textAlign: "center",
-    color: "#11181C",
-  },
-  headerSpacer: {
-    width: 40,
+  headerMenuBtn: {
+    padding: 4,
   },
   sidePanelBackdrop: {
     position: "absolute",
@@ -435,7 +410,7 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     width: 300,
-    backgroundColor: "#fff",
+    backgroundColor: BuyerColors.cardWhite,
     zIndex: 999,
     shadowColor: "#000",
     shadowOffset: { width: 2, height: 0 },
@@ -449,12 +424,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#e5e5e5",
+    borderBottomColor: BuyerColors.border,
   },
   sidePanelTitle: {
     fontSize: 18,
     fontWeight: "bold",
-    color: "#11181C",
+    color: BuyerColors.textBlack,
   },
   sidePanelClose: {
     width: 32,
@@ -470,7 +445,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#f5f5f5",
+    borderBottomColor: BuyerColors.border,
   },
   chatItemContent: {
     flex: 1,
@@ -481,7 +456,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: "#e5f3ed",
+    backgroundColor: BuyerColors.primaryLight,
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
@@ -492,19 +467,19 @@ const styles = StyleSheet.create({
   chatItemTitle: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#11181C",
+    color: BuyerColors.textBlack,
     marginBottom: 4,
   },
   chatItemPreview: {
     fontSize: 14,
-    color: "#666",
+    color: BuyerColors.textGray,
   },
   deleteButton: {
     padding: 8,
   },
   messagesContainer: {
     flex: 1,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: BuyerColors.background,
   },
   messagesContent: {
     padding: 16,
@@ -527,14 +502,14 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   userMessageBubble: {
-    backgroundColor: "#2f855a",
+    backgroundColor: BuyerColors.primaryGreen,
     borderBottomRightRadius: 4,
   },
   agentMessageBubble: {
-    backgroundColor: "#fff",
+    backgroundColor: BuyerColors.cardWhite,
     borderBottomLeftRadius: 4,
     borderWidth: 1,
-    borderColor: "#e5e5e5",
+    borderColor: BuyerColors.border,
   },
   messageText: {
     fontSize: 15,
@@ -544,13 +519,13 @@ const styles = StyleSheet.create({
     color: "#fff",
   },
   agentMessageText: {
-    color: "#11181C",
+    color: BuyerColors.textBlack,
   },
   userAvatar: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "#2f855a",
+    backgroundColor: BuyerColors.primaryGreen,
     justifyContent: "center",
     alignItems: "center",
     marginLeft: 8,
@@ -559,7 +534,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "#666",
+    backgroundColor: BuyerColors.textGray,
     justifyContent: "center",
     alignItems: "center",
     marginRight: 8,
@@ -568,36 +543,33 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     padding: 12,
     paddingBottom: Platform.OS === "ios" ? 12 : 12,
-    backgroundColor: "#fff",
+    backgroundColor: BuyerColors.cardWhite,
     borderTopWidth: 1,
-    borderTopColor: "#e5e5e5",
+    borderTopColor: BuyerColors.border,
     alignItems: "flex-end",
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
   },
   input: {
     flex: 1,
     borderWidth: 1,
-    borderColor: "#e5e5e5",
+    borderColor: BuyerColors.border,
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 10,
     fontSize: 15,
     maxHeight: 100,
     marginRight: 8,
+    color: BuyerColors.textBlack,
   },
   sendButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: "#2f855a",
+    backgroundColor: BuyerColors.primaryGreen,
     justifyContent: "center",
     alignItems: "center",
   },
   sendButtonDisabled: {
-    backgroundColor: "#e5e5e5",
+    backgroundColor: BuyerColors.border,
   },
 });
 

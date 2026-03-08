@@ -39,6 +39,7 @@ interface PlacedOrder {
   quality_confirmed_at: string | null;
   delivered_at: string | null;
   delivery_notes: string | null;
+  completed_at: string | null;
   farmerPickup?: {
     latitude: number;
     longitude: number;
@@ -46,25 +47,22 @@ interface PlacedOrder {
   };
 }
 
-type TabKey = "all" | "pending" | "payment_due" | "in_delivery";
+type TabKey = "all" | "pending" | "payment_due" | "in_delivery" | "completed";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "all", label: "All" },
   { key: "pending", label: "Pending" },
   { key: "payment_due", label: "Payment Due" },
   { key: "in_delivery", label: "In Delivery" },
+  { key: "completed", label: "Completed" },
 ];
 
 const TAB_STATUS_MAP: Record<TabKey, string[]> = {
   all: [],
   pending: ["OPEN", "PENDING_FARMER", "PENDING_BUYER", "MATCHED"],
   payment_due: ["AWAITING_PAYMENT", "UNPAID"],
-  in_delivery: [
-    "PAID_PENDING_DELIVERY",
-    "IN_TRANSIT",
-    "DELIVERED",
-    "COMPLETED",
-  ],
+  in_delivery: ["PAID_PENDING_DELIVERY", "IN_TRANSIT", "DELIVERED"],
+  completed: ["COMPLETED"],
 };
 
 // Simplified fruit meta for a cleaner look
@@ -198,6 +196,7 @@ export default function BuyerOrders() {
       pending: 0,
       payment_due: 0,
       in_delivery: 0,
+      completed: 0,
     };
     orders.forEach((o) => {
       (Object.keys(TAB_STATUS_MAP) as TabKey[]).forEach((key) => {
@@ -364,6 +363,28 @@ export default function BuyerOrders() {
               <Ionicons name="arrow-forward" size={16} color="#0D9488" />
             </View>
           )}
+
+          {item.status === "COMPLETED" && (
+            <TouchableOpacity
+              style={[
+                styles.ctaBanner,
+                { backgroundColor: "#ECFDF5", borderColor: "#A7F3D0" },
+              ]}
+              onPress={(e) => {
+                e?.stopPropagation?.();
+                handlePress(item);
+              }}
+              activeOpacity={0.85}
+            >
+              <View style={styles.ctaBannerContent}>
+                <Ionicons name="document-text-outline" size={16} color="#059669" />
+                <Text style={[styles.ctaText, { color: "#047857" }]}>
+                  View details
+                </Text>
+              </View>
+              <Ionicons name="arrow-forward" size={16} color="#059669" />
+            </TouchableOpacity>
+          )}
         </View>
       </TouchableOpacity>
     );
@@ -420,7 +441,9 @@ export default function BuyerOrders() {
               <Text style={styles.emptySubtitle}>
                 {activeTab === "all"
                   ? "When you place a wholesale order, it will appear here."
-                  : "You don't have any orders matching this status."}
+                  : activeTab === "completed"
+                    ? "You don't have any completed orders yet."
+                    : "You don't have any orders matching this status."}
               </Text>
             </View>
           }

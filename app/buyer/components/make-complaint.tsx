@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   Alert,
@@ -13,11 +13,16 @@ import {
 
 export default function MakeComplaint() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ orderId?: string }>();
   const [orderId, setOrderId] = useState("");
   const [reason, setReason] = useState("");
   const [description, setDescription] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
+
+  useEffect(() => {
+    if (params.orderId) setOrderId(String(params.orderId));
+  }, [params.orderId]);
 
   useEffect(() => {
     const checkAuth = async () => {

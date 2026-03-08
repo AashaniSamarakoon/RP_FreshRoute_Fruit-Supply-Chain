@@ -52,6 +52,13 @@ function formatGrade(s: string): string {
   return (s || "").replace(/_/g, " ").trim() || "—";
 }
 
+function normalizeFarmerGrade(param: string | undefined): string {
+  if (!param || !param.toString().trim()) return "—";
+  const s = param.toString().trim();
+  if (s.toUpperCase().startsWith("GRADE")) return s;
+  return `Grade ${s}`;
+}
+
 export default function OrderGradingsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ orderId: string; farmerGrade?: string }>();
@@ -60,8 +67,15 @@ export default function OrderGradingsScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [gradings, setGradings] = useState<Grading[]>([]);
-  const [farmerGrade, setFarmerGrade] = useState<string>("Grade A");
+  const [farmerGrade, setFarmerGrade] = useState<string>(() =>
+    normalizeFarmerGrade(params.farmerGrade as string | undefined)
+  );
   const [reVerifyResults, setReVerifyResults] = useState<ReVerifyResult[] | null>(null);
+
+  useEffect(() => {
+    const fromParams = normalizeFarmerGrade(params.farmerGrade as string | undefined);
+    if (fromParams !== "—") setFarmerGrade(fromParams);
+  }, [params.farmerGrade]);
   const [verifyAgainLoading, setVerifyAgainLoading] = useState(false);
   const [showVerifyAgainConfirm, setShowVerifyAgainConfirm] = useState(false);
 
@@ -94,7 +108,6 @@ export default function OrderGradingsScreen() {
 
       if (data.success && data.gradings) {
         setGradings(data.gradings);
-        // Farmer provided grade hardcoded as Grade A
       } else {
         setGradings([]);
       }
@@ -176,7 +189,7 @@ export default function OrderGradingsScreen() {
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={["top"]}>
-        <Header title="Orders" onBack={handleBack} />
+        <Header title="Order Summary" onBack={handleBack} />
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={BuyerColors.primaryGreen} />
           <Text style={styles.loadingText}>Loading gradings…</Text>
@@ -188,7 +201,7 @@ export default function OrderGradingsScreen() {
   if (error) {
     return (
       <SafeAreaView style={styles.container} edges={["top"]}>
-        <Header title="Orders" onBack={handleBack} />
+        <Header title="Order Summary" onBack={handleBack} />
         <View style={styles.centerContainer}>
           <Ionicons name="alert-circle" size={64} color="#e53e3e" />
           <Text style={styles.errorTitle}>Could not load gradings</Text>
@@ -207,7 +220,7 @@ export default function OrderGradingsScreen() {
   if (gradings.length === 0 || images.length === 0) {
     return (
       <SafeAreaView style={styles.container} edges={["top"]}>
-        <Header title="Orders" onBack={handleBack} />
+        <Header title="Order Summary" onBack={handleBack} />
         <View style={styles.centerContainer}>
           <Ionicons name="images-outline" size={64} color="#999" />
           <Text style={styles.emptyTitle}>No grading images</Text>
@@ -226,7 +239,7 @@ export default function OrderGradingsScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      <Header title="Orders" onBack={handleBack} />
+      <Header title="Order Summary" onBack={handleBack} />
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
         <View style={styles.comparisonContainer}>
           <View style={styles.comparisonRow}>
@@ -333,38 +346,40 @@ export default function OrderGradingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
+  container: { flex: 1, backgroundColor: BuyerColors.background },
   scroll: { flex: 1 },
-  content: { padding: 24, paddingBottom: 40 },
+  content: { paddingHorizontal: 20, paddingBottom: 40 },
   centerContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: 24,
+    padding: 20,
   },
-  loadingText: { marginTop: 12, fontSize: 16, color: "#666" },
+  loadingText: { marginTop: 12, fontSize: 16, color: BuyerColors.textGray },
   errorTitle: { fontSize: 20, fontWeight: "bold", color: "#e53e3e", marginTop: 16, textAlign: "center" },
-  errorText: { fontSize: 16, color: "#666", marginTop: 8, textAlign: "center" },
-  emptyTitle: { fontSize: 20, fontWeight: "bold", color: "#333", marginTop: 16 },
-  emptyText: { fontSize: 16, color: "#666", marginTop: 8, textAlign: "center" },
+  errorText: { fontSize: 16, color: BuyerColors.textGray, marginTop: 8, textAlign: "center" },
+  emptyTitle: { fontSize: 20, fontWeight: "bold", color: BuyerColors.textBlack, marginTop: 16 },
+  emptyText: { fontSize: 16, color: BuyerColors.textGray, marginTop: 8, textAlign: "center" },
   primaryButton: {
     backgroundColor: BuyerColors.primaryGreen,
     paddingVertical: 14,
     paddingHorizontal: 24,
-    borderRadius: 10,
+    borderRadius: 12,
     marginTop: 24,
   },
   primaryButtonText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
 
   comparisonContainer: {
-    backgroundColor: "#f5f5f5",
-    padding: 16,
-    borderRadius: 10,
+    backgroundColor: BuyerColors.cardWhite,
+    padding: 20,
+    borderRadius: 12,
     marginBottom: 24,
+    borderWidth: 1,
+    borderColor: BuyerColors.border,
   },
   comparisonRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 12 },
-  comparisonLabel: { fontSize: 14, color: "#666", flexShrink: 0 },
-  comparisonValue: { fontSize: 14, fontWeight: "bold", color: "#11181C", marginLeft: 8 },
+  comparisonLabel: { fontSize: 14, color: BuyerColors.textGray, flexShrink: 0, fontWeight: "600" },
+  comparisonValue: { fontSize: 14, fontWeight: "700", color: BuyerColors.textBlack, marginLeft: 8 },
   comparisonGradesContainer: { marginTop: 4 },
   gradesContainer: {
     flexDirection: "row",
@@ -374,12 +389,12 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   gradeBadge: {
-    backgroundColor: "#e5f3ed",
+    backgroundColor: BuyerColors.primaryLight,
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#2f855a",
+    borderColor: BuyerColors.primaryGreen,
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "center",
@@ -387,8 +402,8 @@ const styles = StyleSheet.create({
     width: "30%",
     minWidth: 90,
   },
-  gradeBadgeFruitNumber: { fontSize: 12, fontWeight: "500", color: "#666" },
-  gradeBadgeText: { fontSize: 14, fontWeight: "600", color: "#2f855a" },
+  gradeBadgeFruitNumber: { fontSize: 12, fontWeight: "500", color: BuyerColors.textGray },
+  gradeBadgeText: { fontSize: 14, fontWeight: "600", color: BuyerColors.primaryGreen },
 
   gridContainer: {
     flexDirection: "row",
@@ -400,31 +415,33 @@ const styles = StyleSheet.create({
     width: "48%",
     marginBottom: 16,
     marginRight: "2%",
-    backgroundColor: "#f9f9f9",
-    borderRadius: 10,
+    backgroundColor: BuyerColors.cardWhite,
+    borderRadius: 12,
     padding: 12,
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: BuyerColors.border,
   },
   imageCardCentered: { marginRight: "auto", marginLeft: "26%" },
   resultImage: { width: "100%", height: 140, borderRadius: 8, marginBottom: 8 },
-  gradeLabel: { fontSize: 12, color: "#666", marginBottom: 4, fontWeight: "500" },
+  gradeLabel: { fontSize: 12, color: BuyerColors.textGray, marginBottom: 4, fontWeight: "500" },
   gradeValue: { fontSize: 16, fontWeight: "bold" },
-  gradeMatch: { color: "#2f855a" },
+  gradeMatch: { color: BuyerColors.primaryGreen },
   newResultBox: {
     marginTop: 8,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: "#e2e8f0",
+    borderTopColor: BuyerColors.border,
     width: "100%",
     alignItems: "center",
   },
-  newResultLabel: { fontSize: 11, color: "#666", marginBottom: 2 },
-  newResultValue: { fontSize: 14, fontWeight: "600", color: "#3182ce" },
+  newResultLabel: { fontSize: 11, color: BuyerColors.textGray, marginBottom: 2 },
+  newResultValue: { fontSize: 14, fontWeight: "600", color: "#0F766E" },
 
   verifyAgainButton: {
-    backgroundColor: "#2f855a",
+    backgroundColor: BuyerColors.primaryGreen,
     padding: 16,
-    borderRadius: 10,
+    borderRadius: 12,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -480,8 +497,8 @@ const styles = StyleSheet.create({
   confirmReverifyButton: {
     paddingVertical: 12,
     paddingHorizontal: 20,
-    borderRadius: 10,
-    backgroundColor: "#2f855a",
+    borderRadius: 12,
+    backgroundColor: BuyerColors.primaryGreen,
   },
   confirmReverifyText: { fontSize: 15, fontWeight: "600", color: "#fff" },
 });

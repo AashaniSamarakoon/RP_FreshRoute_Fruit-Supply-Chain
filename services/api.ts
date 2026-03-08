@@ -72,8 +72,165 @@ function buildUrl(path: string) {
   return url;
 }
 
+/** Parse multipart response for GET .../complaints/:id (complaint + image_0, image_1, ...) */
+async function fetchComplaintDetailWithImages(
+  id: string,
+  basePath: string = "/api/buyer/complaints"
+): Promise<{
+  complaint: Record<string, unknown>;
+  images: string[];
+}> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const token =
+    session?.access_token || (await AsyncStorage.getItem("token")) || "";
+  const url = buildUrl(`${basePath}/${id}`);
+  const response = await fetch(url, {
+    method: "GET",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!response.ok) {
+    const errBody = await response.text().catch(() => null);
+    throw new Error(errBody || `HTTP ${response.status}`);
+  }
+  const contentType = response.headers.get("Content-Type") || "";
+  const boundaryMatch = contentType.match(/boundary=(?:"([^"]+)"|([^;\s]+))/i);
+  const boundary = boundaryMatch
+    ? (boundaryMatch[1] ?? boundaryMatch[2]).trim()
+    : null;
+  if (!boundary) {
+    const text = await response.text();
+    try {
+      const data = JSON.parse(text);
+      const c = data?.complaint ?? data;
+      return { complaint: c, images: c?.images ?? [] };
+    } catch {
+      throw new Error("Invalid response: no boundary and not JSON");
+    }
+  }
+  const arrayBuffer = await response.arrayBuffer();
+  const bytes = new Uint8Array(arrayBuffer);
+  const delimiter = new TextEncoder().encode("\r\n--" + boundary);
+  const indices: number[] = [];
+  for (let i = 0; i <= bytes.length - delimiter.length; i++) {
+    let match = true;
+    for (let j = 0; j < delimiter.length; j++) {
+      if (bytes[i + j] !== delimiter[j]) {
+        match = false;
+        break;
+      }
+    }
+    if (match) indices.push(i);
+  }
+  const complaintParts: Record<string, unknown> = {};
+  const imageParts: { name: string; body: Uint8Array }[] = [];
+  const partStarts: number[] = [0];
+  const partEnds: number[] = [indices[0] ?? bytes.length];
+  for (let i = 0; i < indices.length - 1; i++) {
+    partStarts.push(indices[i] + delimiter.length);
+    partEnds.push(indices[i + 1]);
+  }
+  for (let p = 0; p < partStarts.length; p++) {
+    let part = bytes.subarray(partStarts[p], partEnds[p]);
+    if (part[0] === 0x2d) {
+      for (let i = 0; i <= part.length - 2; i++) {
+        if (part[i] === 0x0d && part[i + 1] === 0x0a) {
+          part = part.subarray(i + 2);
+          break;
+        }
+        if (part[i] === 0x0a) {
+          part = part.subarray(i + 1);
+          break;
+        }
+      }
+    } else if (part[0] === 0x0d && part[1] === 0x0a) part = part.subarray(2);
+    const crlfcrlf = new Uint8Array([0x0d, 0x0a, 0x0d, 0x0a]);
+    const lflf = new Uint8Array([0x0a, 0x0a]);
+    let headerEnd = -1;
+    let bodyStart = 0;
+    for (let i = 0; i <= part.length - 4; i++) {
+      if (
+        part[i] === crlfcrlf[0] &&
+        part[i + 1] === crlfcrlf[1] &&
+        part[i + 2] === crlfcrlf[2] &&
+        part[i + 3] === crlfcrlf[3]
+      ) {
+        headerEnd = i;
+        bodyStart = i + 4;
+        break;
+      }
+    }
+    if (headerEnd < 0) {
+      for (let i = 0; i <= part.length - 2; i++) {
+        if (part[i] === lflf[0] && part[i + 1] === lflf[1]) {
+          headerEnd = i;
+          bodyStart = i + 2;
+          break;
+        }
+      }
+    }
+    if (headerEnd < 0) continue;
+    const headerBytes = part.subarray(0, headerEnd);
+    const body = part.subarray(bodyStart);
+    const headerText = new TextDecoder("utf-8").decode(headerBytes);
+    const nameMatch = headerText.match(/name=["']?([^"'\s;]+)["']?/i);
+    const name = nameMatch ? nameMatch[1].trim() : "";
+    if (name === "complaint") {
+      let jsonText = new TextDecoder("utf-8").decode(body);
+      jsonText = jsonText.replace(/\r\n$|\n$|\r$/, "").trim();
+      try {
+        const parsed = JSON.parse(jsonText);
+        Object.assign(complaintParts, parsed);
+      } catch (_) {
+        complaintParts.raw = jsonText;
+      }
+    } else if (name.startsWith("image_")) {
+      imageParts.push({ name, body: body.slice() });
+    }
+  }
+  imageParts.sort((a, b) => {
+    const n0 = parseInt(a.name.replace("image_", ""), 10);
+    const n1 = parseInt(b.name.replace("image_", ""), 10);
+    return n0 - n1;
+  });
+  const images = imageParts.map(({ body }) => {
+    const b64 = arrayBufferToBase64(body.buffer);
+    return `data:image/jpeg;base64,${b64}`;
+  });
+  const complaint =
+    complaintParts &&
+    typeof complaintParts.complaint === "object" &&
+    complaintParts.complaint !== null
+      ? (complaintParts.complaint as Record<string, unknown>)
+      : complaintParts;
+  return { complaint, images };
+}
+
+const BASE64_CHARS =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let out = "";
+  for (let i = 0; i < bytes.length; i += 3) {
+    const a = bytes[i];
+    const b = bytes[i + 1];
+    const c = bytes[i + 2];
+    out += BASE64_CHARS[a >> 2];
+    out += BASE64_CHARS[((a & 3) << 4) | (b >> 4)];
+    out += i + 1 < bytes.length ? BASE64_CHARS[((b & 15) << 2) | (c >> 6)] : "=";
+    out += i + 2 < bytes.length ? BASE64_CHARS[c & 63] : "=";
+  }
+  return out;
+}
+
 const api = {
   get: (path: string) => fetchWithAuth(buildUrl(path), { method: "GET" }),
+  getComplaintDetail: (id: string) =>
+    fetchComplaintDetailWithImages(id, "/api/buyer/complaints"),
+  getAdminComplaintDetail: (id: string) =>
+    fetchComplaintDetailWithImages(id, "/api/admin/complaints"),
   post: (path: string, body: any) =>
     fetchWithAuth(buildUrl(path), {
       method: "POST",
@@ -84,6 +241,11 @@ const api = {
   put: (path: string, body: any) =>
     fetchWithAuth(buildUrl(path), {
       method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  patch: (path: string, body: any) =>
+    fetchWithAuth(buildUrl(path), {
+      method: "PATCH",
       body: JSON.stringify(body),
     }),
   del: (path: string) => fetchWithAuth(buildUrl(path), { method: "DELETE" }),

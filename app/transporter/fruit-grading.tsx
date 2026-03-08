@@ -17,6 +17,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { BACKEND_URL } from "../../config";
 import {
   openGoogleMapsToLocation,
   verifyLocation,
@@ -81,7 +82,8 @@ export default function FruitGrading() {
           return;
         }
         const user = JSON.parse(userJson);
-        if (user.role !== "transporter") {
+        const role = (user.user_metadata?.role ?? user.role ?? "").toString().toLowerCase();
+        if (role !== "transporter") {
           Alert.alert("Access Denied", "This page is only for transporters");
           router.back();
           return;

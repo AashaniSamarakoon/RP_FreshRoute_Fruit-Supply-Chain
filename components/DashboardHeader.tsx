@@ -7,8 +7,28 @@ import { Colors } from "@/constants/theme";
 
 interface UserData {
   name?: string;
+  first_name?: string;
+  last_name?: string;
   email?: string;
   role?: string;
+}
+
+function getTimeBasedGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
+
+function getDisplayName(user: UserData | null): string {
+  if (!user) return "User";
+  if (user.role === "admin" || user.email === "admin@gmail.com") return "Admin User";
+  const first = (user.first_name ?? "").trim();
+  const last = (user.last_name ?? "").trim();
+  if (first || last) return [first, last].filter(Boolean).join(" ");
+  if (user.name?.trim()) return user.name.trim().split(" ")[0] ?? "User";
+  if (user.email) return user.email.split("@")[0] || "User";
+  return "User";
 }
 
 const DashboardHeader = () => {
@@ -25,15 +45,14 @@ const DashboardHeader = () => {
     loadUser();
   }, []);
 
-  const userName = user?.name?.split(" ")[0] || "User";
+  const displayName = getDisplayName(user);
+  const greeting = getTimeBasedGreeting();
 
   return (
     <View style={styles.header}>
       <View>
         <Text style={styles.logo}>🍃 FreshRoute</Text>
-        {/* <Text style={styles.greeting}>Good morning, {userName}</Text> */}
-        <Text style={styles.greeting}>Good morning, Akalanka</Text>
-
+        <Text style={styles.greeting}>{greeting}, {displayName}</Text>
       </View>
       <View style={styles.headerIcons}>
         <TouchableOpacity style={styles.iconBtn}>

@@ -134,6 +134,7 @@ export default function RootLayout() {
             <Stack.Screen name="farmer" options={{ headerShown: false }} />
             <Stack.Screen name="buyer" options={{ headerShown: false }} />
             <Stack.Screen name="transporter" options={{ headerShown: false }} />
+            <Stack.Screen name="admin" options={{ headerShown: false }} />
           </Stack>
           <StatusBar style="inverted" />
         </ThemeProvider>

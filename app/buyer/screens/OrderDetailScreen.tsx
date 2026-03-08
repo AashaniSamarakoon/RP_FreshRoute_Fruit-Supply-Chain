@@ -41,6 +41,21 @@ const getFruitMeta = (fruit: string) => {
   return { emoji: "📦", bg: "#F3F4F6", text: "#6B7280" };
 };
 
+/** Humanized "time since" for complaint window messaging (e.g. "2 days passed", "5 hours passed") */
+function getTimePassedSince(isoDate: string): string {
+  const ms = Date.now() - new Date(isoDate).getTime();
+  if (ms < 0) return "just now";
+  const mins = Math.floor(ms / (60 * 1000));
+  const hours = Math.floor(ms / (60 * 60 * 1000));
+  const days = Math.floor(ms / (24 * 60 * 60 * 1000));
+  if (days > 0) return `${days} day${days === 1 ? "" : "s"} passed`;
+  if (hours > 0) return `${hours} hour${hours === 1 ? "" : "s"} passed`;
+  if (mins > 0) return `${mins} min${mins === 1 ? "" : "s"} passed`;
+  return "just now";
+}
+
+const COMPLAINT_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 const getStatusStyles = (status: string) => {
   switch (status) {
     case "AWAITING_PAYMENT":
@@ -187,6 +202,7 @@ export default function OrderDetailScreen() {
         deliveryFee: "delivery_fee",
         totalPrice: "total_price",
         deliveryType: "delivery_type",
+        completedAt: "completed_at",
       };
 
       Object.entries(camelToSnake).forEach(([camel, snake]) => {
@@ -434,6 +450,9 @@ export default function OrderDetailScreen() {
     "COMPLETED",
   ].includes(order?.status ?? "");
 
+  const isCompletedOrder = order?.status === "COMPLETED";
+  const showTrackSection = isOrderTrackable && !isCompletedOrder;
+
   if (loading && !refreshing) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -464,6 +483,20 @@ export default function OrderDetailScreen() {
   const primaryAction = getPrimaryAction();
   const statusStyle = getStatusStyles(order.status);
   const fruitMeta = getFruitMeta(order.fruit_type);
+
+  // Completed order: complaint allowed within 24h of completed_at (or delivered_at fallback)
+  const completedAt =
+    (order as any).completed_at ?? (order as any).completedAt ?? order.delivered_at ?? null;
+  const completedAtMs = completedAt
+    ? new Date(completedAt).getTime()
+    : null;
+  const withinComplaintWindow =
+    completedAtMs != null &&
+    Date.now() - completedAtMs <= COMPLAINT_WINDOW_MS;
+  const complaintTimePassedLabel =
+    completedAt && !withinComplaintWindow
+      ? getTimePassedSince(completedAt)
+      : "";
 
   // --- Actual map coordinates (fall back to Colombo area if DB has none) ---
   const farmerMapCoord = farmerCoords ?? {
@@ -497,7 +530,10 @@ export default function OrderDetailScreen() {
       <View style={styles.mainContainer}>
         <ScrollView
           style={styles.scrollView}
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[
+            styles.content,
+            isCompletedOrder && { paddingBottom: 32 },
+          ]}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -507,8 +543,8 @@ export default function OrderDetailScreen() {
           }
           showsVerticalScrollIndicator={false}
         >
-          {/* Section: Track Your Order — shown when order is paid and being fulfilled */}
-          {isOrderTrackable && (
+          {/* Section: Track Your Order — hidden for completed orders */}
+          {showTrackSection && (
             <>
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Track Your Order</Text>
@@ -647,24 +683,30 @@ export default function OrderDetailScreen() {
 
           <View style={styles.solidSeparator} />
 
-          {/* Section: Product Detail — collapsible accordion */}
+          {/* Section: Product Detail — always expanded for completed, else accordion */}
           <View style={styles.section}>
-            <TouchableOpacity
-              style={styles.accordionHeader}
-              onPress={() => setProductDetailExpanded((v) => !v)}
-              activeOpacity={0.7}
-            >
+            {isCompletedOrder ? (
               <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>
                 Product Details
               </Text>
-              <Ionicons
-                name={productDetailExpanded ? "chevron-up" : "chevron-down"}
-                size={20}
-                color="#6B7280"
-              />
-            </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.accordionHeader}
+                onPress={() => setProductDetailExpanded((v) => !v)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>
+                  Product Details
+                </Text>
+                <Ionicons
+                  name={productDetailExpanded ? "chevron-up" : "chevron-down"}
+                  size={20}
+                  color="#6B7280"
+                />
+              </TouchableOpacity>
+            )}
 
-            {productDetailExpanded && (
+            {(isCompletedOrder || productDetailExpanded) && (
               <View style={[styles.productRow, { marginTop: 16 }]}>
                 <TouchableOpacity
                   style={styles.imageWrapper}
@@ -750,7 +792,7 @@ export default function OrderDetailScreen() {
                   </View>
                 </View>
 
-                {harvestProofImages.length > 0 ? (
+                {harvestProofImages.length > 0 && (
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
@@ -779,14 +821,22 @@ export default function OrderDetailScreen() {
                       </TouchableOpacity>
                     ))}
                   </ScrollView>
-                ) : (
-                  <View style={styles.proofEmptyState}>
-                    <Ionicons name="images-outline" size={36} color="#D1D5DB" />
-                    <Text style={styles.proofEmptyText}>
-                      Harvest proof images will appear here
-                    </Text>
-                  </View>
                 )}
+                <TouchableOpacity
+                  style={[styles.sectionActionBtn, { marginTop: 16 }]}
+                  onPress={() => {
+                    const farmerGradeParam = order?.grade
+                      ? `Grade ${order.grade}`
+                      : undefined;
+                    router.push({
+                      pathname: `/buyer/order-gradings/${params.orderId}`,
+                      params: farmerGradeParam ? { farmerGrade: farmerGradeParam } : undefined,
+                    } as any);
+                  }}
+                >
+                  <Ionicons name="images" size={20} color="#fff" />
+                  <Text style={styles.sectionActionBtnText}>View proof images</Text>
+                </TouchableOpacity>
               </View>
 
               <View style={styles.solidSeparator} />
@@ -829,9 +879,120 @@ export default function OrderDetailScreen() {
               </View>
             </View>
           </View>
+
+          {/* Completed order: Payment Summary as page section */}
+          {isCompletedOrder && (
+            <>
+              <View style={styles.solidSeparator} />
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Payment Summary</Text>
+                <View style={styles.receiptItems}>
+                  {order.unitPrice != null && (
+                    <View style={styles.receiptRow}>
+                      <Text style={styles.receiptLabel}>Unit Price</Text>
+                      <Text style={styles.receiptValue}>
+                        Rs. {formatCurrency(order.unitPrice)}
+                      </Text>
+                    </View>
+                  )}
+                  {(() => {
+                    const basePrice =
+                      order.basePrice ??
+                      (order.unitPrice != null
+                        ? order.unitPrice * order.quantity
+                        : null);
+                    return basePrice != null ? (
+                      <View style={styles.receiptRow}>
+                        <Text style={styles.receiptLabel}>
+                          Base Price ({order.quantity}kg)
+                        </Text>
+                        <Text style={styles.receiptValue}>
+                          Rs. {formatCurrency(basePrice)}
+                        </Text>
+                      </View>
+                    ) : null;
+                  })()}
+                  {order.serviceCharge != null && (
+                    <View style={styles.receiptRow}>
+                      <Text style={styles.receiptLabel}>Service Charge</Text>
+                      <Text style={styles.receiptValue}>
+                        Rs. {formatCurrency(order.serviceCharge)}
+                      </Text>
+                    </View>
+                  )}
+                  {order.deliveryFee != null && (
+                    <View style={styles.receiptRow}>
+                      <Text style={styles.receiptLabel}>Delivery Fee</Text>
+                      <Text style={styles.receiptValue}>
+                        Rs. {formatCurrency(order.deliveryFee)}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={styles.dashedReceiptSeparator} />
+                  <View style={styles.receiptTotalRow}>
+                    <Text style={styles.receiptTotalLabel}>Total Amount</Text>
+                    <Text style={styles.receiptTotalValue}>
+                      Rs.{" "}
+                      {order.totalPrice ? formatCurrency(order.totalPrice) : "N/A"}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Completed order: Complaint section at end of page */}
+              <View style={styles.solidSeparator} />
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Complaint</Text>
+                <Text style={styles.complaintSectionDescription}>
+                  If you have a problem with the quality of the fruits you received
+                  and what you ordered, feel free to raise a complaint.
+                </Text>
+                {withinComplaintWindow ? (
+                  <>
+                    <Text style={styles.complaintInfoText}>
+                      You can raise a complaint within a day after dispatching the order.
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.sectionActionBtn}
+                      onPress={() =>
+                        router.push({
+                          pathname: "/buyer/add-complaint" as any,
+                          params: { orderId: order.id },
+                        })
+                      }
+                    >
+                      <Ionicons name="chatbubble-ellipses-outline" size={20} color="#fff" />
+                      <Text style={styles.sectionActionBtnText}>Add complaint</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <>
+                    <View style={styles.complaintExpiredBox}>
+                      <TouchableOpacity
+                        style={[styles.sectionActionBtn, styles.sectionActionBtnDisabled]}
+                        disabled
+                      >
+                        <Ionicons name="chatbubble-ellipses-outline" size={20} color="#9CA3AF" />
+                        <Text style={styles.sectionActionBtnTextDisabled}>Add complaint</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.complaintExpiredText}>
+                        Can only complain within a day of delivery.
+                      </Text>
+                      {complaintTimePassedLabel ? (
+                        <Text style={styles.complaintTimePassed}>
+                          {complaintTimePassedLabel}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </>
+                )}
+              </View>
+            </>
+          )}
         </ScrollView>
 
-        {/* --- FIXED BOTTOM SECTION --- */}
+        {/* --- FIXED BOTTOM SECTION (hidden for completed orders) --- */}
+        {!isCompletedOrder && (
         <View style={styles.fixedBottomPanel}>
           <Text style={styles.sectionTitle}>Payment Summary</Text>
 
@@ -907,7 +1068,9 @@ export default function OrderDetailScreen() {
               </TouchableOpacity>
             </View>
           )}
+
         </View>
+        )}
       </View>
 
       {/* Payment Info Modal */}
@@ -1242,6 +1405,37 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   primaryBtnText: { fontSize: 15, fontWeight: "bold", color: "#ffffff" },
+  primaryBtnDisabled: { backgroundColor: "#E5E7EB", opacity: 0.9 },
+  primaryBtnTextDisabled: { color: "#9CA3AF", fontSize: 15, fontWeight: "bold" },
+  complaintExpiredBox: { width: "100%", alignItems: "center", gap: 8 },
+  complaintExpiredText: { fontSize: 13, color: "#6B7280", textAlign: "center" },
+  complaintTimePassed: { fontSize: 13, color: "#9CA3AF", fontWeight: "600" },
+  complaintInfoText: {
+    fontSize: 14,
+    color: "#4B5563",
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  complaintSectionDescription: {
+    fontSize: 14,
+    color: "#4B5563",
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  sectionActionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: BuyerColors.primaryGreen,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    gap: 8,
+    width: "100%",
+  },
+  sectionActionBtnText: { fontSize: 15, fontWeight: "bold", color: "#ffffff" },
+  sectionActionBtnDisabled: { backgroundColor: "#E5E7EB", opacity: 0.9 },
+  sectionActionBtnTextDisabled: { color: "#9CA3AF", fontSize: 15, fontWeight: "bold" },
 
   modalBg: {
     flex: 1,
@@ -1326,16 +1520,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderRadius: 10,
     padding: 1,
-  },
-  proofEmptyState: {
-    alignItems: "center",
-    paddingVertical: 24,
-    gap: 8,
-  },
-  proofEmptyText: {
-    fontSize: 13,
-    color: "#9CA3AF",
-    textAlign: "center",
   },
   proofModalBadge: {
     position: "absolute",
