@@ -9,7 +9,12 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
+import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
+import MapViewDirections from "react-native-maps-directions";
+
+// ⚠️ Replace this with your actual Google Maps API Key
+// Ensure the "Directions API" is enabled in your Google Cloud Console
+const GOOGLE_MAPS_APIKEY = "AIzaSyA6prq4r4APtemYy6pZatPvoB-KyYwzzWM";
 
 interface ManifestItem {
   sequence: number;
@@ -86,6 +91,25 @@ export default function JobMap() {
     );
   }
 
+  // Setup Origin, Destination, and Waypoints for the Directions API
+  const origin =
+    manifest.length > 0
+      ? { latitude: manifest[0].lat, longitude: manifest[0].lng }
+      : null;
+  const destination =
+    manifest.length > 1
+      ? {
+          latitude: manifest[manifest.length - 1].lat,
+          longitude: manifest[manifest.length - 1].lng,
+        }
+      : null;
+  const waypoints =
+    manifest.length > 2
+      ? manifest
+          .slice(1, -1)
+          .map((stop) => ({ latitude: stop.lat, longitude: stop.lng }))
+      : [];
+
   return (
     <View style={styles.container}>
       {/* Back Button Overlay */}
@@ -112,15 +136,18 @@ export default function JobMap() {
           />
         ))}
 
-        {/* Render Route Polyline */}
-        {manifest.length > 1 && (
-          <Polyline
-            coordinates={manifest.map((s) => ({
-              latitude: s.lat,
-              longitude: s.lng,
-            }))}
+        {/* Render Actual Route Path */}
+        {origin && destination && (
+          <MapViewDirections
+            origin={origin}
+            destination={destination}
+            waypoints={waypoints}
+            apikey={GOOGLE_MAPS_APIKEY}
             strokeColor="#2f855a" // FreshRoute Green
             strokeWidth={4}
+            onError={(errorMessage) => {
+              console.error("MapViewDirections Error: ", errorMessage);
+            }}
           />
         )}
       </MapView>
