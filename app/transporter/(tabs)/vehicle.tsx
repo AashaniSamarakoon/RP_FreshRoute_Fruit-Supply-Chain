@@ -107,9 +107,20 @@ export default function VehicleScreen() {
   // --- 3. DYNAMIC LOGIC ---
   const isSensorActive = () => {
     if (!vehicle?.last_telemetry_at) return false;
-    const lastTelemetry = new Date(vehicle.last_telemetry_at).getTime();
+
+    // 1. Format the database string to standard ISO 8601 UTC format
+    // Changes "2026-03-08 06:10:13.8" -> "2026-03-08T06:10:13.8Z"
+    let timeString = vehicle.last_telemetry_at;
+    if (!timeString.includes("T")) timeString = timeString.replace(" ", "T");
+    if (!timeString.endsWith("Z")) timeString += "Z";
+
+    // 2. Calculate the difference
+    const lastTelemetry = new Date(timeString).getTime();
     const now = new Date().getTime();
+
+    // diff in milliseconds / (1000ms * 60s) = minutes
     const diffMinutes = (now - lastTelemetry) / (1000 * 60);
+
     return diffMinutes <= 10;
   };
 
@@ -166,7 +177,7 @@ export default function VehicleScreen() {
             </Text>
           </View>
           <Text style={styles.vehicleType}>
-            {vehicle?.vehicle_type || "Truck"}{" "}
+            {vehicle?.vehicle_type || "Truck"} •{" "}
           </Text>
         </View>
       </View>

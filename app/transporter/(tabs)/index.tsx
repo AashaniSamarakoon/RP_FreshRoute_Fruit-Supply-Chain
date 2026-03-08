@@ -1,8 +1,8 @@
 // app/transporter/index.tsx
 import api from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -50,9 +50,12 @@ export default function TransporterDashboard() {
     }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      setLoading(true); // Optional: shows spinner briefly when returning
+      fetchData();
+    }, []),
+  );
 
   const onRefresh = () => {
     setRefreshing(true);

@@ -113,7 +113,10 @@ export default function ProfileScreen() {
         <MenuOption
           icon="notifications-outline"
           label="Notifications"
-          onPress={() => console.log("Notifications")}
+          onPress={() => {
+            console.log("Notifications");
+            router.push("/transporter/notifications");
+          }}
         />
         <MenuOption
           icon="lock-closed-outline"
@@ -141,7 +144,6 @@ export default function ProfileScreen() {
           <Ionicons name="log-out-outline" size={20} color="#e53e3e" />
           <Text style={styles.logoutText}>Log Out</Text>
         </TouchableOpacity>
-        <Text style={styles.versionText}>App Version 1.0.5</Text>
       </View>
     </ScrollView>
   );
