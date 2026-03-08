@@ -19,6 +19,7 @@ import {
 import RNPickerSelect, { PickerSelectProps } from "react-native-picker-select";
 import Header from "../../../components/Header";
 import ErrorModal from "../../../components/modals/ErrorModal";
+import GradingGuideModal from "../../../components/modals/GradingGuideModal";
 import SuccessModal from "../../../components/modals/SuccessModal";
 import { useTranslationContext } from "../../../context/TranslationContext";
 import { useAddStock } from "../forms/useAddStock";
@@ -115,6 +116,7 @@ export default function AddStock() {
   const { t } = useTranslationContext();
   const [successModalVisible, setSuccessModalVisible] = useState(false);
   const [errorModalVisible, setErrorModalVisible] = useState(false);
+  const [gradingGuideVisible, setGradingGuideVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -236,7 +238,31 @@ export default function AddStock() {
               </View>
             </View>
 
-            <Text style={styles.label}>{t("form.grade")}</Text>
+            <View style={styles.gradeRow}>
+              <Text style={[styles.label, styles.gradeLabelInRow]}>
+                {t("form.grade")}
+              </Text>
+              <TouchableOpacity
+                style={[
+                  styles.gradingGuideBtn,
+                  !formData.fruit && styles.gradingGuideBtnDisabled,
+                ]}
+                onPress={() =>
+                  formData.fruit && setGradingGuideVisible(true)
+                }
+                activeOpacity={0.8}
+                disabled={!formData.fruit}
+              >
+                <Text
+                  style={[
+                    styles.gradingGuideBtnText,
+                    !formData.fruit && styles.gradingGuideBtnTextDisabled,
+                  ]}
+                >
+                  Grading Guide
+                </Text>
+              </TouchableOpacity>
+            </View>
             <View style={styles.tabsContainer}>
               {["A", "B", "C"].map((g, idx) => (
                 <TouchableOpacity
@@ -385,6 +411,12 @@ export default function AddStock() {
           onClose={() => setErrorModalVisible(false)}
           buttonText="Try Again"
         />
+
+        <GradingGuideModal
+          visible={gradingGuideVisible}
+          onClose={() => setGradingGuideVisible(false)}
+          selectedFruitType={formData.fruit}
+        />
       </View>
     </SafeAreaView>
   );
@@ -400,6 +432,33 @@ const styles = StyleSheet.create({
     padding: 18,
   },
   label: { fontSize: 14, color: "#333", marginBottom: 8, marginTop: 20 },
+  gradeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 20,
+    marginBottom: 8,
+  },
+  gradingGuideBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    backgroundColor: PRIMARY_GREEN,
+  },
+  gradingGuideBtnText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#fff",
+  },
+  gradingGuideBtnDisabled: {
+    backgroundColor: "#ccc",
+    opacity: 0.9,
+  },
+  gradingGuideBtnTextDisabled: {
+    color: "#fff",
+    opacity: 0.9,
+  },
+  gradeLabelInRow: { marginTop: 0 },
   helperText: {
     fontSize: 12,
     color: "#999",
