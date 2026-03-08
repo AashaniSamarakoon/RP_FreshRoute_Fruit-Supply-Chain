@@ -233,11 +233,22 @@ export default function Header({ onSearch }: HeaderProps) {
   const [isTracking, setIsTracking] = useState(false);
 
   useEffect(() => {
-    // 1. Check if background tracking is already running
+    // 1. Check if background tracking is already running OR was previously enabled
     const checkTrackingStatus = async () => {
-      const active = await isTrackingActive();
-      setIsTracking(active);
+      const isCurrentlyActive = await isTrackingActive();
+      const wantsTracking = await AsyncStorage.getItem("auto_track_enabled");
+
+      if (isCurrentlyActive) {
+        setIsTracking(true);
+      } else if (wantsTracking === "true") {
+        // Auto-resume tracking because they had it on before leaving the dashboard
+        const started = await startLocationTracking();
+        setIsTracking(started);
+      } else {
+        setIsTracking(false);
+      }
     };
+
     checkTrackingStatus();
 
     // 2. Load user and notification data
@@ -279,10 +290,12 @@ export default function Header({ onSearch }: HeaderProps) {
   const toggleTracking = async () => {
     if (isTracking) {
       await stopLocationTracking();
+      await AsyncStorage.setItem("auto_track_enabled", "false"); // Remember they turned it off
       setIsTracking(false);
     } else {
       const started = await startLocationTracking();
       if (started) {
+        await AsyncStorage.setItem("auto_track_enabled", "true"); // Remember they turned it on
         setIsTracking(true);
       }
     }
