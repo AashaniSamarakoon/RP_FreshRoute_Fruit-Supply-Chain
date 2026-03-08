@@ -46,12 +46,13 @@ interface PlacedOrder {
   };
 }
 
-type TabKey = "all" | "pending" | "payment_due" | "in_delivery";
+type TabKey = "all" | "pending" | "payment_due" | "processing" | "in_delivery";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "all", label: "All" },
   { key: "pending", label: "Pending Farmer" },
   { key: "payment_due", label: "Payment Due" },
+  { key: "processing", label: "Processing" },
   { key: "in_delivery", label: "In Delivery" },
 ];
 
@@ -59,6 +60,7 @@ const TAB_STATUS_MAP: Record<TabKey, string[]> = {
   all: [],
   pending: ["OPEN", "PENDING_FARMER", "PENDING_BUYER", "MATCHED"],
   payment_due: ["AWAITING_PAYMENT"],
+  processing: ["AUTHORIZED_PAYMENT", "PACKING", "READY_FOR_PICKUP"],
   in_delivery: [
     "PAID_PENDING_DELIVERY",
     "PACKING",
@@ -236,9 +238,29 @@ export default function BuyerOrders() {
     }
   };
 
+  const triggerMatchingForOpenOrders = async (orderList: PlacedOrder[]) => {
+    const openOrders = orderList.filter((o) => o.status === "OPEN");
+    if (openOrders.length === 0) return;
+    await Promise.allSettled(
+      openOrders.map((o) => api.post(`/api/buyer/matching/trigger/${o.id}`, {})),
+    );
+  };
+
   const onRefresh = React.useCallback(async () => {
     setRefreshing(true);
-    await fetchOrders(true);
+    // Fetch current orders first, then trigger matching for open ones
+    try {
+      const body: any = await api.get(`/api/buyer/place-order`);
+      const list: PlacedOrder[] = (body.orders || []).map((o: any) => {
+        const raw = o.totalPrice ?? o.total_price ?? null;
+        return { ...o, totalPrice: raw != null ? String(raw) : null };
+      });
+      await triggerMatchingForOpenOrders(list);
+      // Re-fetch after triggering to get updated statuses
+      await fetchOrders(true);
+    } catch {
+      await fetchOrders(true);
+    }
     setRefreshing(false);
   }, []);
 
@@ -258,6 +280,7 @@ export default function BuyerOrders() {
       all: orders.length,
       pending: 0,
       payment_due: 0,
+      processing: 0,
       in_delivery: 0,
     };
     orders.forEach((o) => {
@@ -469,12 +492,12 @@ export default function BuyerOrders() {
         onNotificationPress={() => {}}
       />
 
-      <PillTabBar
+<PillTabBar
         tabs={TABS.map((t) => ({
           key: t.key,
           label: t.label,
           count: tabCount[t.key],
-        }))}
+        })).filter(t => t.key === "all" || t.count > 0)} // <--- ONLY RENDER IF count > 0 or "all"
         activeKey={activeTab}
         onPress={setActiveTab}
       />

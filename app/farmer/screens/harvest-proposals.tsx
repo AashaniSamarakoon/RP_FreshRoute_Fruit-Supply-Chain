@@ -1,9 +1,12 @@
 import api from "@/services/api";
-import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
-    CheckCircle,
+    Calendar,
+    CheckCircle2,
+    ChevronRight,
     MapPin,
+    PackageOpen,
+    PackageSearch,
     ShieldCheck,
     XCircle,
 } from "lucide-react-native";
@@ -16,14 +19,14 @@ import {
     StyleSheet,
     Text,
     TouchableOpacity,
-    View,
+    View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "../../../components/Header";
-import { BuyerColors } from "../../../constants/theme";
 
-const PRIMARY_GREEN = BuyerColors.primaryGreen;
-const DANGER_RED = "#BE123C";
+// Aligning with the new Forest Green theme
+const PRIMARY_GREEN = "#2E7D32"; 
+const DANGER_RED = "#DC2626";
 
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleDateString("en-US", {
@@ -33,7 +36,7 @@ const formatDate = (iso: string) =>
   });
 
 interface ProposalOrder {
-  buyer: { id: string; user: { name: string; email: string } };
+  buyer: { id: string; user: { first_name: string; last_name: string; email: string }; user_id: string; company_name: string };
   grade: string;
   variant: string;
   quantity: number;
@@ -47,10 +50,17 @@ interface Proposal {
   order_id: string;
   stock_id: string;
   quantity_proposed: number;
-  status: "PENDING_FARMER" | "ACCEPTED" | "REJECTED";
+  status: "PENDING_FARMER" | "PENDING_BUYER" | "ACCEPTED" | "REJECTED" | "EXPIRED" | "CANCELLED";
   expires_at: string;
   created_at: string;
   order: ProposalOrder;
+  pricing?: {
+    unitPrice: number;
+    grossEarning: number;
+    platformFee: number;
+    farmerEarning: number;
+    priceSource: string;
+  };
 }
 
 export default function HarvestProposalsScreen() {
@@ -111,7 +121,7 @@ export default function HarvestProposalsScreen() {
       setProposals((prev) =>
         prev.map((p) => (p.id === id ? { ...p, status: "ACCEPTED" as const } : p)),
       );
-      Alert.alert("Success", "Proposal accepted successfully!");
+      Alert.alert("Success", "Contract mathematically verified and accepted.");
     } catch (err) {
       Alert.alert("Error", err instanceof Error ? err.message : "Failed to accept proposal");
     } finally {
@@ -124,9 +134,8 @@ export default function HarvestProposalsScreen() {
     try {
       await api.post(`/api/farmer/proposals/${id}/reject`, {});
       setProposals((prev) => prev.filter((p) => p.id !== id));
-      Alert.alert("Success", "Proposal declined.");
     } catch (err) {
-      Alert.alert("Error", err instanceof Error ? err.message : "Failed to reject proposal");
+      Alert.alert("Error", err instanceof Error ? err.message : "Failed to decline proposal");
     } finally {
       setProcessing(id, false);
     }
@@ -134,10 +143,10 @@ export default function HarvestProposalsScreen() {
 
   const navigateToBuyerProfile = (proposal: Proposal) => {
     router.push({
-      pathname: `/farmer/screens/buyer-trust-profile/${proposal.order.buyer.id}` as any,
+      pathname: `/farmer/screens/buyer-trust-profile/${proposal.order?.buyer?.id}` as any,
       params: {
-        buyerName: proposal.order.buyer.user.name,
-        buyerLocation: proposal.order.delivery_location || "Location not specified",
+        buyerName: proposal.order?.buyer?.company_name || "Buyer",
+        buyerLocation: proposal.order?.delivery_location || "Location not specified",
         trustScore: "Not rated",
       },
     });
@@ -148,97 +157,131 @@ export default function HarvestProposalsScreen() {
 
     return (
       <View style={styles.card}>
-        {/* Buyer info row */}
+        {/* --- Card Header (CRM Style) --- */}
         <TouchableOpacity
-          style={styles.buyerRow}
+          style={styles.cardHeader}
           activeOpacity={0.7}
           onPress={() => navigateToBuyerProfile(item)}
         >
-          <View style={styles.buyerAvatar}>
-            <Ionicons name="person" size={18} color={PRIMARY_GREEN} />
-          </View>
-          <View style={styles.buyerInfo}>
-            <View style={styles.buyerNameRow}>
-              <Text style={styles.buyerName}>{item.order.buyer.user.name}</Text>
-              <View style={styles.verifiedBadge}>
-                <ShieldCheck size={10} color="#fff" />
-                <Text style={styles.verifiedText}>Verified</Text>
+          <View style={styles.headerLeft}>
+            <View style={styles.buyerAvatar}>
+              <Text style={styles.buyerAvatarText}>
+                {item.order?.buyer?.company_name ? item.order.buyer.company_name.charAt(0).toUpperCase() : "B"}
+              </Text>
+              <View style={styles.verifiedBadgeDot}>
+                <ShieldCheck size={10} color="#FFFFFF" />
               </View>
             </View>
-            <Text style={styles.buyerEmail}>{item.order.buyer.user.email}</Text>
+            
+            <View style={styles.buyerInfo}>
+              <Text style={styles.buyerName}>
+                {item.order?.buyer?.company_name || "Verified Buyer"}
+              </Text>
+              <View style={styles.locationRow}>
+                <MapPin size={12} color="#6B7280" />
+                <Text style={styles.locationText} numberOfLines={1}>
+                  {item.order?.delivery_location || "Location not specified"}
+                </Text>
+              </View>
+            </View>
           </View>
-          <Ionicons name="chevron-forward" size={16} color={PRIMARY_GREEN} />
+          <ChevronRight size={20} color="#D1D5DB" />
         </TouchableOpacity>
 
-        {/* Details grid */}
-        <View style={styles.grid}>
-          <View style={styles.gridItem}>
-            <Text style={styles.gridLabel}>Qty Requested</Text>
-            <Text style={styles.gridValue}>{item.quantity_proposed} kg</Text>
+        <View style={styles.solidDivider} />
+
+        {/* --- Card Body & Tags --- */}
+        <View style={styles.productInfo}>
+          {/* <Text style={styles.orderTitleText}>
+            {item.order?.variant || variant} {item.order?.fruit_type || fruitType} • Grade {item.order?.grade || grade}
+          </Text> */}
+          
+          <View style={styles.tagRow}>
+            <View style={styles.yieldTag}>
+              <PackageOpen size={12} color="#059669" style={{ marginRight: 4 }} />
+              <Text style={styles.yieldTagText}>
+                {item.quantity_proposed} kg
+              </Text>
+            </View>
+
+            <View style={styles.dateTag}>
+              <Calendar size={12} color="#4B5563" style={{ marginRight: 4 }} />
+              <Text style={styles.dateTagText}>
+                {formatDate(item.order?.required_date || new Date().toISOString())}
+              </Text>
+            </View>
           </View>
-          <View style={styles.gridDivider} />
-          <View style={styles.gridItem}>
-            <Text style={styles.gridLabel}>Delivery By</Text>
-            <Text style={styles.gridValue}>
-              {formatDate(item.order.required_date)}
-            </Text>
-          </View>
-          <View style={styles.gridDivider} />
-          <View style={styles.gridItem}>
-            <Text style={styles.gridLabel}>Location</Text>
-            <View style={styles.locationRow}>
-              <MapPin size={11} color="#6B7280" />
-              <Text style={styles.gridValue} numberOfLines={1}>
-                {item.order.delivery_location || "—"}
+
+          {/* --- Minimalist Farmer Pricing Box --- */}
+          <View style={styles.invoiceBox}>
+            <View style={styles.invoiceRow}>
+              <View>
+                <Text style={styles.invoiceTotalLabel}>Net Earnings</Text>
+                <Text style={styles.invoiceSubLabel}>
+Net of platform fees                </Text>
+              </View>
+              <Text style={styles.invoiceTotalValue}>
+                Rs. {(item.pricing?.farmerEarning || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </Text>
             </View>
           </View>
         </View>
 
-        {/* Actions */}
-        {item.status === "ACCEPTED" ? (
-          <View style={styles.acceptedBadge}>
-            <CheckCircle size={15} color={PRIMARY_GREEN} />
-            <Text style={styles.acceptedBadgeText}>Proposal Accepted</Text>
-          </View>
-        ) : item.status === "PENDING_FARMER" ? (
-          <View style={styles.actions}>
-            <TouchableOpacity
-              style={[styles.actionBtn, styles.acceptBtn]}
-              onPress={() => acceptProposal(item.id)}
-              disabled={isProcessing}
-              activeOpacity={0.8}
-            >
-              {isProcessing ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <>
-                  <CheckCircle size={14} color="#fff" />
-                  <Text style={styles.actionBtnText}>Accept</Text>
-                </>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.actionBtn, styles.rejectBtn]}
-              onPress={() => rejectProposal(item.id)}
-              disabled={isProcessing}
-              activeOpacity={0.8}
-            >
-              {isProcessing ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <>
-                  <XCircle size={14} color="#fff" />
-                  <Text style={styles.actionBtnText}>Decline</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <View style={styles.rejectedBadge}>
-            <Text style={styles.rejectedBadgeText}>Proposal Rejected</Text>
-          </View>
-        )}
+        {/* --- Actions & Status --- */}
+        <View style={styles.cardFooter}>
+          {item.status === "ACCEPTED" ? (
+            <View style={styles.statusSuccess}>
+              <CheckCircle2 size={16} color={PRIMARY_GREEN} />
+              <Text style={styles.statusSuccessText}>Deal Locked & Verified</Text>
+            </View>
+          ) : item.status === "PENDING_FARMER" ? (
+            <View style={styles.actionsRow}>
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.rejectBtn]}
+                onPress={() => rejectProposal(item.id)}
+                disabled={isProcessing}
+                activeOpacity={0.8}
+              >
+                {isProcessing ? (
+                  <ActivityIndicator size="small" color={DANGER_RED} />
+                ) : (
+                  <Text style={styles.rejectBtnText}>Decline</Text>
+                )}
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.acceptBtn]}
+                onPress={() => acceptProposal(item.id)}
+                disabled={isProcessing}
+                activeOpacity={0.8}
+              >
+                {isProcessing ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <CheckCircle2 size={16} color="#fff" />
+                    <Text style={styles.acceptBtnText}>Accept Deal</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          ) : item.status === "EXPIRED" ? (
+            <View style={styles.statusExpired}>
+              <XCircle size={16} color="#6B7280" />
+              <Text style={styles.statusExpiredText}>Proposal Expired</Text>
+            </View>
+          ) : item.status === "CANCELLED" ? (
+            <View style={styles.statusExpired}>
+              <XCircle size={16} color="#6B7280" />
+              <Text style={styles.statusExpiredText}>Proposal Cancelled</Text>
+            </View>
+          ) : (
+            <View style={styles.statusError}>
+              <XCircle size={16} color={DANGER_RED} />
+              <Text style={styles.statusErrorText}>Proposal Declined</Text>
+            </View>
+          )}
+        </View>
       </View>
     );
   };
@@ -246,26 +289,27 @@ export default function HarvestProposalsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
       <Header
-        title={`${fruitType} Proposals`}
+        title="Active Proposals"
         onBack={() => router.back()}
       />
 
-      {/* Harvest summary pill */}
-      <View style={styles.harvestSummary}>
-        <Text style={styles.harvestSummaryText}>
-          {variant} · Grade {grade} · {quantity} kg
-        </Text>
-        {harvestDate ? (
-          <Text style={styles.harvestSummaryDate}>
-            Harvest: {formatDate(harvestDate)}
+      {/* --- Sleek Context Banner --- */}
+      <View style={styles.contextBanner}>
+        <View style={styles.bannerIconBox}>
+          <PackageOpen size={20} color={PRIMARY_GREEN} />
+        </View>
+        <View style={styles.bannerInfo}>
+          <Text style={styles.bannerTitle}>{variant} {fruitType}</Text>
+          <Text style={styles.bannerSubtitle}>
+            Yield: {quantity} kg • Grade {grade}
           </Text>
-        ) : null}
+        </View>
       </View>
 
       {loading ? (
         <View style={styles.centerView}>
           <ActivityIndicator size="large" color={PRIMARY_GREEN} />
-          <Text style={styles.loadingText}>Loading proposals...</Text>
+          <Text style={styles.loadingText}>Fetching secure contracts...</Text>
         </View>
       ) : (
         <FlatList
@@ -287,11 +331,11 @@ export default function HarvestProposalsScreen() {
           ListEmptyComponent={
             <View style={styles.centerView}>
               <View style={styles.emptyCircle}>
-                <Ionicons name="receipt-outline" size={32} color="#9CA3AF" />
+                <PackageSearch size={32} color="#9CA3AF" />
               </View>
-              <Text style={styles.emptyTitle}>No Proposals Yet</Text>
+              <Text style={styles.emptyTitle}>No Active Proposals</Text>
               <Text style={styles.emptyMessage}>
-                Buyers will be matched to this harvest automatically. You'll receive a notification when a proposal arrives.
+                Buyers are currently reviewing this harvest. You will receive an alert when a secure contract is offered.
               </Text>
             </View>
           }
@@ -302,143 +346,275 @@ export default function HarvestProposalsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F3F4F6" },
-  listContent: { padding: 16, paddingBottom: 60, gap: 14 },
+  container: { 
+    flex: 1, 
+    backgroundColor: "#F3F4F6",
+  },
+  listContent: { padding: 16, paddingBottom: 60 },
   emptyContainer: { flexGrow: 1 },
 
-  harvestSummary: {
+  // --- CONTEXT BANNER ---
+  contextBanner: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: "#fff",
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
+    borderColor: "#E5E7EB",
   },
-  harvestSummaryText: { fontSize: 14, fontWeight: "600", color: "#374151" },
-  harvestSummaryDate: { fontSize: 13, color: "#6B7280", fontWeight: "500" },
+  bannerIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: "#E8F5E9",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#C8E6C9",
+    marginRight: 16,
+  },
+  bannerInfo: { flex: 1 },
+  bannerTitle: { fontSize: 16, fontWeight: "800", color: "#111827", marginBottom: 2 },
+  bannerSubtitle: { fontSize: 13, color: "#6B7280", fontWeight: "500" },
 
+  // --- EMPTY / LOADING STATES ---
   centerView: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: 32,
+    paddingHorizontal: 32,
   },
-  loadingText: { fontSize: 15, color: "#6B7280", marginTop: 12, fontWeight: "500" },
+  loadingText: { fontSize: 14, color: PRIMARY_GREEN, marginTop: 12, fontWeight: "600" },
   emptyCircle: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: "#F9FAFB",
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
     borderColor: "#E5E7EB",
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 16,
   },
-  emptyTitle: { fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 8 },
-  emptyMessage: { fontSize: 14, color: "#6B7280", textAlign: "center", lineHeight: 21 },
+  emptyTitle: { fontSize: 18, fontWeight: "800", color: "#111827", marginBottom: 8 },
+  emptyMessage: { fontSize: 14, color: "#6B7280", textAlign: "center", lineHeight: 22 },
 
-  // Card
+  // --- CARD STRUCTURE ---
   card: {
-    backgroundColor: "#fff",
+    backgroundColor: "#FFFFFF",
     borderRadius: 16,
     borderWidth: 1,
     borderColor: "#E5E7EB",
     padding: 16,
+    marginBottom: 16,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
     elevation: 1,
   },
 
-  // Buyer row
-  buyerRow: {
+  // Header (CRM Style)
+  cardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  headerLeft: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 14,
-    gap: 10,
+    flex: 1,
   },
   buyerAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#F0FDF4",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#E8F5E9",
     justifyContent: "center",
     alignItems: "center",
-    flexShrink: 0,
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: "#C8E6C9",
+    position: "relative",
   },
-  buyerInfo: { flex: 1 },
-  buyerNameRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 2 },
-  buyerName: { fontSize: 15, fontWeight: "700", color: "#111827" },
-  buyerEmail: { fontSize: 12, color: "#9CA3AF" },
-  verifiedBadge: {
+  buyerAvatarText: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: PRIMARY_GREEN,
+  },
+  verifiedBadgeDot: {
+    position: "absolute",
+    bottom: -2,
+    right: -2,
+    backgroundColor: PRIMARY_GREEN,
+    borderRadius: 10,
+    width: 18,
+    height: 18,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+  },
+  buyerInfo: { flex: 1, paddingRight: 8 },
+  buyerName: { fontSize: 16, fontWeight: "800", color: "#111827", marginBottom: 2 },
+  locationRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  locationText: { fontSize: 13, color: "#6B7280", fontWeight: "500" },
+
+  solidDivider: {
+    height: 1,
+    backgroundColor: "#F3F4F6",
+    marginBottom: 16,
+  },
+
+  // --- CARD BODY & TAGS ---
+  productInfo: {
+    marginBottom: 16,
+  },
+  orderTitleText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#4B5563",
+    marginBottom: 10,
+    letterSpacing: 0.2,
+  },
+  tagRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 8,
+  },
+  yieldTag: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: PRIMARY_GREEN,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    gap: 3,
+    backgroundColor: "#ECFDF5",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
   },
-  verifiedText: { fontSize: 10, color: "#fff", fontWeight: "600" },
-
-  // Details grid
-  grid: {
+  yieldTagText: { 
+    fontSize: 13, 
+    fontWeight: "700", 
+    color: "#059669" 
+  },
+  dateTag: {
     flexDirection: "row",
-    backgroundColor: "#F9FAFB",
-    borderRadius: 10,
-    paddingVertical: 12,
-    marginBottom: 14,
+    alignItems: "center",
+    backgroundColor: "#F3F4F6",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: "#E5E7EB",
   },
-  gridItem: { flex: 1, alignItems: "center", paddingHorizontal: 4 },
-  gridLabel: {
-    fontSize: 10,
-    color: "#9CA3AF",
-    fontWeight: "600",
-    textTransform: "uppercase",
-    marginBottom: 4,
+  dateTagText: { 
+    fontSize: 13, 
+    fontWeight: "600", 
+    color: "#4B5563" 
   },
-  gridValue: { fontSize: 13, fontWeight: "700", color: "#111827" },
-  gridDivider: { width: 1, backgroundColor: "#E5E7EB" },
-  locationRow: { flexDirection: "row", alignItems: "center", gap: 3 },
 
-  // Action buttons
-  actions: { flexDirection: "row", gap: 10 },
+  // --- INVOICE PRICING BOX ---
+  invoiceBox: {
+    backgroundColor: "#F9FAFB",
+    borderRadius: 8,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#F3F4F6",
+    marginTop: 14,
+  },
+  invoiceRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  invoiceTotalLabel: { 
+    fontSize: 13, 
+    color: "#4B5563", 
+    fontWeight: "700" 
+  },
+  invoiceSubLabel: { 
+    fontSize: 11, 
+    color: "#9CA3AF", 
+    fontWeight: "500", 
+    marginTop: 2 
+  },
+  invoiceTotalValue: { 
+    fontSize: 18, 
+    color: PRIMARY_GREEN, 
+    fontWeight: "900" 
+  },
+
+  // --- ACTIONS & STATUS ---
+  cardFooter: { marginTop: 2 },
+  actionsRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
   actionBtn: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 11,
-    borderRadius: 20,
-    gap: 6,
-    elevation: 2,
+    paddingVertical: 12,
+    borderRadius: 10,
+    gap: 8,
   },
-  acceptBtn: { backgroundColor: PRIMARY_GREEN },
-  rejectBtn: { backgroundColor: DANGER_RED },
-  actionBtnText: { color: "#fff", fontSize: 13, fontWeight: "700" },
+  acceptBtn: { 
+    backgroundColor: PRIMARY_GREEN,
+    shadowColor: PRIMARY_GREEN,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  acceptBtnText: { color: "#FFFFFF", fontSize: 14, fontWeight: "700", letterSpacing: 0.5 },
+  
+  rejectBtn: { 
+    backgroundColor: "#FFFFFF", 
+    borderWidth: 1,
+    borderColor: "#FECACA",
+  },
+  rejectBtnText: { color: DANGER_RED, fontSize: 14, fontWeight: "700" },
 
-  // Status badges
-  acceptedBadge: {
+  // Status Badges
+  statusSuccess: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 12,
-    backgroundColor: "#F0FDF4",
-    borderRadius: 20,
-    gap: 6,
+    backgroundColor: "#ECFDF5",
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
+    borderRadius: 10,
+    gap: 8,
   },
-  acceptedBadgeText: { color: PRIMARY_GREEN, fontSize: 14, fontWeight: "700" },
-  rejectedBadge: {
+  statusSuccessText: { color: PRIMARY_GREEN, fontSize: 14, fontWeight: "700" },
+  
+  statusError: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 12,
     backgroundColor: "#FEF2F2",
-    borderRadius: 20,
-    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    borderRadius: 10,
+    gap: 8,
   },
-  rejectedBadgeText: { color: DANGER_RED, fontSize: 14, fontWeight: "700" },
+  statusErrorText: { color: DANGER_RED, fontSize: 14, fontWeight: "700" },
+  statusExpired: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    backgroundColor: "#F3F4F6",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 10,
+    gap: 8,
+  },
+  statusExpiredText: { color: "#6B7280", fontSize: 14, fontWeight: "700" },
 });

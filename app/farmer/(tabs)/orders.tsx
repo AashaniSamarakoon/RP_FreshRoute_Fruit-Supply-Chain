@@ -2,16 +2,24 @@ import api from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import {
-  CheckCircle,
+  Calendar,
+  CheckCircle2,
+  ChevronRight,
+  Image as ImageIcon,
+  MapPin,
+  PackageOpen,
   ShieldCheck,
   Sprout,
-  XCircle,
+  XCircle
 } from "lucide-react-native";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Dimensions,
   FlatList,
+  Image,
+  Modal,
   RefreshControl,
   StyleSheet,
   Text,
@@ -21,12 +29,13 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "../../../components/Header";
 import { PillTabBar } from "../../../components/ui/PillTabBar";
-import { BuyerColors } from "../../../constants/theme";
+
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const PRIMARY_GREEN = BuyerColors.primaryGreen;
-const DANGER_RED = "#BE123C";
+const PRIMARY_GREEN = "#2E7D32"; 
+const DANGER_RED = "#DC2626";
 
 const SHORT_DATE_FMT: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
 const FULL_DATE_FMT: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", year: "numeric" };
@@ -46,16 +55,18 @@ interface Harvest {
   status: string;
   created_at: string;
   price_per_kg: number;
+  image_url?: string[] | string;
 }
 
 interface ProposalOrder {
-  buyer: { id: string; user: { name: string; email: string } };
+  buyer: { id: string; user: { first_name: string; last_name: string; email: string }; user_id: string; company_name: string };
   grade: string;
   variant: string;
   quantity: number;
   fruit_type: string;
   required_date: string;
   delivery_location: string;
+  status?: string; // Maps to the global order status (e.g. AWAITING_PAYMENT, AUTHORIZED_PAYMENT)
 }
 
 interface Proposal {
@@ -63,13 +74,20 @@ interface Proposal {
   order_id: string;
   stock_id: string;
   quantity_proposed: number;
-  status: "PENDING_FARMER" | "ACCEPTED" | "REJECTED";
+  status: "PENDING_FARMER" | "PENDING_BUYER" | "ACCEPTED" | "REJECTED" | "EXPIRED" | "CANCELLED";
   expires_at: string;
   created_at: string;
   order: ProposalOrder;
+  pricing?: {
+    unitPrice: number;
+    grossEarning: number;
+    platformFee: number;
+    farmerEarning: number;
+    priceSource: string;
+  };
 }
 
-type TabKey = "harvests" | "proposals";
+type TabKey = "harvests" | "pending" | "payment_due" | "processing" | "completed" | "rejected";
 
 // ─── Lookup maps ──────────────────────────────────────────────────────────────
 
@@ -78,7 +96,6 @@ const FRUIT_MAP: Array<[string[], FruitMeta]> = [
   [["banana"],    { emoji: "🍌", bg: "#FEF3C7" }],
   [["mango"],     { emoji: "🥭", bg: "#FFEDD5" }],
   [["pineapple"], { emoji: "🍍", bg: "#FEF08A" }],
-
 ];
 const DEFAULT_FRUIT: FruitMeta = { emoji: "🌿", bg: "#D1FAE5" };
 const getFruitMeta = (name: string): FruitMeta => {
@@ -89,16 +106,31 @@ const getFruitMeta = (name: string): FruitMeta => {
 type StatusMeta = { label: string; color: string; bg: string };
 const HARVEST_STATUS: Record<string, StatusMeta> = {
   OPEN:     { label: "Open",     color: "#B45309", bg: "#FEF3C7" },
-  FRESH:    { label: "Fresh",    color: "#B45309", bg: "#FEF3C7" },
-  // RESERVED: { label: "Reserved", color: "#0F766E", bg: "#CCFBF1" },
+  RESERVED: { label: "Reserved", color: "#0F766E", bg: "#CCFBF1" },
   MATCHED:  { label: "Matched",  color: "#166534", bg: "#BBF7D0" },
 };
 const DEFAULT_STATUS = HARVEST_STATUS.OPEN;
 
 const TAB_CONFIG: { key: TabKey; label: string }[] = [
-  { key: "harvests",  label: "My Harvests" },
-  { key: "proposals", label: "All Proposals" },
+  { key: "harvests",    label: "My Harvests" },
+  { key: "pending",     label: "Pending" },
+  { key: "payment_due", label: "Payment Due" },
+  { key: "processing",  label: "Processing" },
+  { key: "completed",   label: "Completed" },
+  { key: "rejected",    label: "Rejected" },
 ];
+
+const getProposalTabKey = (p: Proposal): TabKey | null => {
+  if (p.status === "PENDING_FARMER" || p.status === "PENDING_BUYER") return "pending";
+  if (p.status === "REJECTED" || p.status === "CANCELLED" || p.status === "EXPIRED") return "rejected";
+  if (p.status === "ACCEPTED") {
+    const os = p.order?.status;
+    if (os === "AWAITING_PAYMENT") return "payment_due";
+    if (os === "COMPLETED" || os === "DELIVERED") return "completed";
+    return "processing"; // Fallback for AUTHORIZED_PAYMENT, PACKING, IN_TRANSIT, etc.
+  }
+  return null;
+};
 
 // ─── Custom hook ──────────────────────────────────────────────────────────────
 
@@ -128,7 +160,6 @@ function useOrdersData() {
 
       try {
         const proposalRes = await api.get("/api/farmer/proposals");
-        console.log("[Orders] proposals response:", JSON.stringify(proposalRes));
         setProposals(proposalRes?.proposals ?? []);
       } catch {
         setProposals([]);
@@ -143,13 +174,6 @@ function useOrdersData() {
     await load(true);
     setRefreshing(false);
   }, [load]);
-
-  const setProcessing = (id: string, on: boolean) =>
-    setProcessingIds((prev) => {
-      const next = new Set(prev);
-      on ? next.add(id) : next.delete(id);
-      return next;
-    });
 
   const acceptProposal = useCallback(async (id: string) => {
     setProcessing(id, true);
@@ -170,14 +194,24 @@ function useOrdersData() {
     setProcessing(id, true);
     try {
       await api.post(`/api/farmer/proposals/${id}/reject`, {});
-      setProposals((prev) => prev.filter((p) => p.id !== id));
-      Alert.alert("Success", "Proposal declined. Buyer can select another farmer.");
+      // Instead of deleting, we now update the status so it moves to the "Rejected" tab
+      setProposals((prev) => 
+        prev.map((p) => (p.id === id ? { ...p, status: "REJECTED" as const } : p))
+      );
+      Alert.alert("Declined", "Proposal moved to Rejected.");
     } catch (err) {
       Alert.alert("Error", err instanceof Error ? err.message : "Failed to reject proposal");
     } finally {
       setProcessing(id, false);
     }
   }, []);
+
+  const setProcessing = (id: string, on: boolean) =>
+    setProcessingIds((prev) => {
+      const next = new Set(prev);
+      on ? next.add(id) : next.delete(id);
+      return next;
+    });
 
   return {
     harvests,
@@ -195,13 +229,6 @@ function useOrdersData() {
 
 // ─── Micro-components ────────────────────────────────────────────────────────
 
-const VerifiedBadge = React.memo(() => (
-  <View style={styles.verifiedBadge}>
-    <ShieldCheck size={10} color="#fff" />
-    <Text style={styles.verifiedText}>Verified</Text>
-  </View>
-));
-
 const MetricChip = React.memo(({
   icon,
   label,
@@ -215,130 +242,18 @@ const MetricChip = React.memo(({
   </View>
 ));
 
-const ProposalActionFooter = React.memo(({
-  proposal,
-  processing,
-  onAccept,
-  onReject,
-  padded = false,
-}: {
-  proposal: Proposal;
-  processing: boolean;
-  onAccept: () => void;
-  onReject: () => void;
-  padded?: boolean;
-}) => {
-  if (proposal.status === "ACCEPTED") {
-    return (
-      <View style={[styles.acceptedBadgeRow, padded && styles.footerPadding]}>
-        <CheckCircle size={15} color={PRIMARY_GREEN} />
-        <Text style={styles.acceptedBadgeText}>Proposal Accepted</Text>
-      </View>
-    );
-  }
-  if (proposal.status !== "PENDING_FARMER") return null;
-  return (
-    <View style={[styles.proposalActions, padded && styles.footerPadding]}>
-      <TouchableOpacity
-        style={[styles.actionBtn, styles.acceptBtn]}
-        onPress={onAccept}
-        disabled={processing}
-        accessibilityLabel="Accept proposal"
-      >
-        {processing ? (
-          <ActivityIndicator size="small" color="#fff" />
-        ) : (
-          <>
-            <CheckCircle size={14} color="#fff" />
-            <Text style={styles.actionBtnText}>Accept</Text>
-          </>
-        )}
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.actionBtn, styles.rejectBtn]}
-        onPress={onReject}
-        disabled={processing}
-        accessibilityLabel="Decline proposal"
-      >
-        {processing ? (
-          <ActivityIndicator size="small" color="#fff" />
-        ) : (
-          <>
-            <XCircle size={14} color="#fff" />
-            <Text style={styles.actionBtnText}>Decline</Text>
-          </>
-        )}
-      </TouchableOpacity>
-    </View>
-  );
-});
-
-// ─── ProposalRow (nested inside HarvestCard) ──────────────────────────────────
-
-const ProposalRow = React.memo(({
-  proposal,
-  processing,
-  onAccept,
-  onReject,
-  onViewProfile,
-}: {
-  proposal: Proposal;
-  processing: boolean;
-  onAccept: () => void;
-  onReject: () => void;
-  onViewProfile: () => void;
-}) => (
-  <View style={styles.proposalRow}>
-    <TouchableOpacity
-      style={styles.proposalBuyerRow}
-      onPress={onViewProfile}
-      activeOpacity={0.7}
-    >
-      <VerifiedBadge />
-      <Text style={styles.proposalBuyerName}>{proposal.order.buyer.user.name}</Text>
-      <Ionicons name="chevron-forward" size={14} color={PRIMARY_GREEN} />
-    </TouchableOpacity>
-
-    <View style={styles.proposalDetailsGrid}>
-      <View style={styles.proposalDetailItem}>
-        <Text style={styles.proposalDetailLabel}>Qty Requested</Text>
-        <Text style={styles.proposalDetailValue}>{proposal.quantity_proposed} kg</Text>
-      </View>
-      <View style={styles.proposalDetailDivider} />
-      <View style={styles.proposalDetailItem}>
-        <Text style={styles.proposalDetailLabel}>Delivery By</Text>
-        <Text style={styles.proposalDetailValue}>
-          {formatDate(proposal.order.required_date)}
-        </Text>
-      </View>
-      <View style={styles.proposalDetailDivider} />
-      <View style={styles.proposalDetailItem}>
-        <Text style={styles.proposalDetailLabel}>Location</Text>
-        <Text style={styles.proposalDetailValue} numberOfLines={1}>
-          {proposal.order.delivery_location || "—"}
-        </Text>
-      </View>
-    </View>
-
-    <ProposalActionFooter
-      proposal={proposal}
-      processing={processing}
-      onAccept={onAccept}
-      onReject={onReject}
-    />
-  </View>
-));
-
 // ─── HarvestCard ──────────────────────────────────────────────────────────────
 
 const HarvestCard = React.memo(({
   harvest,
   proposals,
   onPress,
+  onImagePress,
 }: {
   harvest: Harvest;
   proposals: Proposal[];
   onPress: () => void;
+  onImagePress: (imageUrls: string[]) => void;
 }) => {
   const fruit = getFruitMeta(harvest.fruit_type);
   const statusMeta = HARVEST_STATUS[harvest.status] ?? DEFAULT_STATUS;
@@ -347,6 +262,10 @@ const HarvestCard = React.memo(({
     [proposals],
   );
 
+  const images = Array.isArray(harvest.image_url) 
+    ? harvest.image_url 
+    : (harvest.image_url ? [harvest.image_url] : []);
+
   return (
     <TouchableOpacity style={styles.card} activeOpacity={0.85} onPress={onPress}>
       {pendingCount > 0 && (
@@ -354,31 +273,55 @@ const HarvestCard = React.memo(({
           <Text style={styles.cardCountBadgeText}>{pendingCount}</Text>
         </View>
       )}
-      <View style={styles.cardHeader}>
-        <View style={[styles.fruitIcon, { backgroundColor: fruit.bg }]}>
-          <Text style={styles.fruitEmoji}>{fruit.emoji}</Text>
-        </View>
+      
+      <View style={styles.cardStretchContainer}> 
+        <TouchableOpacity 
+          style={styles.imageWrapper} 
+          activeOpacity={0.8}
+          onPress={() => images.length > 0 && onImagePress(images)}
+          disabled={images.length === 0}
+        >
+          {images.length > 0 ? (
+            <>
+              <Image source={{ uri: images[0] }} style={styles.productImage} />
+              {images.length > 1 && (
+                <View style={styles.imageCountBadge}>
+                  <ImageIcon size={10} color="#fff" style={{ marginRight: 2 }} />
+                  <Text style={styles.imageCountText}>+{images.length - 1}</Text>
+                </View>
+              )}
+            </>
+          ) : (
+            <View style={[styles.avatarFallback, { backgroundColor: fruit.bg }]}>
+              <Text style={styles.avatarEmoji}>{fruit.emoji}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
 
-        <View style={styles.cardBody}>
-          <View style={styles.titleRow}>
-            <Text style={styles.cardTitle}>{harvest.fruit_type}</Text>
-            <View style={[styles.statusPill, { backgroundColor: statusMeta.bg }]}>
-              <Text style={[styles.statusLabel, { color: statusMeta.color }]}>
-                {statusMeta.label}
-              </Text>
+        <View style={styles.cardRightColumn}>
+          <View style={styles.cardBody}>
+            <View style={styles.titleRow}>
+              <Text style={styles.cardTitle}>{harvest.fruit_type}</Text>
+              <View style={[styles.statusPill, { backgroundColor: statusMeta.bg }]}>
+                <Text style={[styles.statusLabel, { color: statusMeta.color }]}>
+                  {statusMeta.label}
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.cardSubtitle}>{harvest.variant} · Grade {harvest.grade}</Text>
+            <View style={styles.metricsRow}>
+              <MetricChip icon="scale-outline" label={`${harvest.quantity} kg`} />
+              <MetricChip
+                icon="calendar-outline"
+                label={formatDate(harvest.estimated_harvest_date, FULL_DATE_FMT)}
+              />
             </View>
           </View>
-          <Text style={styles.cardSubtitle}>{harvest.variant} · Grade {harvest.grade}</Text>
-          <View style={styles.metricsRow}>
-            <MetricChip icon="scale-outline" label={`${harvest.quantity} kg`} />
-            <MetricChip
-              icon="calendar-outline"
-              label={formatDate(harvest.estimated_harvest_date, FULL_DATE_FMT)}
-            />
+
+          <View style={styles.chevronPadding}>
+            <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
           </View>
         </View>
-
-        <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
       </View>
     </TouchableOpacity>
   );
@@ -398,37 +341,150 @@ const StandaloneProposalCard = React.memo(({
   onAccept: () => void;
   onReject: () => void;
   onViewProfile: () => void;
-}) => (
-  <View style={styles.card}>
-    <TouchableOpacity style={styles.cardHeader} activeOpacity={0.7} onPress={onViewProfile}>
-      <View style={[styles.fruitIcon, styles.personIconBg]}>
-        <Ionicons name="person" size={20} color={PRIMARY_GREEN} />
-      </View>
-      <View style={styles.cardBody}>
-        <View style={styles.titleRow}>
-          <Text style={styles.cardTitle}>{proposal.order.buyer.user.name}</Text>
-          <VerifiedBadge />
-        </View>
-        <Text style={styles.cardSubtitle}>
-          {proposal.order.fruit_type} · Grade {proposal.order.grade} · {proposal.order.variant}
-        </Text>
-        <View style={styles.metricsRow}>
-          <MetricChip icon="scale-outline" label={`${proposal.quantity_proposed} kg`} />
-          <MetricChip icon="calendar-outline" label={formatDate(proposal.order.required_date)} />
-        </View>
-      </View>
-      <Ionicons name="chevron-forward" size={16} color={PRIMARY_GREEN} />
-    </TouchableOpacity>
+}) => {
+  const buyerName = proposal.order?.buyer?.company_name || proposal.order?.buyer?.user?.first_name || "Verified Buyer";
 
-    <ProposalActionFooter
-      proposal={proposal}
-      processing={processing}
-      onAccept={onAccept}
-      onReject={onReject}
-      padded
-    />
-  </View>
-));
+  return (
+    <View style={styles.card}>
+      {/* --- Card Header (CRM Style) --- */}
+      <TouchableOpacity
+        style={styles.proposalHeader}
+        activeOpacity={0.7}
+        onPress={onViewProfile}
+      >
+        <View style={styles.headerLeft}>
+          <View style={styles.buyerAvatar}>
+            <Text style={styles.buyerAvatarText}>
+              {buyerName.charAt(0).toUpperCase()}
+            </Text>
+            <View style={styles.verifiedBadgeDot}>
+              <ShieldCheck size={10} color="#FFFFFF" />
+            </View>
+          </View>
+          
+          <View style={styles.buyerInfo}>
+            <Text style={styles.buyerName}>{buyerName}</Text>
+            <View style={styles.locationRow}>
+              <MapPin size={12} color="#6B7280" />
+              <Text style={styles.locationText} numberOfLines={1}>
+                {proposal.order?.delivery_location || "Location not specified"}
+              </Text>
+            </View>
+          </View>
+        </View>
+        <ChevronRight size={20} color="#D1D5DB" />
+      </TouchableOpacity>
+
+      <View style={styles.solidDivider} />
+
+      {/* --- Card Body & Tags --- */}
+      <View style={styles.productInfo}>
+        <Text style={styles.orderTitleText}>
+          {proposal.order?.variant} {proposal.order?.fruit_type} • Grade {proposal.order?.grade}
+        </Text>
+
+        <View style={styles.tagRow}>
+          <View style={styles.yieldTag}>
+            <PackageOpen size={12} color="#059669" style={{ marginRight: 4 }} />
+            <Text style={styles.yieldTagText}>
+              {proposal.quantity_proposed} kg
+            </Text>
+          </View>
+
+          <View style={styles.dateTag}>
+            <Calendar size={12} color="#4B5563" style={{ marginRight: 4 }} />
+            <Text style={styles.dateTagText}>
+              {formatDate(proposal.order?.required_date || new Date().toISOString())}
+            </Text>
+          </View>
+        </View>
+
+        {/* --- Minimalist Farmer Pricing Box --- */}
+        <View style={styles.invoiceBox}>
+          <View style={styles.invoiceRow}>
+            <View>
+              <Text style={styles.invoiceTotalLabel}>Net Earnings</Text>
+              <Text style={styles.invoiceSubLabel}>
+                Net of platform fees
+              </Text>
+            </View>
+            <Text style={styles.invoiceTotalValue}>
+              Rs. {(proposal.pricing?.farmerEarning || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      {/* --- Actions & Status --- */}
+      <View style={styles.cardFooter}>
+        {proposal.status === "ACCEPTED" ? (
+          proposal.order?.status === "AWAITING_PAYMENT" ? (
+            <View style={[styles.statusWarning, { backgroundColor: "#FFF1F2", borderColor: "#FECDD3" }]}>
+              <Ionicons name="wallet" size={16} color="#E11D48" />
+              <Text style={[styles.statusWarningText, { color: "#BE123C" }]}>Awaiting Buyer Payment</Text>
+            </View>
+          ) : proposal.order?.status === "COMPLETED" || proposal.order?.status === "DELIVERED" ? (
+            <View style={styles.statusSuccess}>
+              <CheckCircle2 size={16} color={PRIMARY_GREEN} />
+              <Text style={styles.statusSuccessText}>Order Completed</Text>
+            </View>
+          ) : (
+            <View style={[styles.statusWarning, { backgroundColor: "#F0FDFA", borderColor: "#CCFBF1" }]}>
+              <Ionicons name="cube" size={16} color="#0D9488" />
+              <Text style={[styles.statusWarningText, { color: "#0F766E" }]}>Processing Delivery</Text>
+            </View>
+          )
+        ) : proposal.status === "PENDING_FARMER" ? (
+          <View style={styles.actionsRow}>
+            <TouchableOpacity
+              style={[styles.actionBtn, styles.rejectBtn]}
+              onPress={onReject}
+              disabled={processing}
+              activeOpacity={0.8}
+            >
+              {processing ? (
+                <ActivityIndicator size="small" color={DANGER_RED} />
+              ) : (
+                <Text style={styles.rejectBtnText}>Decline</Text>
+              )}
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[styles.actionBtn, styles.acceptBtn]}
+              onPress={onAccept}
+              disabled={processing}
+              activeOpacity={0.8}
+            >
+              {processing ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <CheckCircle2 size={16} color="#fff" />
+                  <Text style={styles.acceptBtnText}>Accept Deal</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        ) : proposal.status === "EXPIRED" ? (
+          <View style={styles.statusExpired}>
+            <Ionicons name="time-outline" size={16} color="#6B7280" />
+            <Text style={styles.statusExpiredText}>Proposal Expired</Text>
+          </View>
+        ) : proposal.status === "CANCELLED" ? (
+          <View style={styles.statusExpired}>
+            <XCircle size={16} color="#6B7280" />
+            <Text style={styles.statusExpiredText}>Proposal Cancelled</Text>
+          </View>
+        ) : (
+          <View style={styles.statusError}>
+            <XCircle size={16} color={DANGER_RED} />
+            <Text style={styles.statusErrorText}>Proposal Declined</Text>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+});
 
 // ─── EmptyState ───────────────────────────────────────────────────────────────
 
@@ -456,11 +512,59 @@ export default function OrdersTab() {
     harvests, proposals, loading, refreshing, error, processingIds,
     load, refresh, acceptProposal, rejectProposal,
   } = useOrdersData();
+  
   const [activeTab, setActiveTab] = useState<TabKey>("harvests");
+  
+  // Gallery Modal State
+  const [imageModalVisible, setImageModalVisible] = useState(false);
+  const [currentImages, setCurrentImages] = useState<string[]>([]);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [matchedModalVisible, setMatchedModalVisible] = useState(false);
+  const [matchedProposals, setMatchedProposals] = useState<Proposal[]>([]);
+  const [selectedHarvest, setSelectedHarvest] = useState<Harvest | null>(null);
+
+  const handleImagePress = useCallback((imageUrls: string[]) => {
+    setCurrentImages(imageUrls);
+    setCurrentImageIndex(0);
+    setImageModalVisible(true);
+  }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  // ── Derived ────────────────────────────────────────────────────────────────
+  // Automatically count tabs dynamically based on the proposal status logic
+  const tabCount = useMemo(() => {
+    const counts: Record<TabKey, number> = {
+      harvests: harvests.length,
+      pending: 0,
+      payment_due: 0,
+      processing: 0,
+      completed: 0,
+      rejected: 0,
+    };
+    proposals.forEach((p) => {
+      const tab = getProposalTabKey(p);
+      if (tab && tab !== "harvests") {
+        counts[tab] += 1;
+      }
+    });
+    return counts;
+  }, [harvests, proposals]);
+
+  // Only render tabs that have a count > 0 (or the core My Harvests tab)
+  const tabData = useMemo(() => {
+    return TAB_CONFIG.map((t) => ({
+      ...t,
+      count: tabCount[t.key],
+    })).filter((t) => t.key === "harvests" || t.count > 0);
+  }, [tabCount]);
+
+  // Smart Fallback: If the user empties a tab (like declining the last pending item),
+  // they are automatically navigated back to the My Harvests tab so they don't get stuck on an empty screen.
+  useEffect(() => {
+    if (!tabData.some((t) => t.key === activeTab)) {
+      setActiveTab("harvests");
+    }
+  }, [tabData, activeTab]);
 
   const proposalsByStock = useMemo(() => {
     const map: Record<string, Proposal[]> = {};
@@ -468,27 +572,12 @@ export default function OrdersTab() {
     return map;
   }, [proposals]);
 
-  const pendingCount = useMemo(
-    () => proposals.filter((p) => p.status === "PENDING_FARMER").length,
-    [proposals],
-  );
-
-  const tabData = useMemo(
-    () => TAB_CONFIG.map((t) => ({
-      ...t,
-      count: t.key === "harvests" ? harvests.length : pendingCount,
-    })),
-    [harvests.length, pendingCount],
-  );
-
-  // ── Navigation ─────────────────────────────────────────────────────────────
-
   const handleViewProfile = useCallback((proposal: Proposal) => {
     router.push({
-      pathname: `/farmer/screens/buyer-trust-profile/${proposal.order.buyer.id}` as any,
+      pathname: `/farmer/screens/buyer-trust-profile/${proposal.order?.buyer?.id}` as any,
       params: {
-        buyerName: proposal.order.buyer.user.name,
-        buyerLocation: proposal.order.delivery_location || "Location not specified",
+        buyerName: proposal.order?.buyer?.company_name || "Buyer",
+        buyerLocation: proposal.order?.delivery_location || "Location not specified",
         trustScore: "Not rated",
       },
     });
@@ -508,17 +597,25 @@ export default function OrdersTab() {
     });
   }, [router]);
 
-  // ── Render items ───────────────────────────────────────────────────────────
+  const openMatchedModal = useCallback((harvest: Harvest) => {
+    setSelectedHarvest(harvest);
+    setMatchedProposals(proposalsByStock[harvest.id] ?? []);
+    setMatchedModalVisible(true);
+  }, [proposalsByStock]);
 
   const renderHarvest = useCallback(
     ({ item }: { item: Harvest }) => (
       <HarvestCard
         harvest={item}
         proposals={proposalsByStock[item.id] ?? []}
-        onPress={() => handleHarvestPress(item)}
+        onPress={() => {
+          if (item.status === 'MATCHED') openMatchedModal(item);
+          else handleHarvestPress(item);
+        }}
+        onImagePress={handleImagePress}
       />
     ),
-    [proposalsByStock, handleHarvestPress],
+    [proposalsByStock, handleHarvestPress, handleImagePress, openMatchedModal],
   );
 
   const renderProposal = useCallback(
@@ -542,8 +639,6 @@ export default function OrdersTab() {
       tintColor={PRIMARY_GREEN}
     />
   );
-
-  // ── Content ────────────────────────────────────────────────────────────────
 
   const renderContent = () => {
     if (loading) {
@@ -590,19 +685,22 @@ export default function OrdersTab() {
       );
     }
 
+    // Filter proposals based on active new tab
+    const filteredProposals = proposals.filter((p) => getProposalTabKey(p) === activeTab);
+
     return (
       <FlatList<Proposal>
-        data={proposals}
+        data={filteredProposals}
         keyExtractor={(item) => item.id}
         renderItem={renderProposal}
-        contentContainerStyle={proposals.length === 0 ? styles.emptyContainer : styles.listContent}
+        contentContainerStyle={filteredProposals.length === 0 ? styles.emptyContainer : styles.listContent}
         showsVerticalScrollIndicator={false}
         refreshControl={refreshControl}
         ListEmptyComponent={
           <EmptyState
             icon={<Ionicons name="receipt-outline" size={36} color="#9CA3AF" />}
-            title="No proposals yet"
-            subtitle="Buyer proposals will appear here once matched to your harvests."
+            title="No proposals found"
+            subtitle="You don't have any proposals matching this status."
           />
         }
       />
@@ -614,6 +712,73 @@ export default function OrdersTab() {
       <Header title="Orders" showNotification onNotificationPress={() => router.push("/farmer/screens/notifications" as any)} />
       <PillTabBar tabs={tabData} activeKey={activeTab} onPress={setActiveTab} />
       {renderContent()}
+
+      {/* Swipeable Image Gallery Modal */}
+      <Modal visible={imageModalVisible} transparent animationType="fade" onRequestClose={() => setImageModalVisible(false)} statusBarTranslucent>
+        <View style={styles.imageModalOverlay}>
+          <TouchableOpacity style={styles.imageModalClose} onPress={() => setImageModalVisible(false)} activeOpacity={0.7}>
+            <Text style={styles.imageModalCloseText}>✕</Text>
+          </TouchableOpacity>
+          {currentImages.length > 1 && (
+            <Text style={styles.imageModalCounter}>{currentImageIndex + 1} / {currentImages.length}</Text>
+          )}
+          <FlatList
+            data={currentImages} horizontal pagingEnabled showsHorizontalScrollIndicator={false}
+            initialScrollIndex={currentImageIndex}
+            getItemLayout={(_, index) => ({ length: SCREEN_WIDTH, offset: SCREEN_WIDTH * index, index })}
+            onMomentumScrollEnd={(e) => {
+              const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+              setCurrentImageIndex(index);
+            }}
+            keyExtractor={(uri, i) => `${uri}-${i}`}
+            renderItem={({ item: uri }) => (
+              <View style={styles.imageModalPage}>
+                <Image source={{ uri }} style={styles.imageModalFull} resizeMode="contain" />
+              </View>
+            )}
+          />
+        </View>
+      </Modal>
+      {/* Matched Harvests Modal — shows summary for farmers when a harvest is MATCHED */}
+      <Modal
+        visible={matchedModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setMatchedModalVisible(false)}
+        statusBarTranslucent
+      >
+        <View style={[styles.imageModalOverlay, { justifyContent: 'flex-end', paddingBottom: 24 }] }>
+          <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 20, maxHeight: '70%' }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={{ fontSize: 18, fontWeight: '800', color: '#111827' }}>Matched Orders</Text>
+              <TouchableOpacity onPress={() => setMatchedModalVisible(false)}>
+                <Text style={{ fontSize: 18, fontWeight: '700', color: '#6B7280' }}>Close</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ marginTop: 12 }}>
+              {matchedProposals.length === 0 ? (
+                <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+                  <Text style={{ color: '#6B7280' }}>No matched proposals found for this harvest.</Text>
+                </View>
+              ) : (
+                matchedProposals.map((p) => (
+                  <View key={p.id} style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }}>
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: '#111827' }}>{p.order?.fruit_type} • {p.order?.variant}</Text>
+                    <Text style={{ marginTop: 6, color: '#6B7280' }}>{p.quantity_proposed} kg • {p.order?.delivery_location}</Text>
+                    <Text style={{ marginTop: 6, color: '#111827', fontWeight: '700' }}>{p.pricing?.farmerEarning ? `Net: Rs. ${p.pricing.farmerEarning.toFixed(2)}` : ''}</Text>
+                    <View style={{ marginTop: 10, flexDirection: 'row', gap: 8 }}>
+                      <TouchableOpacity onPress={() => { setMatchedModalVisible(false); handleViewProfile(p); }} style={{ paddingVertical: 8, paddingHorizontal: 12, backgroundColor: PRIMARY_GREEN, borderRadius: 10 }}>
+                        <Text style={{ color: '#fff', fontWeight: '700' }}>View Buyer</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -661,27 +826,268 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 6,
     elevation: 1,
-    overflow: "visible",
+    marginBottom: 16,
+    overflow: "hidden", // Crucial for flush image left border radius
   },
-  cardHeader: { flexDirection: "row", alignItems: "flex-start", padding: 16, gap: 12 },
-  cardBody: { flex: 1 },
-  cardTitle: { fontSize: 16, fontWeight: "800", color: "#111827" },
-  cardSubtitle: { fontSize: 13, color: "#6B7280", fontWeight: "500", marginTop: 3, marginBottom: 8 },
 
-  // ── Fruit icon ────────────────────────────────────────────────────────────
-  fruitIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: 12,
+  // ── NEW: Flush Image Container for HarvestCard ────────────────────────────
+  cardStretchContainer: {
+    flexDirection: "row",
+    alignItems: "stretch", // Forces image column to match text column height
+  },
+  imageWrapper: {
+    width: 100, // Wide enough to look balanced
+    borderTopLeftRadius: 16,
+    borderBottomLeftRadius: 16,
+    overflow: "hidden",
+    backgroundColor: "#F9FAFB",
+    borderRightWidth: 1,
+    borderColor: "#E5E7EB",
+    justifyContent: 'center'
+  },
+  productImage: { width: "100%", height: "100%", resizeMode: "cover" },
+  imageCountBadge: {
+    position: "absolute",
+    bottom: 4,
+    right: 4,
+    backgroundColor: "rgba(17, 24, 39, 0.75)",
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  imageCountText: { color: "#fff", fontSize: 10, fontWeight: "bold" },
+  avatarFallback: { width: "100%", height: "100%", justifyContent: "center", alignItems: "center" },
+  avatarEmoji: { fontSize: 32 },
+
+  // Right column of HarvestCard
+  cardRightColumn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingLeft: 16,
+  },
+  cardBody: { flex: 1 },
+  chevronPadding: { paddingRight: 16 },
+
+  // ── Proposal specific CRM Header ──
+  proposalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 16,
+  },
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  buyerAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#E8F5E9",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: "#C8E6C9",
+    position: "relative",
+  },
+  buyerAvatarText: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: PRIMARY_GREEN,
+  },
+  verifiedBadgeDot: {
+    position: "absolute",
+    bottom: -2,
+    right: -2,
+    backgroundColor: PRIMARY_GREEN,
+    borderRadius: 10,
+    width: 18,
+    height: 18,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+  },
+  buyerInfo: { flex: 1, paddingRight: 8 },
+  buyerName: { fontSize: 16, fontWeight: "800", color: "#111827", marginBottom: 2 },
+  locationRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  locationText: { fontSize: 13, color: "#6B7280", fontWeight: "500" },
+
+  solidDivider: {
+    height: 1,
+    backgroundColor: "#F3F4F6",
+    marginBottom: 16,
+  },
+
+  // --- CARD BODY & TAGS ---
+  productInfo: {
+    marginBottom: 16,
+    paddingHorizontal: 16,
+  },
+  tagRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 8,
+  },
+  yieldTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#ECFDF5",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
+  },
+  yieldTagText: { 
+    fontSize: 13, 
+    fontWeight: "700", 
+    color: "#059669" 
+  },
+  dateTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F3F4F6",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  dateTagText: { 
+    fontSize: 13, 
+    fontWeight: "600", 
+    color: "#4B5563" 
+  },
+  orderTitleText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#4B5563",
+    marginBottom: 10,
+    letterSpacing: 0.2,
+  },
+
+  // --- INVOICE PRICING BOX ---
+  invoiceBox: {
+    backgroundColor: "#F9FAFB",
+    borderRadius: 8,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#F3F4F6",
+    marginTop: 14,
+  },
+  invoiceRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  invoiceTotalLabel: { 
+    fontSize: 13, 
+    color: "#4B5563", 
+    fontWeight: "700" 
+  },
+  invoiceSubLabel: { 
+    fontSize: 11, 
+    color: "#9CA3AF", 
+    fontWeight: "500", 
+    marginTop: 2 
+  },
+  invoiceTotalValue: { 
+    fontSize: 18, 
+    color: PRIMARY_GREEN, 
+    fontWeight: "900" 
+  },
+
+  // --- ACTIONS & STATUS ---
+  cardFooter: { marginTop: 2, paddingHorizontal: 16, paddingBottom: 14 },
+  actionsRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  actionBtn: {
+    flex: 1,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    flexShrink: 0,
+    paddingVertical: 12,
+    borderRadius: 10,
+    gap: 8,
   },
-  fruitEmoji: { fontSize: 22 },
-  personIconBg: { backgroundColor: "#F3F4F6" },
+  acceptBtn: { 
+    backgroundColor: PRIMARY_GREEN,
+    shadowColor: PRIMARY_GREEN,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  acceptBtnText: { color: "#FFFFFF", fontSize: 14, fontWeight: "700", letterSpacing: 0.5 },
+  rejectBtn: { 
+    backgroundColor: "#FFFFFF", 
+    borderWidth: 1,
+    borderColor: "#FECACA",
+  },
+  rejectBtnText: { color: DANGER_RED, fontSize: 14, fontWeight: "700" },
+
+  // Status Badges
+  statusSuccess: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    backgroundColor: "#ECFDF5",
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
+    borderRadius: 10,
+    gap: 8,
+  },
+  statusSuccessText: { color: PRIMARY_GREEN, fontSize: 14, fontWeight: "700" },
+  statusWarning: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderRadius: 10,
+    gap: 8,
+  },
+  statusWarningText: { fontSize: 14, fontWeight: "700" },
+  statusError: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    backgroundColor: "#FEF2F2",
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    borderRadius: 10,
+    gap: 8,
+  },
+  statusErrorText: { color: DANGER_RED, fontSize: 14, fontWeight: "700" },
+  statusExpired: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    backgroundColor: "#F3F4F6",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 10,
+    gap: 8,
+  },
+  statusExpiredText: { color: "#6B7280", fontSize: 14, fontWeight: "700" },
 
   // ── Title row / metrics ───────────────────────────────────────────────────
   titleRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 2, flexWrap: "wrap" },
+  cardTitle: { fontSize: 16, fontWeight: "800", color: "#111827" },
+  cardSubtitle: { fontSize: 13, color: "#6B7280", fontWeight: "500", marginTop: 3, marginBottom: 8 },
   metricsRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
 
   // ── Status pill ───────────────────────────────────────────────────────────
@@ -702,9 +1108,6 @@ const styles = StyleSheet.create({
   },
   metricText: { fontSize: 12, fontWeight: "600", color: "#4B5563" },
 
-  // ── Proposal count badge ──────────────────────────────────────────────────
-  proposalBadge: { backgroundColor: "#FEF3C7", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  proposalBadgeText: { fontSize: 12, fontWeight: "700", color: "#B45309" },
   // ── Card notification count badge (top-right corner) ─────────────────────
   cardCountBadge: {
     position: "absolute",
@@ -719,86 +1122,49 @@ const styles = StyleSheet.create({
     paddingHorizontal: 5,
     zIndex: 10,
     borderWidth: 2,
-    borderColor: "#EF4444",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
+    borderColor: "#FFFFFF",
     elevation: 4,
   },
   cardCountBadgeText: { fontSize: 11, fontWeight: "800", color: "#FFFFFF" },
-  expandIcon: { paddingTop: 2, flexShrink: 0 },
 
-  // ── Proposals container ───────────────────────────────────────────────────
-  proposalsContainer: { borderTopWidth: 1, borderTopColor: "#F3F4F6", backgroundColor: "#FAFAFA" },
-  proposalDivider: { height: 1, backgroundColor: "#F0F0F0", marginHorizontal: 16 },
-  emptyProposals: { paddingVertical: 18, alignItems: "center" },
-  emptyProposalsText: { fontSize: 13, color: "#9CA3AF", fontStyle: "italic" },
-
-  // ── Proposal row ──────────────────────────────────────────────────────────
-  proposalRow: { padding: 14 },
-  proposalBuyerRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10 },
-  proposalBuyerName: { flex: 1, fontSize: 14, fontWeight: "700", color: "#111827" },
-  proposalDetailsGrid: {
-    flexDirection: "row",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 10,
-    paddingVertical: 10,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  proposalDetailItem: { flex: 1, alignItems: "center" },
-  proposalDetailLabel: {
-    fontSize: 10,
-    color: "#9CA3AF",
-    fontWeight: "600",
-    textTransform: "uppercase",
-    marginBottom: 3,
-  },
-  proposalDetailValue: { fontSize: 13, fontWeight: "700", color: "#111827" },
-  proposalDetailDivider: { width: 1, backgroundColor: "#E5E7EB" },
-
-  // ── Action buttons ────────────────────────────────────────────────────────
-  proposalActions: { flexDirection: "row", gap: 10 },
-  footerPadding: { paddingHorizontal: 16, paddingBottom: 14 },
-  actionBtn: {
+  // ── Gallery Modal styles ──────────────────────────────────────────────────
+  imageModalOverlay: {
     flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
+    backgroundColor: "rgba(17,24,39,0.95)",
     justifyContent: "center",
-    paddingVertical: 10,
-    borderRadius: 20,
-    gap: 6,
-    elevation: 2,
   },
-  acceptBtn: { backgroundColor: PRIMARY_GREEN },
-  rejectBtn: { backgroundColor: DANGER_RED },
-  actionBtnText: { color: "#fff", fontSize: 13, fontWeight: "700" },
-
-  // ── Accepted state ────────────────────────────────────────────────────────
-  acceptedBadgeRow: {
-    flexDirection: "row",
-    alignItems: "center",
+  imageModalClose: {
+    position: "absolute",
+    top: 52,
+    right: 20,
+    zIndex: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.2)",
     justifyContent: "center",
-    paddingVertical: 12,
-    backgroundColor: BuyerColors.primaryLight,
-    borderRadius: 20,
-    gap: 6,
-    marginTop: 4,
-  },
-  acceptedBadgeText: { color: PRIMARY_GREEN, fontSize: 14, fontWeight: "700" },
-
-  // ── Verified badge ────────────────────────────────────────────────────────
-  verifiedBadge: {
-    flexDirection: "row",
     alignItems: "center",
-    backgroundColor: PRIMARY_GREEN,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 4,
-    gap: 3,
-    flexShrink: 0,
   },
-  verifiedText: { fontSize: 10, color: "#fff", fontWeight: "600" },
+  imageModalCloseText: { color: "#fff", fontSize: 18, fontWeight: "bold" },
+  imageModalCounter: {
+    position: "absolute",
+    top: 58,
+    left: 0,
+    right: 0,
+    textAlign: "center",
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
+    zIndex: 10,
+  },
+  imageModalPage: {
+    width: SCREEN_WIDTH,
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  imageModalFull: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_WIDTH * 1.2,
+  },
 });

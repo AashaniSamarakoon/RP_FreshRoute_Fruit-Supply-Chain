@@ -1,3 +1,4 @@
+import api from "@/services/api";
 import { supabase } from "@/utils/supabaseClient";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -56,6 +57,25 @@ export default function Login() {
       const userRole = (
         (user.user_metadata?.role as string) || "buyer"
       ).toLowerCase() as Role;
+
+      // Cache the onboarding flag so _layout.tsx doesn't redirect back to
+      // onboarding on the next app launch when AsyncStorage is cold.
+      try {
+        const resp: any = await api.get("/api/auth/me");
+        const serverOnboarded =
+          resp?.isOnboarded ||
+          resp?.is_onboarded ||
+          resp?.profile?.is_onboarded ||
+          resp?.profile?.isOnboarded;
+        if (serverOnboarded) {
+          await AsyncStorage.setItem("onboarded", "true");
+        } else {
+          await AsyncStorage.removeItem("onboarded");
+        }
+      } catch {
+        // If we can't reach the server just leave the flag as-is
+      }
+
       const route = getDashboardRoute(userRole);
       router.replace(route as any);
     } catch (err: any) {

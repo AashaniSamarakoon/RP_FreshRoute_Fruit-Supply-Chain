@@ -503,8 +503,6 @@ const styles = StyleSheet.create({
   // --- Custom Header Styles ---
   customHeader: {
     backgroundColor: "#2f855a",
-    paddingTop:
-      Platform.OS === "android" ? (StatusBar.currentHeight || 40) + 10 : 50,
     paddingBottom: 15,
     paddingHorizontal: 20,
     flexDirection: "row",
