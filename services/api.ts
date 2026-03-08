@@ -39,6 +39,15 @@ async function fetchWithAuth(input: RequestInfo, init: RequestInit = {}) {
     console.log("[api] request", input, init.method, init.body);
   }
 
+  // debug: show headers (mask token) when verbose logging enabled
+  if (process.env.NODE_ENV !== 'production') {
+    const loggedHeaders = { ...headers } as any;
+    if (loggedHeaders.Authorization) {
+      loggedHeaders.Authorization = loggedHeaders.Authorization.replace(/Bearer\s+(.{4}).+/, 'Bearer $1…');
+    }
+    console.log('[api] fetch headers', loggedHeaders);
+  }
+
   let response;
   try {
     response = await fetch(input, { ...init, headers });
@@ -84,6 +93,11 @@ const api = {
   put: (path: string, body: any) =>
     fetchWithAuth(buildUrl(path), {
       method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  patch: (path: string, body: any) =>
+    fetchWithAuth(buildUrl(path), {
+      method: "PATCH",
       body: JSON.stringify(body),
     }),
   del: (path: string) => fetchWithAuth(buildUrl(path), { method: "DELETE" }),

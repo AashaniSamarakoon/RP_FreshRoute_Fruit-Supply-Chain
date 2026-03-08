@@ -1,17 +1,7 @@
 import api from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import {
-  Calendar,
-  CheckCircle2,
-  ChevronRight,
-  Image as ImageIcon,
-  MapPin,
-  PackageOpen,
-  ShieldCheck,
-  Sprout,
-  XCircle
-} from "lucide-react-native";
+import { Sprout } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -29,6 +19,9 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "../../../components/Header";
 import { PillTabBar } from "../../../components/ui/PillTabBar";
+
+import HarvestCard from "../components/HarvestCard";
+import ProposalCard from "../components/ProposalCard";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -55,7 +48,7 @@ interface Harvest {
   status: string;
   created_at: string;
   price_per_kg: number;
-  image_url?: string[] | string;
+  image_url?: any;
 }
 
 interface ProposalOrder {
@@ -66,7 +59,7 @@ interface ProposalOrder {
   fruit_type: string;
   required_date: string;
   delivery_location: string;
-  status?: string; // Maps to the global order status (e.g. AWAITING_PAYMENT, AUTHORIZED_PAYMENT)
+  status?: string; 
 }
 
 interface Proposal {
@@ -89,6 +82,25 @@ interface Proposal {
 
 type TabKey = "harvests" | "pending" | "payment_due" | "processing" | "completed" | "rejected";
 
+// ─── Helper: Safely Parse Image Arrays ────────────────────────────────────────
+const parseImageUrls = (rawImage: any): string[] => {
+  if (!rawImage) return [];
+  try {
+    if (typeof rawImage === 'string') {
+      if (rawImage.startsWith('[')) {
+        return JSON.parse(rawImage);
+      }
+      return [rawImage];
+    }
+    if (Array.isArray(rawImage)) {
+      return rawImage.flat(Infinity).filter(Boolean);
+    }
+  } catch (e) {
+    console.warn("Failed to parse image URLs", e);
+  }
+  return [];
+};
+
 // ─── Lookup maps ──────────────────────────────────────────────────────────────
 
 type FruitMeta = { emoji: string; bg: string };
@@ -104,12 +116,17 @@ const getFruitMeta = (name: string): FruitMeta => {
 };
 
 type StatusMeta = { label: string; color: string; bg: string };
-const HARVEST_STATUS: Record<string, StatusMeta> = {
-  OPEN:     { label: "Open",     color: "#B45309", bg: "#FEF3C7" },
-  RESERVED: { label: "Reserved", color: "#0F766E", bg: "#CCFBF1" },
-  MATCHED:  { label: "Matched",  color: "#166534", bg: "#BBF7D0" },
+
+const ORDER_STATUS_META: Record<string, StatusMeta> = {
+  AWAITING_PAYMENT: { label: "Payment Due", color: "#BE123C", bg: "#FFE4E6" },
+  PACKING: { label: "Packing", color: "#92400E", bg: "#FEF3C7" },
+  READY_FOR_PICKUP: { label: "Ready", color: "#065F46", bg: "#D1FAE5" },
+  IN_TRANSIT: { label: "In Transit", color: "#1D4ED8", bg: "#DBEAFE" },
+  DELIVERED: { label: "Delivered", color: "#166534", bg: "#BBF7D0" },
+  COMPLETED: { label: "Completed", color: "#166534", bg: "#BBF7D0" },
+  AUTHORIZED_PAYMENT: { label: "Authorized", color: "#B45309", bg: "#FEF3C7" },
+  PICKED_UP: { label: "Picked Up", color: "#4F46E5", bg: "#E0E7FF" },
 };
-const DEFAULT_STATUS = HARVEST_STATUS.OPEN;
 
 const TAB_CONFIG: { key: TabKey; label: string }[] = [
   { key: "harvests",    label: "My Harvests" },
@@ -121,17 +138,39 @@ const TAB_CONFIG: { key: TabKey; label: string }[] = [
 ];
 
 const getProposalTabKey = (p: Proposal): TabKey | null => {
-  if (p.status === "PENDING_FARMER" || p.status === "PENDING_BUYER") return "pending";
-  if (p.status === "REJECTED" || p.status === "CANCELLED" || p.status === "EXPIRED") return "rejected";
-  if (p.status === "ACCEPTED") {
-    const os = p.order?.status;
-    if (os === "AWAITING_PAYMENT") return "payment_due";
-    if (os === "COMPLETED" || os === "DELIVERED") return "completed";
-    return "processing"; // Fallback for AUTHORIZED_PAYMENT, PACKING, IN_TRANSIT, etc.
+  const os = p.order?.status;
+
+  // 1. Check if rejected/cancelled at either the proposal level OR the active order level
+  if (
+    p.status === "REJECTED" || 
+    p.status === "CANCELLED" || 
+    p.status === "EXPIRED" || 
+    os === "REJECTED" || 
+    os === "CANCELLED"
+  ) {
+    return "rejected";
   }
+
+  // 2. Pending Proposals
+  if (p.status === "PENDING_FARMER" || p.status === "PENDING_BUYER") {
+    return "pending";
+  }
+
+  // 3. Accepted Deals / Active Orders
+  if (p.status === "ACCEPTED") {
+    if (os === "AWAITING_PAYMENT") return "payment_due";
+    
+    // Treat PICKED_UP (and any final states) as "Completed" for the Farmer
+    if (os === "PICKED_UP") {
+      return "completed";
+    }
+    
+    // Everything else (AUTHORIZED_PAYMENT, PACKING, READY_FOR_PICKUP) goes to Processing
+    return "processing"; 
+  }
+  
   return null;
 };
-
 // ─── Custom hook ──────────────────────────────────────────────────────────────
 
 function useOrdersData() {
@@ -156,11 +195,63 @@ function useOrdersData() {
       const stocks: Harvest[] = Array.isArray(harvestRes)
         ? harvestRes
         : (harvestRes?.stocks ?? harvestRes?.data ?? []);
-      setHarvests(stocks);
+      
+      const activeStocks = stocks.filter(s => s.status !== "MATCHED");
+      setHarvests(activeStocks);
 
       try {
         const proposalRes = await api.get("/api/farmer/proposals");
-        setProposals(proposalRes?.proposals ?? []);
+        let ordersRes: any = null;
+        try {
+          ordersRes = await api.get("/api/farmer/orders");
+        } catch (err) {
+          ordersRes = null;
+        }
+
+        const ordersArr: any[] = Array.isArray(ordersRes)
+          ? ordersRes
+          : (ordersRes?.orders ?? ordersRes ?? []);
+        
+        const ordersMap: Record<string, any> = {};
+        ordersArr.forEach((o: any) => { if (o && o.id) ordersMap[String(o.id)] = o; });
+
+        const rawProposals: Proposal[] = proposalRes?.proposals ?? [];
+        
+        const mergedProposals = rawProposals.map((p: Proposal) => {
+          const orderFromApi = ordersMap[String(p.order_id)];
+          const mergedOrder = {
+            ...(p.order || {}),
+            status: orderFromApi?.status ?? p.order?.status,
+          };
+          return { ...p, order: mergedOrder } as Proposal;
+        });
+
+        const existingProposalOrderIds = new Set(mergedProposals.map(p => String(p.order_id)));
+        
+        const syntheticProposalsFromOrders = ordersArr
+          .filter(o => !existingProposalOrderIds.has(String(o.id)))
+          .map((o: any) => ({
+            id: `syn_${o.id}`,
+            order_id: o.id,
+            stock_id: o.harvest_id || "",
+            quantity_proposed: o.quantity,
+            status: "ACCEPTED", 
+            expires_at: o.created_at,
+            created_at: o.created_at,
+            pricing: o.pricing || null,
+            order: {
+              buyer: o.buyer || { id: o.buyer_id, user: { first_name: "Buyer", last_name: "", email: "" }, user_id: o.buyer_id, company_name: "Verified Buyer" },
+              grade: o.grade,
+              variant: o.variant,
+              quantity: o.quantity,
+              fruit_type: o.fruit_type,
+              required_date: o.required_date,
+              delivery_location: o.delivery_location,
+              status: o.status,
+            }
+          } as Proposal));
+
+        setProposals([...mergedProposals, ...syntheticProposalsFromOrders]);
       } catch {
         setProposals([]);
       }
@@ -179,22 +270,19 @@ function useOrdersData() {
     setProcessing(id, true);
     try {
       await api.post(`/api/farmer/proposals/${id}/accept`, {});
-      setProposals((prev) =>
-        prev.map((p) => (p.id === id ? { ...p, status: "ACCEPTED" as const } : p)),
-      );
-      Alert.alert("Success", "Proposal accepted successfully!");
+      await load(true); 
+      Alert.alert("Success", "Proposal accepted! Awaiting buyer payment.");
     } catch (err) {
       Alert.alert("Error", err instanceof Error ? err.message : "Failed to accept proposal");
     } finally {
       setProcessing(id, false);
     }
-  }, []);
+  }, [load]);
 
   const rejectProposal = useCallback(async (id: string) => {
     setProcessing(id, true);
     try {
       await api.post(`/api/farmer/proposals/${id}/reject`, {});
-      // Instead of deleting, we now update the status so it moves to the "Rejected" tab
       setProposals((prev) => 
         prev.map((p) => (p.id === id ? { ...p, status: "REJECTED" as const } : p))
       );
@@ -205,6 +293,31 @@ function useOrdersData() {
       setProcessing(id, false);
     }
   }, []);
+
+  // ─── NEW RESTORED: Status Transition APIs ───
+  const startPacking = useCallback(async (orderId: string) => {
+    setProcessing(orderId, true);
+    try {
+      await api.patch(`/api/farmer/orders/${orderId}/packing`, {});
+      await load(true);
+    } catch (err: any) {
+      Alert.alert("Error", err?.message || "Failed to update status");
+    } finally {
+      setProcessing(orderId, false);
+    }
+  }, [load]);
+
+  const markReady = useCallback(async (orderId: string) => {
+    setProcessing(orderId, true);
+    try {
+      await api.patch(`/api/farmer/orders/${orderId}/ready`, {});
+      await load(true);
+    } catch (err: any) {
+      Alert.alert("Error", err?.message || "Failed to update status");
+    } finally {
+      setProcessing(orderId, false);
+    }
+  }, [load]);
 
   const setProcessing = (id: string, on: boolean) =>
     setProcessingIds((prev) => {
@@ -224,57 +337,47 @@ function useOrdersData() {
     refresh,
     acceptProposal,
     rejectProposal,
+    startPacking, // Restored!
+    markReady,    // Restored!
   };
 }
 
-// ─── Micro-components ────────────────────────────────────────────────────────
+// ─── ActiveOrderCard (Handles Statuses and Footer Buttons) ────────────────────
 
-const MetricChip = React.memo(({
-  icon,
-  label,
-}: {
-  icon: React.ComponentProps<typeof Ionicons>["name"];
-  label: string;
-}) => (
-  <View style={styles.metricChip}>
-    <Ionicons name={icon} size={12} color="#6B7280" />
-    <Text style={styles.metricText}>{label}</Text>
-  </View>
-));
-
-// ─── HarvestCard ──────────────────────────────────────────────────────────────
-
-const HarvestCard = React.memo(({
+const ActiveOrderCard = React.memo(({
+  proposal,
   harvest,
-  proposals,
+  processing,
   onPress,
   onImagePress,
+  onStartPacking,
+  onMarkReady,
 }: {
-  harvest: Harvest;
-  proposals: Proposal[];
+  proposal: Proposal;
+  harvest?: Harvest;
+  processing: boolean;
   onPress: () => void;
   onImagePress: (imageUrls: string[]) => void;
+  onStartPacking: () => void;
+  onMarkReady: () => void;
 }) => {
-  const fruit = getFruitMeta(harvest.fruit_type);
-  const statusMeta = HARVEST_STATUS[harvest.status] ?? DEFAULT_STATUS;
-  const pendingCount = useMemo(
-    () => proposals.filter((p) => p.status === "PENDING_FARMER").length,
-    [proposals],
-  );
+  const fruit_type = proposal.order?.fruit_type || harvest?.fruit_type || "Product";
+  const variant = proposal.order?.variant || harvest?.variant || "";
+  const grade = proposal.order?.grade || harvest?.grade || "";
+  const quantity = proposal.order?.quantity || proposal.quantity_proposed;
+  const status = proposal.order?.status || proposal.status;
+  const reqDate = proposal.order?.required_date || proposal.created_at;
 
-  const images = Array.isArray(harvest.image_url) 
-    ? harvest.image_url 
-    : (harvest.image_url ? [harvest.image_url] : []);
+  const fruit = getFruitMeta(fruit_type);
+  const statusMeta = ORDER_STATUS_META[status] || { label: status.replace(/_/g, ' '), color: "#4B5563", bg: "#F3F4F6" };
+  
+  const images = parseImageUrls(harvest?.image_url);
+  const buyerName = proposal.order?.buyer?.company_name || proposal.order?.buyer?.user?.first_name || "Verified Buyer";
 
   return (
-    <TouchableOpacity style={styles.card} activeOpacity={0.85} onPress={onPress}>
-      {pendingCount > 0 && (
-        <View style={styles.cardCountBadge}>
-          <Text style={styles.cardCountBadgeText}>{pendingCount}</Text>
-        </View>
-      )}
-      
-      <View style={styles.cardStretchContainer}> 
+    <View style={styles.card}>
+      {/* Top Section navigates to Order Details */}
+      <TouchableOpacity style={styles.cardStretchContainer} activeOpacity={0.85} onPress={onPress}> 
         <TouchableOpacity 
           style={styles.imageWrapper} 
           activeOpacity={0.8}
@@ -286,7 +389,7 @@ const HarvestCard = React.memo(({
               <Image source={{ uri: images[0] }} style={styles.productImage} />
               {images.length > 1 && (
                 <View style={styles.imageCountBadge}>
-                  <ImageIcon size={10} color="#fff" style={{ marginRight: 2 }} />
+                  <Ionicons name="image-outline" size={10} color="#fff" style={{ marginRight: 2 }} />
                   <Text style={styles.imageCountText}>+{images.length - 1}</Text>
                 </View>
               )}
@@ -301,20 +404,28 @@ const HarvestCard = React.memo(({
         <View style={styles.cardRightColumn}>
           <View style={styles.cardBody}>
             <View style={styles.titleRow}>
-              <Text style={styles.cardTitle}>{harvest.fruit_type}</Text>
+              <Text style={styles.cardTitle}>{fruit_type}</Text>
               <View style={[styles.statusPill, { backgroundColor: statusMeta.bg }]}>
                 <Text style={[styles.statusLabel, { color: statusMeta.color }]}>
                   {statusMeta.label}
                 </Text>
               </View>
             </View>
-            <Text style={styles.cardSubtitle}>{harvest.variant} · Grade {harvest.grade}</Text>
+            <Text style={styles.cardSubtitle}>{variant} · Grade {grade}</Text>
             <View style={styles.metricsRow}>
-              <MetricChip icon="scale-outline" label={`${harvest.quantity} kg`} />
-              <MetricChip
-                icon="calendar-outline"
-                label={formatDate(harvest.estimated_harvest_date, FULL_DATE_FMT)}
-              />
+              <View style={styles.metricChip}>
+                <Ionicons name="scale-outline" size={12} color="#6B7280" />
+                <Text style={styles.metricText}>{quantity} kg</Text>
+              </View>
+              <View style={styles.metricChip}>
+                <Ionicons name="calendar-outline" size={12} color="#6B7280" />
+                <Text style={styles.metricText}>{formatDate(reqDate, FULL_DATE_FMT)}</Text>
+              </View>
+            </View>
+            
+            <View style={styles.buyerInfoRow}>
+              <Ionicons name="person-circle-outline" size={14} color="#6B7280" />
+              <Text style={styles.buyerInfoText} numberOfLines={1}>{buyerName}</Text>
             </View>
           </View>
 
@@ -322,166 +433,33 @@ const HarvestCard = React.memo(({
             <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
           </View>
         </View>
-      </View>
-    </TouchableOpacity>
-  );
-});
-
-// ─── StandaloneProposalCard ───────────────────────────────────────────────────
-
-const StandaloneProposalCard = React.memo(({
-  proposal,
-  processing,
-  onAccept,
-  onReject,
-  onViewProfile,
-}: {
-  proposal: Proposal;
-  processing: boolean;
-  onAccept: () => void;
-  onReject: () => void;
-  onViewProfile: () => void;
-}) => {
-  const buyerName = proposal.order?.buyer?.company_name || proposal.order?.buyer?.user?.first_name || "Verified Buyer";
-
-  return (
-    <View style={styles.card}>
-      {/* --- Card Header (CRM Style) --- */}
-      <TouchableOpacity
-        style={styles.proposalHeader}
-        activeOpacity={0.7}
-        onPress={onViewProfile}
-      >
-        <View style={styles.headerLeft}>
-          <View style={styles.buyerAvatar}>
-            <Text style={styles.buyerAvatarText}>
-              {buyerName.charAt(0).toUpperCase()}
-            </Text>
-            <View style={styles.verifiedBadgeDot}>
-              <ShieldCheck size={10} color="#FFFFFF" />
-            </View>
-          </View>
-          
-          <View style={styles.buyerInfo}>
-            <Text style={styles.buyerName}>{buyerName}</Text>
-            <View style={styles.locationRow}>
-              <MapPin size={12} color="#6B7280" />
-              <Text style={styles.locationText} numberOfLines={1}>
-                {proposal.order?.delivery_location || "Location not specified"}
-              </Text>
-            </View>
-          </View>
-        </View>
-        <ChevronRight size={20} color="#D1D5DB" />
       </TouchableOpacity>
 
-      <View style={styles.solidDivider} />
-
-      {/* --- Card Body & Tags --- */}
-      <View style={styles.productInfo}>
-        <Text style={styles.orderTitleText}>
-          {proposal.order?.variant} {proposal.order?.fruit_type} • Grade {proposal.order?.grade}
-        </Text>
-
-        <View style={styles.tagRow}>
-          <View style={styles.yieldTag}>
-            <PackageOpen size={12} color="#059669" style={{ marginRight: 4 }} />
-            <Text style={styles.yieldTagText}>
-              {proposal.quantity_proposed} kg
-            </Text>
-          </View>
-
-          <View style={styles.dateTag}>
-            <Calendar size={12} color="#4B5563" style={{ marginRight: 4 }} />
-            <Text style={styles.dateTagText}>
-              {formatDate(proposal.order?.required_date || new Date().toISOString())}
-            </Text>
-          </View>
-        </View>
-
-        {/* --- Minimalist Farmer Pricing Box --- */}
-        <View style={styles.invoiceBox}>
-          <View style={styles.invoiceRow}>
-            <View>
-              <Text style={styles.invoiceTotalLabel}>Net Earnings</Text>
-              <Text style={styles.invoiceSubLabel}>
-                Net of platform fees
-              </Text>
-            </View>
-            <Text style={styles.invoiceTotalValue}>
-              Rs. {(proposal.pricing?.farmerEarning || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      {/* --- Actions & Status --- */}
-      <View style={styles.cardFooter}>
-        {proposal.status === "ACCEPTED" ? (
-          proposal.order?.status === "AWAITING_PAYMENT" ? (
-            <View style={[styles.statusWarning, { backgroundColor: "#FFF1F2", borderColor: "#FECDD3" }]}>
-              <Ionicons name="wallet" size={16} color="#E11D48" />
-              <Text style={[styles.statusWarningText, { color: "#BE123C" }]}>Awaiting Buyer Payment</Text>
-            </View>
-          ) : proposal.order?.status === "COMPLETED" || proposal.order?.status === "DELIVERED" ? (
-            <View style={styles.statusSuccess}>
-              <CheckCircle2 size={16} color={PRIMARY_GREEN} />
-              <Text style={styles.statusSuccessText}>Order Completed</Text>
-            </View>
-          ) : (
-            <View style={[styles.statusWarning, { backgroundColor: "#F0FDFA", borderColor: "#CCFBF1" }]}>
-              <Ionicons name="cube" size={16} color="#0D9488" />
-              <Text style={[styles.statusWarningText, { color: "#0F766E" }]}>Processing Delivery</Text>
-            </View>
-          )
-        ) : proposal.status === "PENDING_FARMER" ? (
-          <View style={styles.actionsRow}>
-            <TouchableOpacity
-              style={[styles.actionBtn, styles.rejectBtn]}
-              onPress={onReject}
-              disabled={processing}
-              activeOpacity={0.8}
-            >
-              {processing ? (
-                <ActivityIndicator size="small" color={DANGER_RED} />
-              ) : (
-                <Text style={styles.rejectBtnText}>Decline</Text>
-              )}
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[styles.actionBtn, styles.acceptBtn]}
-              onPress={onAccept}
-              disabled={processing}
-              activeOpacity={0.8}
-            >
-              {processing ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
+      {/* Conditional Action Buttons at the bottom */}
+      {(status === "AUTHORIZED_PAYMENT" || status === "PACKING") && (
+        <View style={styles.activeOrderFooter}>
+          {status === "AUTHORIZED_PAYMENT" && (
+            <TouchableOpacity style={styles.fullWidthBtn} onPress={onStartPacking} disabled={processing}>
+              {processing ? <ActivityIndicator color="#fff" /> : (
                 <>
-                  <CheckCircle2 size={16} color="#fff" />
-                  <Text style={styles.acceptBtnText}>Accept Deal</Text>
+                  <Ionicons name="cube-outline" size={18} color="#fff" />
+                  <Text style={styles.fullWidthBtnText}>Start Packing</Text>
                 </>
               )}
             </TouchableOpacity>
-          </View>
-        ) : proposal.status === "EXPIRED" ? (
-          <View style={styles.statusExpired}>
-            <Ionicons name="time-outline" size={16} color="#6B7280" />
-            <Text style={styles.statusExpiredText}>Proposal Expired</Text>
-          </View>
-        ) : proposal.status === "CANCELLED" ? (
-          <View style={styles.statusExpired}>
-            <XCircle size={16} color="#6B7280" />
-            <Text style={styles.statusExpiredText}>Proposal Cancelled</Text>
-          </View>
-        ) : (
-          <View style={styles.statusError}>
-            <XCircle size={16} color={DANGER_RED} />
-            <Text style={styles.statusErrorText}>Proposal Declined</Text>
-          </View>
-        )}
-      </View>
+          )}
+          {status === "PACKING" && (
+            <TouchableOpacity style={styles.fullWidthBtn} onPress={onMarkReady} disabled={processing}>
+              {processing ? <ActivityIndicator color="#fff" /> : (
+                <>
+                  <Ionicons name="checkmark-done-outline" size={18} color="#fff" />
+                  <Text style={styles.fullWidthBtnText}>Mark Ready for Pickup</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
     </View>
   );
 });
@@ -510,18 +488,14 @@ export default function OrdersTab() {
   const router = useRouter();
   const {
     harvests, proposals, loading, refreshing, error, processingIds,
-    load, refresh, acceptProposal, rejectProposal,
+    load, refresh, acceptProposal, rejectProposal, startPacking, markReady
   } = useOrdersData();
   
   const [activeTab, setActiveTab] = useState<TabKey>("harvests");
   
-  // Gallery Modal State
   const [imageModalVisible, setImageModalVisible] = useState(false);
   const [currentImages, setCurrentImages] = useState<string[]>([]);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [matchedModalVisible, setMatchedModalVisible] = useState(false);
-  const [matchedProposals, setMatchedProposals] = useState<Proposal[]>([]);
-  const [selectedHarvest, setSelectedHarvest] = useState<Harvest | null>(null);
 
   const handleImagePress = useCallback((imageUrls: string[]) => {
     setCurrentImages(imageUrls);
@@ -531,7 +505,6 @@ export default function OrdersTab() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  // Automatically count tabs dynamically based on the proposal status logic
   const tabCount = useMemo(() => {
     const counts: Record<TabKey, number> = {
       harvests: harvests.length,
@@ -550,7 +523,6 @@ export default function OrdersTab() {
     return counts;
   }, [harvests, proposals]);
 
-  // Only render tabs that have a count > 0 (or the core My Harvests tab)
   const tabData = useMemo(() => {
     return TAB_CONFIG.map((t) => ({
       ...t,
@@ -558,8 +530,6 @@ export default function OrdersTab() {
     })).filter((t) => t.key === "harvests" || t.count > 0);
   }, [tabCount]);
 
-  // Smart Fallback: If the user empties a tab (like declining the last pending item),
-  // they are automatically navigated back to the My Harvests tab so they don't get stuck on an empty screen.
   useEffect(() => {
     if (!tabData.some((t) => t.key === activeTab)) {
       setActiveTab("harvests");
@@ -597,40 +567,73 @@ export default function OrdersTab() {
     });
   }, [router]);
 
-  const openMatchedModal = useCallback((harvest: Harvest) => {
-    setSelectedHarvest(harvest);
-    setMatchedProposals(proposalsByStock[harvest.id] ?? []);
-    setMatchedModalVisible(true);
-  }, [proposalsByStock]);
-
   const renderHarvest = useCallback(
-    ({ item }: { item: Harvest }) => (
-      <HarvestCard
-        harvest={item}
-        proposals={proposalsByStock[item.id] ?? []}
-        onPress={() => {
-          if (item.status === 'MATCHED') openMatchedModal(item);
-          else handleHarvestPress(item);
-        }}
-        onImagePress={handleImagePress}
-      />
-    ),
-    [proposalsByStock, handleHarvestPress, handleImagePress, openMatchedModal],
+    ({ item }: { item: Harvest }) => {
+      return (
+        <HarvestCard
+          harvest={item}
+          proposals={proposalsByStock[item.id] ?? []}
+          onPress={() => handleHarvestPress(item)}
+          onImagePress={handleImagePress}
+        />
+      );
+    },
+    [proposalsByStock, handleHarvestPress, handleImagePress],
   );
 
-  const renderProposal = useCallback(
-    ({ item }: { item: Proposal }) => (
-      <StandaloneProposalCard
-        proposal={item}
-        processing={processingIds.has(item.id)}
-        onAccept={() => acceptProposal(item.id)}
-        onReject={() => rejectProposal(item.id)}
-        onViewProfile={() => handleViewProfile(item)}
-      />
-    ),
-    [processingIds, acceptProposal, rejectProposal, handleViewProfile],
-  );
+const renderProposal = useCallback(
+    ({ item }: { item: Proposal }) => {
+      const tabKey = getProposalTabKey(item);
+      const isOrderPhase = tabKey === "payment_due" || tabKey === "processing" || tabKey === "completed";
 
+      const handleCardPress = () => {
+        if (isOrderPhase && item.order_id) {
+          router.push(`/buyer/screens/OrderDetailScreen?orderId=${encodeURIComponent(String(item.order_id))}`);
+        } else {
+          const harvestToPass = harvests.find(h => h.id === item.stock_id) || {
+            id: item.stock_id,
+            fruit_type: item.order?.fruit_type || "",
+            variant: item.order?.variant || "",
+            grade: item.order?.grade || "",
+            quantity: item.order?.quantity || item.quantity_proposed,
+            estimated_harvest_date: item.order?.required_date || "",
+          } as Harvest;
+          
+          handleHarvestPress(harvestToPass);
+        }
+      };
+
+      if (isOrderPhase) {
+         // Using the inline ActiveOrderCard handles Orders flawlessly!
+         const harvest = harvests.find(h => h.id === item.stock_id);
+         return (
+           <ActiveOrderCard
+             proposal={item}
+             harvest={harvest}
+             processing={processingIds.has(String(item.order_id))}
+             onPress={handleCardPress}
+             onImagePress={handleImagePress}
+             onStartPacking={() => startPacking(String(item.order_id))}
+             onMarkReady={() => markReady(String(item.order_id))}
+           />
+         );
+      }
+
+      return (
+        <TouchableOpacity activeOpacity={0.95} onPress={handleCardPress}>
+          <ProposalCard
+            proposal={item}
+            processing={processingIds.has(item.id)}
+            onAccept={() => acceptProposal(item.id)}
+            onReject={() => rejectProposal(item.id)}
+            onViewProfile={() => handleViewProfile(item)}
+          />
+        </TouchableOpacity>
+      );
+    },
+    [processingIds, acceptProposal, rejectProposal, handleViewProfile, router, harvests, handleImagePress, handleHarvestPress, startPacking, markReady],
+  );
+  
   const refreshControl = (
     <RefreshControl
       refreshing={refreshing}
@@ -685,7 +688,6 @@ export default function OrdersTab() {
       );
     }
 
-    // Filter proposals based on active new tab
     const filteredProposals = proposals.filter((p) => getProposalTabKey(p) === activeTab);
 
     return (
@@ -699,8 +701,8 @@ export default function OrdersTab() {
         ListEmptyComponent={
           <EmptyState
             icon={<Ionicons name="receipt-outline" size={36} color="#9CA3AF" />}
-            title="No proposals found"
-            subtitle="You don't have any proposals matching this status."
+            title="No orders found"
+            subtitle="You don't have any orders matching this status."
           />
         }
       />
@@ -713,7 +715,6 @@ export default function OrdersTab() {
       <PillTabBar tabs={tabData} activeKey={activeTab} onPress={setActiveTab} />
       {renderContent()}
 
-      {/* Swipeable Image Gallery Modal */}
       <Modal visible={imageModalVisible} transparent animationType="fade" onRequestClose={() => setImageModalVisible(false)} statusBarTranslucent>
         <View style={styles.imageModalOverlay}>
           <TouchableOpacity style={styles.imageModalClose} onPress={() => setImageModalVisible(false)} activeOpacity={0.7}>
@@ -739,46 +740,6 @@ export default function OrdersTab() {
           />
         </View>
       </Modal>
-      {/* Matched Harvests Modal — shows summary for farmers when a harvest is MATCHED */}
-      <Modal
-        visible={matchedModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setMatchedModalVisible(false)}
-        statusBarTranslucent
-      >
-        <View style={[styles.imageModalOverlay, { justifyContent: 'flex-end', paddingBottom: 24 }] }>
-          <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 20, maxHeight: '70%' }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={{ fontSize: 18, fontWeight: '800', color: '#111827' }}>Matched Orders</Text>
-              <TouchableOpacity onPress={() => setMatchedModalVisible(false)}>
-                <Text style={{ fontSize: 18, fontWeight: '700', color: '#6B7280' }}>Close</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={{ marginTop: 12 }}>
-              {matchedProposals.length === 0 ? (
-                <View style={{ paddingVertical: 24, alignItems: 'center' }}>
-                  <Text style={{ color: '#6B7280' }}>No matched proposals found for this harvest.</Text>
-                </View>
-              ) : (
-                matchedProposals.map((p) => (
-                  <View key={p.id} style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }}>
-                    <Text style={{ fontSize: 14, fontWeight: '800', color: '#111827' }}>{p.order?.fruit_type} • {p.order?.variant}</Text>
-                    <Text style={{ marginTop: 6, color: '#6B7280' }}>{p.quantity_proposed} kg • {p.order?.delivery_location}</Text>
-                    <Text style={{ marginTop: 6, color: '#111827', fontWeight: '700' }}>{p.pricing?.farmerEarning ? `Net: Rs. ${p.pricing.farmerEarning.toFixed(2)}` : ''}</Text>
-                    <View style={{ marginTop: 10, flexDirection: 'row', gap: 8 }}>
-                      <TouchableOpacity onPress={() => { setMatchedModalVisible(false); handleViewProfile(p); }} style={{ paddingVertical: 8, paddingHorizontal: 12, backgroundColor: PRIMARY_GREEN, borderRadius: 10 }}>
-                        <Text style={{ color: '#fff', fontWeight: '700' }}>View Buyer</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ))
-              )}
-            </View>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -787,7 +748,7 @@ export default function OrdersTab() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F3F4F6" },
-  listContent: { padding: 16, paddingBottom: 80, gap: 14 },
+  listContent: { padding: 16, paddingBottom: 80, gap: 0 },
   emptyContainer: { flexGrow: 1 },
 
   // ── Loading / error / empty state ────────────────────────────────────────
@@ -827,267 +788,90 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 1,
     marginBottom: 16,
-    overflow: "hidden", // Crucial for flush image left border radius
+    overflow: "hidden", 
   },
 
-  // ── NEW: Flush Image Container for HarvestCard ────────────────────────────
+  // ── Flush Image Container for HarvestCard & ActiveOrderCard ────────────
   cardStretchContainer: {
     flexDirection: "row",
-    alignItems: "stretch", // Forces image column to match text column height
+    alignItems: "stretch", 
+    minHeight: 130, // Keeps the card nice and tall
   },
   imageWrapper: {
-    width: 100, // Wide enough to look balanced
-    borderTopLeftRadius: 16,
-    borderBottomLeftRadius: 16,
-    overflow: "hidden",
+    width: 110,
     backgroundColor: "#F9FAFB",
     borderRightWidth: 1,
     borderColor: "#E5E7EB",
-    justifyContent: 'center'
+    overflow: "hidden",
+    position: "relative",
   },
-  productImage: { width: "100%", height: "100%", resizeMode: "cover" },
+  productImage: { 
+    ...StyleSheet.absoluteFillObject, 
+    width: "100%", 
+    height: "100%", 
+    resizeMode: "cover" 
+  },
   imageCountBadge: {
     position: "absolute",
-    bottom: 4,
-    right: 4,
+    bottom: 8,
+    right: 8,
     backgroundColor: "rgba(17, 24, 39, 0.75)",
     borderRadius: 6,
     paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingVertical: 4,
     flexDirection: "row",
     alignItems: "center",
   },
   imageCountText: { color: "#fff", fontSize: 10, fontWeight: "bold" },
-  avatarFallback: { width: "100%", height: "100%", justifyContent: "center", alignItems: "center" },
-  avatarEmoji: { fontSize: 32 },
+  
+  avatarFallback: { 
+    ...StyleSheet.absoluteFillObject, 
+    justifyContent: "center", 
+    alignItems: "center" 
+  },
+  avatarEmoji: { fontSize: 38 },
 
   // Right column of HarvestCard
   cardRightColumn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 16,
+    paddingVertical: 20,
     paddingLeft: 16,
   },
   cardBody: { flex: 1 },
   chevronPadding: { paddingRight: 16 },
 
-  // ── Proposal specific CRM Header ──
-  proposalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 16,
+  // ── Action Footer for ActiveOrderCard ──
+  activeOrderFooter: {
+    padding: 12,
+    borderTopWidth: 1,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#F9FAFB",
   },
-  headerLeft: {
+  fullWidthBtn: {
     flexDirection: "row",
     alignItems: "center",
-    flex: 1,
-  },
-  buyerAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#E8F5E9",
     justifyContent: "center",
-    alignItems: "center",
-    marginRight: 12,
-    borderWidth: 1,
-    borderColor: "#C8E6C9",
-    position: "relative",
-  },
-  buyerAvatarText: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: PRIMARY_GREEN,
-  },
-  verifiedBadgeDot: {
-    position: "absolute",
-    bottom: -2,
-    right: -2,
     backgroundColor: PRIMARY_GREEN,
+    paddingVertical: 12,
     borderRadius: 10,
-    width: 18,
-    height: 18,
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 2,
-    borderColor: "#FFFFFF",
-  },
-  buyerInfo: { flex: 1, paddingRight: 8 },
-  buyerName: { fontSize: 16, fontWeight: "800", color: "#111827", marginBottom: 2 },
-  locationRow: { flexDirection: "row", alignItems: "center", gap: 4 },
-  locationText: { fontSize: 13, color: "#6B7280", fontWeight: "500" },
-
-  solidDivider: {
-    height: 1,
-    backgroundColor: "#F3F4F6",
-    marginBottom: 16,
-  },
-
-  // --- CARD BODY & TAGS ---
-  productInfo: {
-    marginBottom: 16,
-    paddingHorizontal: 16,
-  },
-  tagRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "center",
     gap: 8,
   },
-  yieldTag: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#ECFDF5",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#A7F3D0",
-  },
-  yieldTagText: { 
-    fontSize: 13, 
-    fontWeight: "700", 
-    color: "#059669" 
-  },
-  dateTag: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F3F4F6",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  dateTagText: { 
-    fontSize: 13, 
-    fontWeight: "600", 
-    color: "#4B5563" 
-  },
-  orderTitleText: {
+  fullWidthBtnText: {
+    color: "#FFFFFF",
     fontSize: 14,
     fontWeight: "700",
-    color: "#4B5563",
-    marginBottom: 10,
-    letterSpacing: 0.2,
   },
 
-  // --- INVOICE PRICING BOX ---
-  invoiceBox: {
-    backgroundColor: "#F9FAFB",
-    borderRadius: 8,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: "#F3F4F6",
-    marginTop: 14,
-  },
-  invoiceRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  invoiceTotalLabel: { 
-    fontSize: 13, 
-    color: "#4B5563", 
-    fontWeight: "700" 
-  },
-  invoiceSubLabel: { 
-    fontSize: 11, 
-    color: "#9CA3AF", 
-    fontWeight: "500", 
-    marginTop: 2 
-  },
-  invoiceTotalValue: { 
-    fontSize: 18, 
-    color: PRIMARY_GREEN, 
-    fontWeight: "900" 
-  },
-
-  // --- ACTIONS & STATUS ---
-  cardFooter: { marginTop: 2, paddingHorizontal: 16, paddingBottom: 14 },
-  actionsRow: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  actionBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 12,
-    borderRadius: 10,
-    gap: 8,
-  },
-  acceptBtn: { 
-    backgroundColor: PRIMARY_GREEN,
-    shadowColor: PRIMARY_GREEN,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  acceptBtnText: { color: "#FFFFFF", fontSize: 14, fontWeight: "700", letterSpacing: 0.5 },
-  rejectBtn: { 
-    backgroundColor: "#FFFFFF", 
-    borderWidth: 1,
-    borderColor: "#FECACA",
-  },
-  rejectBtnText: { color: DANGER_RED, fontSize: 14, fontWeight: "700" },
-
-  // Status Badges
-  statusSuccess: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 12,
-    backgroundColor: "#ECFDF5",
-    borderWidth: 1,
-    borderColor: "#A7F3D0",
-    borderRadius: 10,
-    gap: 8,
-  },
-  statusSuccessText: { color: PRIMARY_GREEN, fontSize: 14, fontWeight: "700" },
-  statusWarning: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderRadius: 10,
-    gap: 8,
-  },
-  statusWarningText: { fontSize: 14, fontWeight: "700" },
-  statusError: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 12,
-    backgroundColor: "#FEF2F2",
-    borderWidth: 1,
-    borderColor: "#FECACA",
-    borderRadius: 10,
-    gap: 8,
-  },
-  statusErrorText: { color: DANGER_RED, fontSize: 14, fontWeight: "700" },
-  statusExpired: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 12,
-    backgroundColor: "#F3F4F6",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 10,
-    gap: 8,
-  },
-  statusExpiredText: { color: "#6B7280", fontSize: 14, fontWeight: "700" },
+  // ── Buyer Info additions to ActiveOrderCard ──
+  buyerInfoRow: { flexDirection: "row", alignItems: "center", marginTop: 8 },
+  buyerInfoText: { fontSize: 13, color: "#4B5563", fontWeight: "600", marginLeft: 4, flex: 1 },
 
   // ── Title row / metrics ───────────────────────────────────────────────────
-  titleRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 2, flexWrap: "wrap" },
-  cardTitle: { fontSize: 16, fontWeight: "800", color: "#111827" },
-  cardSubtitle: { fontSize: 13, color: "#6B7280", fontWeight: "500", marginTop: 3, marginBottom: 8 },
+  titleRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" },
+  cardTitle: { fontSize: 17, fontWeight: "800", color: "#111827" },
+  cardSubtitle: { fontSize: 14, color: "#6B7280", fontWeight: "500", marginTop: 4, marginBottom: 10 },
   metricsRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
 
   // ── Status pill ───────────────────────────────────────────────────────────
