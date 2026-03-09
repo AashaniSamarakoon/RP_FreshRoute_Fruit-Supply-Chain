@@ -384,16 +384,37 @@ export default function JobDetails() {
                     }
                   }
                 } else if (type === "PICKUP") {
-                  const { error: updateError } = await supabase
+                  // --- NEW: Update order & get placed_order_id simultaneously ---
+                  const { data: orderData, error: updateError } = await supabase
                     .from("orders")
                     .update({ status: "picked_up" })
-                    .eq("id", order_id);
+                    .eq("id", order_id)
+                    .select("placed_order_id")
+                    .single();
 
                   if (updateError) {
                     console.error(
                       "Failed to update order to picked_up:",
                       updateError,
                     );
+                  } else if (orderData?.placed_order_id) {
+                    // Call the new backend controller
+                    try {
+                      const userStr = await AsyncStorage.getItem("user");
+                      const user = userStr ? JSON.parse(userStr) : null;
+
+                      if (user?.id) {
+                        await api.post("/api/transporter/delivery/pickup", {
+                          placed_order_id: orderData.placed_order_id,
+                          transporter_id: user.id,
+                        });
+                      }
+                    } catch (backendError) {
+                      console.error(
+                        "Failed to trigger backend pickup logic:",
+                        backendError,
+                      );
+                    }
                   }
                 }
 
