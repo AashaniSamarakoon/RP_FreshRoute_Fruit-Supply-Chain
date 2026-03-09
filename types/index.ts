@@ -176,3 +176,14 @@ export interface PaymentSlipUploadResponse {
     flags: string[];
   };
 }
+
+// Complaint Types
+export interface Complaint {
+  id: string;
+  order_id: string;
+  user_name: string;
+  user_complaint: string;
+  status: string;
+  created_at: string;
+  farmer_id: string;
+}

@@ -261,7 +261,7 @@ export default function FarmerDashboard() {
                   <View style={styles.gradeHeader}>
                     <Text style={styles.gradeLabel}>Grade {grade.grade}</Text>
                     <Text style={styles.dailyPriceValue}>
-                      Rs. {grade.dailyPrice.toFixed(2)}
+                      Rs. {grade.dailyPrice.toFixed(2)}/kg
                     </Text>
                   </View>
                   <Text style={styles.priceTypeLabel}>Daily Price</Text>

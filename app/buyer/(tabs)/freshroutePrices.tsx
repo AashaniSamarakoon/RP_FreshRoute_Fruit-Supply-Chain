@@ -292,6 +292,7 @@ export default function FreshroutePricesForBuyer() {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2,
                           })}
+                          /kg
                           <Text style={styles.logisticText}>
                             {" "}
                             + Logistic Cost

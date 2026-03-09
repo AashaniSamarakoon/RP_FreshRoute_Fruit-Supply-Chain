@@ -4,14 +4,14 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { useTranslation } from "../../../hooks/farmer/useTranslation";
 
@@ -313,6 +313,7 @@ export default function DailyPricesScreen() {
                               minimumFractionDigits: 2,
                               maximumFractionDigits: 2,
                             })}
+                            /kg
                           </Text>
                         </View>
 
@@ -322,9 +323,9 @@ export default function DailyPricesScreen() {
                             <Text style={styles.rangeLabel}>Market Range:</Text>
                             <Text style={styles.rangeValue}>
                               Rs.{" "}
-                              {(price.source_min_price || 0).toLocaleString()} -
+                              {(price.source_min_price || 0).toLocaleString()}/kg -
                               Rs.{" "}
-                              {(price.source_max_price || 0).toLocaleString()}
+                              {(price.source_max_price || 0).toLocaleString()}/kg
                             </Text>
                           </View>
                         )}

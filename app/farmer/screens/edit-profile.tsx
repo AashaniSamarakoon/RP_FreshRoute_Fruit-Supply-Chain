@@ -1,11 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
-  Image,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -14,10 +11,9 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useTranslationContext } from '../../../context/TranslationContext';
+import { supabase } from '../../../utils/supabaseClient';
 
 const PRIMARY_GREEN = '#2f855a';
-const LIGHT_GREEN = '#e8f4f0';
 const LIGHT_GRAY = '#f5f5f5';
 
 interface FruitCategory {
@@ -26,151 +22,166 @@ interface FruitCategory {
   emoji: string;
 }
 
+interface ProfileData {
+  id?: string;
+  first_name: string; // Maps to farm_name in database
+  last_name: string; // Not used in farmers table
+  email: string; // Not stored in farmers table
+  phone: string; // Not stored in farmers table
+  selected_fruits: string[]; // Maps to primary_crops in database
+}
+
 const FRUIT_CATEGORIES: FruitCategory[] = [
   { id: 'mango', name: 'Mango', emoji: '🥭' },
   { id: 'banana', name: 'Banana', emoji: '🍌' },
   { id: 'pineapple', name: 'Pineapple', emoji: '🍍' },
 ];
 
-interface ProfileData {
-  name: string;
-  farmName: string;
-  location: string;
-  phone: string;
-  email: string;
-  avatarUri: string;
-  selectedFruits: string[];
-}
-
 export default function EditProfileScreen() {
   const router = useRouter();
-  const { t } = useTranslationContext();
   const [profileData, setProfileData] = useState<ProfileData>({
-    name: '',
-    farmName: '',
-    location: '',
-    phone: '',
+    first_name: '',
+    last_name: '',
     email: '',
-    avatarUri: '',
-    selectedFruits: [],
+    phone: '',
+    selected_fruits: [],
   });
   const [loading, setLoading] = useState(false);
+  const [availableFruits, setAvailableFruits] = useState<FruitCategory[]>(FRUIT_CATEGORIES);
 
   useEffect(() => {
     loadProfileData();
+    loadAvailableFruits();
   }, []);
 
   const loadProfileData = async () => {
     try {
-      const userJson = await AsyncStorage.getItem('user');
-      const profileJson = await AsyncStorage.getItem('profile_data');
-      
-      if (userJson) {
-        const user = JSON.parse(userJson);
-        setProfileData((prev) => ({
-          ...prev,
-          name: user.name || '',
-          email: user.email || '',
-        }));
+      setLoading(true);
+      console.log('Loading profile data...');
+
+      // Check authentication first
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) {
+        console.error('Session error:', sessionError);
+        Alert.alert('Authentication Error', 'Please log in again.');
+        return;
+      }
+      if (!session?.user?.id) {
+        console.log('No authenticated user found');
+        Alert.alert('Authentication Required', 'Please log in to view your profile.');
+        return;
+      }
+      console.log('User authenticated, fetching profile from database...');
+
+      // Fetch profile data directly from Supabase farmers table
+      // Based on onboarding data, the table likely has different column names
+      const { data: profileData, error: profileError } = await supabase
+        .from('farmers')
+        .select('user_id, farm_name, primary_crops')
+        .eq('user_id', session.user.id)
+        .single();
+
+      console.log('Profile query result:', { profileData, profileError });
+
+      if (profileError) {
+        console.error('Failed to fetch profile:', profileError);
+        Alert.alert('Error', 'Failed to load profile data. Please try again.');
+        return;
       }
 
-      if (profileJson) {
-        const profile = JSON.parse(profileJson);
-        setProfileData((prev) => ({
-          ...prev,
-          ...profile,
-        }));
+      if (profileData) {
+        const selectedFruits = Array.isArray(profileData.primary_crops) ? profileData.primary_crops : [];
+        console.log('Setting selected_fruits to:', selectedFruits, 'from primary_crops:', profileData.primary_crops);
+        setProfileData({
+          id: profileData.user_id,
+          first_name: profileData.farm_name || '', // Use farm_name as first_name
+          last_name: '', // No last_name in farmers table
+          email: session.user.email || '', // Get email from auth session
+          phone: session.user.phone || '', // Get phone from auth session
+          selected_fruits: selectedFruits,
+        });
+        console.log('Profile data set successfully');
+      } else {
+        console.log('No profile data found in database');
+        Alert.alert('Profile Not Found', 'Please complete your farmer onboarding first.');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load profile data:', err);
+      Alert.alert('Error', 'Failed to load profile data. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const pickImage = async () => {
-    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  const loadAvailableFruits = async () => {
+    try {
+      console.log('Loading available fruits...');
 
-    if (!permissionResult.granted) {
-      Alert.alert('Permission Required', 'Please grant camera roll permissions to upload a photo.');
-      return;
+      // For now, use the hardcoded fruits. In the future, this could come from an API or database
+      // const { data: fruitsData, error } = await supabase.from('fruits').select('*');
+      // if (error) console.error('Failed to load fruits:', error);
+
+      // Temporary: keep the existing fruit categories
+      setAvailableFruits(FRUIT_CATEGORIES);
+      console.log('Fruits loaded successfully:', FRUIT_CATEGORIES.length, 'fruits');
+    } catch (err: any) {
+      console.error('Failed to load available fruits:', err);
+      // Keep the default fruits as fallback
     }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      setProfileData((prev) => ({
-        ...prev,
-        avatarUri: result.assets[0].uri,
-      }));
-    }
-  };
-
-  const takePicture = async () => {
-    const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-
-    if (!permissionResult.granted) {
-      Alert.alert('Permission Required', 'Please grant camera permissions to take a photo.');
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      setProfileData((prev) => ({
-        ...prev,
-        avatarUri: result.assets[0].uri,
-      }));
-    }
-  };
-
-  const showImagePickerOptions = () => {
-    Alert.alert('Profile Photo', 'Choose an option', [
-      { text: 'Take Photo', onPress: takePicture },
-      { text: 'Choose from Library', onPress: pickImage },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
   };
 
   const toggleFruit = (fruitId: string) => {
+    console.log('toggleFruit called with:', fruitId, 'current selected_fruits:', profileData.selected_fruits);
     setProfileData((prev) => {
-      const selected = prev.selectedFruits.includes(fruitId)
-        ? prev.selectedFruits.filter((id) => id !== fruitId)
-        : [...prev.selectedFruits, fruitId];
-      return { ...prev, selectedFruits: selected };
+      const currentSelected = prev.selected_fruits || [];
+      console.log('prev.selected_fruits:', prev.selected_fruits, 'currentSelected:', currentSelected);
+      const selected = currentSelected.includes(fruitId)
+        ? currentSelected.filter((id) => id !== fruitId)
+        : [...currentSelected, fruitId];
+      return { ...prev, selected_fruits: selected };
     });
   };
 
   const saveProfile = async () => {
-    if (!profileData.name || !profileData.farmName) {
-      Alert.alert('Validation Error', 'Please fill in all required fields.');
+    if (!profileData.first_name) {
+      Alert.alert('Validation Error', 'Please enter your farm name.');
       return;
     }
 
     setLoading(true);
     try {
-      await AsyncStorage.setItem('profile_data', JSON.stringify(profileData));
-      
-      // Update user data
-      const userJson = await AsyncStorage.getItem('user');
-      if (userJson) {
-        const user = JSON.parse(userJson);
-        user.name = profileData.name;
-        user.farmName = profileData.farmName;
-        await AsyncStorage.setItem('user', JSON.stringify(user));
+      console.log('Saving profile data...');
+
+      // Get current session
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.id) {
+        Alert.alert('Authentication Error', 'Please log in again.');
+        return;
       }
 
+      const updateData = {
+        farm_name: profileData.first_name, // Map first_name to farm_name
+        primary_crops: profileData.selected_fruits, // Map selected_fruits to primary_crops
+        updated_at: new Date().toISOString(),
+      };
+
+      // Update the farmers table
+      const { error } = await supabase
+        .from('farmers')
+        .update(updateData)
+        .eq('user_id', session.user.id);
+
+      if (error) {
+        console.error('Failed to save profile:', error);
+        Alert.alert('Error', 'Failed to save profile. Please try again.');
+        return;
+      }
+
+      console.log('Profile saved successfully');
       Alert.alert('Success', 'Profile updated successfully!', [
         { text: 'OK', onPress: () => router.back() },
       ]);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to save profile:', err);
       Alert.alert('Error', 'Failed to save profile. Please try again.');
     } finally {
@@ -195,14 +206,15 @@ export default function EditProfileScreen() {
         </View>
 
         <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-          {/* Profile Photo Section */}
+          {/* Profile Photo Section - Disabled since not stored in farmers table */}
+          {/*
           <View style={styles.photoSection}>
             <TouchableOpacity
               style={styles.avatarContainer}
               onPress={showImagePickerOptions}
             >
-              {profileData.avatarUri ? (
-                <Image source={{ uri: profileData.avatarUri }} style={styles.avatar} />
+              {profileData.avatar_url ? (
+                <Image source={{ uri: profileData.avatar_url }} style={styles.avatar} />
               ) : (
                 <View style={styles.avatarPlaceholder}>
                   <Ionicons name="person" size={40} color="#999" />
@@ -214,25 +226,11 @@ export default function EditProfileScreen() {
             </TouchableOpacity>
             <Text style={styles.photoHint}>Tap to change photo</Text>
           </View>
+          */}
 
           {/* Form Fields */}
           <View style={styles.formSection}>
-            <Text style={styles.sectionTitle}>Personal Information</Text>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>
-                Full Name <Text style={styles.required}>*</Text>
-              </Text>
-              <TextInput
-                style={styles.input}
-                value={profileData.name}
-                onChangeText={(text) =>
-                  setProfileData((prev) => ({ ...prev, name: text }))
-                }
-                placeholder="Enter your full name"
-                placeholderTextColor="#999"
-              />
-            </View>
+            <Text style={styles.sectionTitle}>Farm Information</Text>
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>
@@ -240,9 +238,9 @@ export default function EditProfileScreen() {
               </Text>
               <TextInput
                 style={styles.input}
-                value={profileData.farmName}
+                value={profileData.first_name}
                 onChangeText={(text) =>
-                  setProfileData((prev) => ({ ...prev, farmName: text }))
+                  setProfileData((prev) => ({ ...prev, first_name: text }))
                 }
                 placeholder="Enter your farm name"
                 placeholderTextColor="#999"
@@ -250,46 +248,31 @@ export default function EditProfileScreen() {
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Location</Text>
-              <TextInput
-                style={styles.input}
-                value={profileData.location}
-                onChangeText={(text) =>
-                  setProfileData((prev) => ({ ...prev, location: text }))
-                }
-                placeholder="Enter your farm location"
-                placeholderTextColor="#999"
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Phone Number</Text>
-              <TextInput
-                style={styles.input}
-                value={profileData.phone}
-                onChangeText={(text) =>
-                  setProfileData((prev) => ({ ...prev, phone: text }))
-                }
-                placeholder="Enter your phone number"
-                placeholderTextColor="#999"
-                keyboardType="phone-pad"
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
               <Text style={styles.label}>Email</Text>
               <TextInput
-                style={styles.input}
-                value={profileData.email}
-                onChangeText={(text) =>
-                  setProfileData((prev) => ({ ...prev, email: text }))
-                }
-                placeholder="Enter your email"
-                placeholderTextColor="#999"
-                keyboardType="email-address"
-                autoCapitalize="none"
+                style={[styles.input, styles.disabledInput]}
+                value={profileData.email || 'Not provided'}
                 editable={false}
+                placeholder="Email managed through account settings"
+                placeholderTextColor="#999"
               />
+              <Text style={styles.hintText}>
+                Email is managed through your account settings
+              </Text>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Phone</Text>
+              <TextInput
+                style={[styles.input, styles.disabledInput]}
+                value={profileData.phone || 'Not provided'}
+                editable={false}
+                placeholder="Phone managed through account settings"
+                placeholderTextColor="#999"
+              />
+              <Text style={styles.hintText}>
+                Phone number is managed through your account settings
+              </Text>
             </View>
           </View>
 
@@ -300,7 +283,7 @@ export default function EditProfileScreen() {
               Select the fruits you currently grow on your farm
             </Text>
 
-            {FRUIT_CATEGORIES.map((fruit) => (
+            {availableFruits.map((fruit) => (
               <TouchableOpacity
                 key={fruit.id}
                 style={styles.fruitOption}
@@ -313,11 +296,11 @@ export default function EditProfileScreen() {
                 <View
                   style={[
                     styles.checkbox,
-                    profileData.selectedFruits.includes(fruit.id) &&
+                    (profileData.selected_fruits || []).includes(fruit.id) &&
                       styles.checkboxChecked,
                   ]}
                 >
-                  {profileData.selectedFruits.includes(fruit.id) && (
+                  {(profileData.selected_fruits || []).includes(fruit.id) && (
                     <Ionicons name="checkmark" size={18} color="#fff" />
                   )}
                 </View>
@@ -366,48 +349,6 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
-  },
-  photoSection: {
-    alignItems: 'center',
-    paddingVertical: 32,
-    backgroundColor: LIGHT_GRAY,
-  },
-  avatarContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    overflow: 'hidden',
-    backgroundColor: '#fff',
-    position: 'relative',
-  },
-  avatar: {
-    width: '100%',
-    height: '100%',
-  },
-  avatarPlaceholder: {
-    width: '100%',
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: LIGHT_GRAY,
-  },
-  cameraIcon: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: PRIMARY_GREEN,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 3,
-    borderColor: '#fff',
-  },
-  photoHint: {
-    marginTop: 12,
-    fontSize: 13,
-    color: '#666',
   },
   formSection: {
     paddingHorizontal: 16,
@@ -484,5 +425,15 @@ const styles = StyleSheet.create({
   checkboxChecked: {
     backgroundColor: PRIMARY_GREEN,
     borderColor: PRIMARY_GREEN,
+  },
+  disabledInput: {
+    backgroundColor: '#f5f5f5',
+    color: '#666',
+  },
+  hintText: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 4,
+    fontStyle: 'italic',
   },
 });
