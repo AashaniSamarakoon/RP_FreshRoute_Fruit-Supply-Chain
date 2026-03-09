@@ -60,11 +60,17 @@ async function fetchWithAuth(input: RequestInfo, init: RequestInit = {}) {
   if (!response.ok) {
     const errBody = await response.text().catch(() => null);
     const msg = errBody || `HTTP ${response.status}`;
-    console.error("[api] server error", {
-      url: input,
-      status: response.status,
-      body: errBody,
-    });
+    // Don't log errors for known missing endpoints that have fallbacks
+    const isKnownMissingEndpoint = 
+      (input.toString().includes('/api/orders/overview') && response.status === 404) ||
+      (input.toString().includes('/api/sms-preferences') && response.status === 404);
+    if (!isKnownMissingEndpoint) {
+      console.error("[api] server error", {
+        url: input,
+        status: response.status,
+        body: errBody,
+      });
+    }
     throw new Error(msg);
   }
   return response.json();

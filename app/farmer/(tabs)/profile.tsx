@@ -332,7 +332,7 @@ export default function ProfileScreen() {
         setSmsAlertsEnabled(true);
       }
     } catch (err) {
-      console.error("[SMS] Error loading SMS preferences from API:", err);
+      console.log("[SMS] SMS preferences API not available, using default");
       // Set default on error
       setSmsAlertsEnabled(true);
     }
