@@ -479,6 +479,11 @@ export default function OrderDetailScreen() {
     "PICKED_UP",
   ].includes(order?.status ?? "");
 
+  // Show Add complaint when order is delivered or completed (button lives in fixed panel so it's not covered)
+  const showAddComplaint = ["DELIVERED", "COMPLETED"].includes(
+    order?.status ?? ""
+  );
+
   if (loading && !refreshing) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -1013,6 +1018,25 @@ export default function OrderDetailScreen() {
               </TouchableOpacity>
             </View>
           )}
+
+          {/* Add complaint - in fixed panel so it's never covered by overlay */}
+          {showAddComplaint && (
+            <View style={[styles.actionContainer, { marginTop: primaryAction ? 12 : 0 }]}>
+              <TouchableOpacity
+                style={styles.addComplaintBtn}
+                onPress={() =>
+                  router.push({
+                    pathname: "/buyer/add-complaint" as any,
+                    params: { orderId: order.id },
+                  })
+                }
+                activeOpacity={0.8}
+              >
+                <Ionicons name="warning-outline" size={20} color="#B45309" />
+                <Text style={styles.addComplaintBtnText}>Add complaint</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </View>
 
@@ -1161,7 +1185,7 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#FFFFFF" },
   mainContainer: { flex: 1 },
   scrollView: { flex: 1 },
-  content: { paddingVertical: 16, paddingBottom: 24 },
+  content: { paddingVertical: 16, paddingBottom: 280 },
 
   centerContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
   loadingText: { marginTop: 12, fontSize: 16, color: "#6B7280" },
@@ -1364,6 +1388,23 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
     letterSpacing: 0.1,
+  },
+  addComplaintBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFBEB",
+    paddingVertical: 14,
+    borderRadius: 25,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+  },
+  addComplaintBtnText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#B45309",
   },
 
   modalBg: {

@@ -30,6 +30,7 @@ export default function FruitGrading() {
   const params = useLocalSearchParams();
   const jobId = params.job_id as string;
   const orderId = params.order_id as string;
+  const orderGradeParam = params.order_grade as string | undefined;
   const pickupLat = params.pickup_lat
     ? parseFloat(params.pickup_lat as string)
     : null;
@@ -72,6 +73,7 @@ export default function FruitGrading() {
   const scanAnimation = useRef(new Animated.Value(0)).current;
   const cameraRef = useRef<CameraView>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const verificationResolvedRef = useRef(false);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -91,9 +93,18 @@ export default function FruitGrading() {
         }
         setIsAuthenticated(true);
 
-        // Get farmer's declared grade (mock for now - in real app, fetch from order data)
-        // TODO: Fetch from order data using orderId
-        setFarmerDeclaredGrade("Grade A");
+        // Use order grade from job (passed as order_grade param); normalize to "Grade A" format
+        const raw = orderGradeParam?.trim();
+        let normalized = "Grade A";
+        if (raw && raw.length > 0) {
+          const letter = /^grade\s+/i.test(raw)
+            ? raw.replace(/^grade\s+/i, "").trim().charAt(0).toUpperCase()
+            : raw.charAt(0).toUpperCase();
+          if (letter === "A" || letter === "B" || letter === "C") {
+            normalized = `Grade ${letter}`;
+          }
+        }
+        setFarmerDeclaredGrade(normalized);
 
         // Start location verification if pickup location is provided
         if (pickupLat !== null && pickupLng !== null) {
@@ -110,7 +121,7 @@ export default function FruitGrading() {
       }
     };
     checkAuth();
-  }, [router, pickupLat, pickupLng]);
+  }, [router, pickupLat, pickupLng, orderGradeParam]);
 
   useEffect(() => {
     Animated.spring(trayAnimation, {
@@ -389,9 +400,12 @@ export default function FruitGrading() {
 
     setShowVerifyingPopup(true);
     setIsVerifying(true);
+    verificationResolvedRef.current = false;
 
-    // Set a timeout to prevent infinite waiting (30 seconds max)
+    // Timeout only fires if the API hasn't resolved yet (ML endpoint can be slow on mobile)
+    const TIMEOUT_MS = 60000; // 60 seconds for slow networks / heavy ML
     timeoutRef.current = setTimeout(() => {
+      if (verificationResolvedRef.current) return; // API already returned, ignore
       console.error("⏱️ Verification timeout - taking too long");
       setIsVerifying(false);
       setShowVerifyingPopup(false);
@@ -399,7 +413,7 @@ export default function FruitGrading() {
         "Timeout",
         "Verification is taking too long. Please try again.",
       );
-    }, 30000);
+    }, TIMEOUT_MS);
 
     try {
       const token = await AsyncStorage.getItem("token");
@@ -424,6 +438,7 @@ export default function FruitGrading() {
       // Call the fruit grading API endpoint
       console.log("📤 Number of images:", capturedImages.length);
       const data = await api.postForm(`/api/fruit-grading/predict`, formData);
+      verificationResolvedRef.current = true; // Prevent timeout callback from running
       console.log("✅ Backend Response:", JSON.stringify(data, null, 2));
       console.log("✅ Backend Response:", JSON.stringify(data, null, 2));
       console.log("✅ Predictions count:", data.predictions?.length || 0);
@@ -466,20 +481,23 @@ export default function FruitGrading() {
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       try {
-        // Pass image URIs instead of base64 to avoid storage issues
-        // URIs are small strings (file paths), base64 will be generated when saving
+        // Store large payload in AsyncStorage to avoid URL/params size limit (navigation would fail and skip results screen)
+        const resultsStorageKey = `grading_results_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+        await AsyncStorage.setItem(
+          resultsStorageKey,
+          JSON.stringify({ results, imageUris: capturedImages }),
+        );
+
         const params: Record<string, string> = {
-          results: JSON.stringify(results),
+          resultsStorageKey,
           farmerGrade: farmerDeclaredGrade || "Grade A",
           job_id: jobId || "",
           order_id: orderId || "",
-          imageUris: JSON.stringify(capturedImages), // Pass file URIs instead of base64
         };
 
         console.log("🚀 Navigating to verification results...");
 
-        // Navigate to results page
-        router.push({
+        router.replace({
           pathname: "/transporter/verification-results",
           params,
         });
@@ -491,6 +509,7 @@ export default function FruitGrading() {
         );
       }
     } catch (error) {
+      verificationResolvedRef.current = true;
       console.error("Verification error:", error);
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
