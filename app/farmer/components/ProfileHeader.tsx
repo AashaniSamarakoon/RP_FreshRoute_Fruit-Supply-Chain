@@ -4,6 +4,7 @@ import {
     Image,
     StyleSheet,
     Text,
+    TouchableOpacity,
     View
 } from 'react-native';
 import { useTranslationContext } from '../../../context/TranslationContext';
@@ -17,6 +18,7 @@ interface ProfileHeaderProps {
   farmName: string;
   memberSince: string;
   avatarUri?: string;
+  onEditAvatar?: () => void;
 }
 
 export default function ProfileHeader({
@@ -24,6 +26,7 @@ export default function ProfileHeader({
   farmName,
   memberSince,
   avatarUri,
+  onEditAvatar,
 }: ProfileHeaderProps) {
   const { t } = useTranslationContext();
 
@@ -51,6 +54,11 @@ export default function ProfileHeader({
               <View style={styles.avatarBadge}>
                 <Ionicons name="checkmark-circle" size={16} color="#fff" />
               </View>
+              {onEditAvatar && (
+                <TouchableOpacity style={styles.editAvatarButton} onPress={onEditAvatar}>
+                  <Ionicons name="camera" size={16} color="#fff" />
+                </TouchableOpacity>
+              )}
             </View>
           </View>
 
@@ -62,7 +70,9 @@ export default function ProfileHeader({
               </View>
             </View>
 
-            <Text style={styles.farmName}>{farmName}</Text>
+            {farmName && farmName.trim() !== '' && (
+              <Text style={styles.farmName}>{farmName}</Text>
+            )}
 
             <View style={styles.roleContainer}>
               <View style={styles.roleBadge}>
@@ -176,6 +186,19 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     width: 24,
     height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  editAvatarButton: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    backgroundColor: PRIMARY_GREEN,
+    borderRadius: 16,
+    width: 32,
+    height: 32,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
