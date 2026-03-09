@@ -93,8 +93,8 @@ export default function Index() {
           return;
         }
 
-        // No active Supabase session — send to login
-        router.replace("/login");
+        // No active Supabase session — show intro screens (landing → onboarding-one → onboarding-two) then login
+        router.replace("/landing" as any);
       } catch (e) {
         router.replace("/landing" as any);
       } finally {
