@@ -25,6 +25,8 @@ export default function TransporterLayout() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="job/[id]" />
         <Stack.Screen name="map/[id]" />
+        <Stack.Screen name="fruit-grading" />
+        <Stack.Screen name="verification-results" />
       </Stack>
 
       {/* 4. Conditionally Render */}

@@ -55,7 +55,10 @@ interface OrderInfo {
 }
 
 export default function JobDetails() {
-  const { id } = useLocalSearchParams();
+  const { id, rejected: rejectedOrderIdParam } = useLocalSearchParams<{
+    id: string;
+    rejected?: string;
+  }>();
   const router = useRouter();
 
   const [job, setJob] = useState<any>(null);
@@ -80,7 +83,7 @@ export default function JobDetails() {
 
   useFocusEffect(
     useCallback(() => {
-      const checkVerifiedOrders = async () => {
+      const syncState = async () => {
         try {
           const verifiedOrdersJson = await AsyncStorage.getItem(
             `verified_orders_${id}`,
@@ -92,9 +95,21 @@ export default function JobDetails() {
         } catch (error) {
           console.error("Error checking verified orders:", error);
         }
+        // When returning from verification-results after reject, mark order rejected
+        if (rejectedOrderIdParam) {
+          setRejectedOrders((prev) => new Set(prev).add(rejectedOrderIdParam));
+          setOrdersData((prev) => ({
+            ...prev,
+            [rejectedOrderIdParam]: {
+              ...(prev[rejectedOrderIdParam] || {}),
+              id: rejectedOrderIdParam,
+              status: "rejected",
+            } as OrderInfo,
+          }));
+        }
       };
-      checkVerifiedOrders();
-    }, [id]),
+      syncState();
+    }, [id, rejectedOrderIdParam]),
   );
 
   const reverseGeocodeStops = async (cleanManifest: ManifestItem[]) => {
@@ -226,25 +241,22 @@ export default function JobDetails() {
     ]);
   };
 
-  const handleVerifyQuality = async (orderId: string) => {
-    try {
-      const updatedVerifiedOrders = new Set(verifiedOrders);
-      updatedVerifiedOrders.add(orderId);
-      setVerifiedOrders(updatedVerifiedOrders);
-
-      await AsyncStorage.setItem(
-        `verified_orders_${id}`,
-        JSON.stringify(Array.from(updatedVerifiedOrders)),
-      );
-
-      Alert.alert(
-        "Testing Mode",
-        "Order instantly verified! You can now pickup.",
-      );
-    } catch (error) {
-      console.error("Error saving test verification:", error);
-      Alert.alert("Error", "Could not bypass verification.");
-    }
+  /** Navigate to fruit-grading flow for this pickup order (real verification/grading). */
+  const handleOpenGrading = (stop: ManifestItem) => {
+    if (stop.type !== "PICKUP") return;
+    router.push({
+      pathname: "/transporter/fruit-grading",
+      params: {
+        job_id: String(id),
+        order_id: stop.order_id,
+        ...(stop.lat != null && stop.lng != null
+          ? {
+              pickup_lat: String(stop.lat),
+              pickup_lng: String(stop.lng),
+            }
+          : {}),
+      },
+    });
   };
 
   // const handleAction = (stop: ManifestItem) => {
@@ -796,14 +808,14 @@ export default function JobDetails() {
                           </Text>
                         </View>
                       ) : isPickup && !verifiedOrders.has(stop.order_id) ? (
-                        /* 4. Quality Verification Gate */
+                        /* 4. Quality Verification Gate → opens fruit-grading flow */
                         <TouchableOpacity
                           style={[
                             styles.actionBtn,
                             styles.verifyBtn,
                             !isJobActive && styles.disabledBtn,
                           ]}
-                          onPress={() => handleVerifyQuality(stop.order_id)}
+                          onPress={() => handleOpenGrading(stop)}
                           disabled={!isJobActive}
                         >
                           <Ionicons
