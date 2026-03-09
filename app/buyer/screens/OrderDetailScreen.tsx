@@ -7,7 +7,7 @@ import api from "@/services/api";
 import {
   startPayHerePreapproval
 } from "@/services/payhereService";
-import { FarmerInfo, PlacedOrder, TransporterInfo, HarvestJourney } from "@/types";
+import { FarmerInfo, HarvestJourney, PlacedOrder, TransporterInfo } from "@/types";
 import { formatCurrency, formatDate } from "@/utils/formatters";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
