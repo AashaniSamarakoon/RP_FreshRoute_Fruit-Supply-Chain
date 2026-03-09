@@ -4,24 +4,24 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from "expo-location";
 import {
-  Stack,
-  useFocusEffect,
-  useLocalSearchParams,
-  useRouter,
+    Stack,
+    useFocusEffect,
+    useLocalSearchParams,
+    useRouter,
 } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Linking,
-  Modal,
-  Platform,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Linking,
+    Modal,
+    Platform,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 // --- Types ---
@@ -193,9 +193,9 @@ export default function JobDetails() {
     });
   };
 
-  const updateJobStatus = async (newStatus: "IN_TRANSIT" | "COMPLETED") => {
+  const updateJobStatus = async (newStatus: "PICKED_UP" | "COMPLETED") => {
     const actionText =
-      newStatus === "IN_TRANSIT"
+      newStatus === "PICKED_UP"
         ? "start this job"
         : "mark this job as completed";
 
@@ -225,7 +225,7 @@ export default function JobDetails() {
 
               Alert.alert(
                 "Success",
-                `Job ${newStatus === "IN_TRANSIT" ? "Started" : "Completed"}!`,
+                `Job ${newStatus === "PICKED_UP" ? "Started" : "Completed"}!`,
               );
             } else {
               throw new Error("API did not return a success flag");
@@ -515,7 +515,7 @@ export default function JobDetails() {
       </View>
     );
 
-  const isJobActive = job?.status === "IN_TRANSIT";
+  const isJobActive = job?.status === "PICKED_UP";
   const isJobCompleted = job?.status === "COMPLETED";
 
   return (
@@ -601,7 +601,7 @@ export default function JobDetails() {
                   styles.jobStatusBtn,
                   { backgroundColor: "#2563eb", borderColor: "#1d4ed8" },
                 ]}
-                onPress={() => updateJobStatus("IN_TRANSIT")}
+                onPress={() => updateJobStatus("PICKED_UP")}
               >
                 <Text style={styles.jobStatusText}>Start Job</Text>
               </TouchableOpacity>

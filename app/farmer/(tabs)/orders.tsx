@@ -4,16 +4,16 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { Sprout } from "lucide-react-native";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
-  Dimensions,
-  FlatList,
-  Image,
-  Modal,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Dimensions,
+    FlatList,
+    Image,
+    Modal,
+    RefreshControl,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "../../../components/Header";
@@ -126,7 +126,7 @@ type StatusMeta = { label: string; color: string; bg: string };
 const ORDER_STATUS_META: Record<string, StatusMeta> = {
   AWAITING_PAYMENT: { label: "Payment Due", color: "#BE123C", bg: "#FFE4E6" },
   READY_FOR_PICKUP: { label: "Ready", color: "#065F46", bg: "#D1FAE5" },
-  IN_TRANSIT: { label: "In Transit", color: "#1D4ED8", bg: "#DBEAFE" },
+  PICKED_UP: { label: "In Transit", color: "#1D4ED8", bg: "#DBEAFE" },
   DELIVERED: { label: "Delivered", color: "#166534", bg: "#BBF7D0" },
   COMPLETED: { label: "Completed", color: "#166534", bg: "#BBF7D0" },
   AUTHORIZED_PAYMENT: { label: "Authorized", color: "#B45309", bg: "#FEF3C7" },

@@ -54,7 +54,7 @@ export type OrderStatus =
   | "AWAITING_PAYMENT"
   | "AUTHORIZED_PAYMENT"  // deposit/authorization placed
   | "AUTHORIZED_PAYMENT"
-  | "IN_TRANSIT"
+  | "PICKED_UP"
   | "DELIVERED"
   | "COMPLETED"
   | "CANCELLED";

@@ -46,7 +46,7 @@ const getStatusStyles = (status: string) => {
     case "MATCHED":
       return { bg: "#EEF2FF", text: "#6366F1", label: "Matched" };
     case "AUTHORIZED_PAYMENT":
-    case "IN_TRANSIT":
+    case "PICKED_UP":
       return { bg: "#EFF6FF", text: "#3B82F6", label: "In Transit" };
     case "READY_FOR_PICKUP":
       return { bg: "#EFF6FF", text: "#3B82F6", label: status.replace(/_/g, " ") };
@@ -100,12 +100,12 @@ export default function OrderDetailScreen() {
     if (params.orderId) fetchOrderDetails();
   }, [params.orderId]);
 
-  // Collapse product details accordion once the order moves to IN_TRANSIT or beyond
+  // Collapse product details accordion once the order moves to PICKED_UP or beyond
   useEffect(() => {
     if (!order?.status) return;
     const trackableStatuses = [
       "AUTHORIZED_PAYMENT",
-      "IN_TRANSIT",
+      "PICKED_UP",
       "DELIVERED",
       "COMPLETED",
     ];
@@ -439,7 +439,7 @@ export default function OrderDetailScreen() {
 
           <View style={styles.solidSeparator} />
 
-          {/* Section: Proof of Harvest — visible from IN_TRANSIT onwards */}
+          {/* Section: Proof of Harvest — visible from PICKED_UP onwards */}
           {isOrderTrackable && (
             <>
               <View style={styles.section}>

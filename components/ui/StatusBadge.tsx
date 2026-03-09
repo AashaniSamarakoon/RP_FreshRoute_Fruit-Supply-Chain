@@ -61,7 +61,7 @@ const statusColors: Record<string, StatusConfig> = {
     icon: Package,
     label: "Paid - Pending Delivery",
   },
-  IN_TRANSIT: {
+  PICKED_UP: {
     bg: "#E8EAF6",
     color: "#3F51B5",
     icon: Truck,

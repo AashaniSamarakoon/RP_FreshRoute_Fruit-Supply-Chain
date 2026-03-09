@@ -415,14 +415,14 @@ import BottomSheet, { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Dimensions,
-  Linking,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Dimensions,
+    Linking,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import MapView, { Marker } from "react-native-maps";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -576,7 +576,7 @@ export default function TrackDeliveryScreen() {
 
             let status = "pending";
             if (isDelivered) status = "completed";
-            else if (isPickedUp) status = "in_transit";
+            else if (isPickedUp) status = "PICKED_UP";
 
             const allocatedQty =
               pickupNode.allocated_quantity ||
