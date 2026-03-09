@@ -2,6 +2,7 @@ import { BuyerColors } from "@/constants/theme";
 import React from "react";
 import {
   Dimensions,
+  Image,
   Modal,
   ScrollView,
   StyleSheet,
@@ -18,6 +19,8 @@ interface GradeRequirement {
   grade: "A" | "B" | "C";
   title: string;
   requirements: string[];
+  /** Optional image for this grade (e.g. require() for local asset). */
+  image?: number;
 }
 
 interface FruitGradingGuide {
@@ -34,6 +37,7 @@ const GRADING_GUIDE: FruitGradingGuide[] = [
       {
         grade: "A",
         title: "Grade A",
+        image: require("../../assets/images/grade_A_mango.jpg"),
         requirements: [
           "Premium quality; uniform colour.",
           "Free from blemishes, scars and disease.",
@@ -44,18 +48,20 @@ const GRADING_GUIDE: FruitGradingGuide[] = [
       {
         grade: "B",
         title: "Grade B",
+        image: require("../../assets/images/grade_B_mango.jpg"),
         requirements: [
           "Good quality; minor skin defects allowed.",
           "Minimum 75% maturity; suitable for retail.",
           "May have small / medium surface marks only.",
+          "Minor blemishes acceptable.",
         ],
       },
       {
         grade: "C",
         title: "Grade C",
+        image: require("../../assets/images/grade_C_mango.jpg"),
         requirements: [
           "Standard quality; some defects allowed.",
-          "Minor blemishes acceptable.",
           "Minimum 65% maturity.",
           "Suitable for processing or bulk use.",
           "May have medium / large surface marks only.",
@@ -210,6 +216,16 @@ export default function GradingGuideModal({
                         {g.title}
                       </Text>
                     </View>
+                    {g.image != null ? (
+                      <View style={styles.gradeImageWrap}>
+                        <Image
+                          source={g.image}
+                          style={styles.gradeImage}
+                          resizeMode="cover"
+                          accessibilityLabel={`${g.title} example`}
+                        />
+                      </View>
+                    ) : null}
                     <View style={styles.requirementsList}>
                       {g.requirements.map((req, idx) => (
                         <View key={idx} style={styles.requirementRow}>
@@ -284,6 +300,18 @@ const styles = StyleSheet.create({
     borderColor: "#eee",
     overflow: "hidden",
     backgroundColor: "#fafafa",
+  },
+  gradeImageWrap: {
+    paddingHorizontal: 14,
+    paddingTop: 8,
+    alignItems: "center",
+  },
+  gradeImage: {
+    width: "100%",
+    maxWidth: 280,
+    height: 160,
+    borderRadius: 10,
+    backgroundColor: "#eee",
   },
   gradeBadge: {
     paddingVertical: 10,

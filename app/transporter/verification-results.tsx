@@ -1,4 +1,5 @@
 import api from "@/services/api";
+import { supabase } from "@/utils/supabaseClient";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -30,6 +31,7 @@ export default function VerificationResults() {
   const [isMatch, setIsMatch] = useState<boolean>(false);
   const [hasError, setHasError] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isRejecting, setIsRejecting] = useState<boolean>(false);
   const [jobId, setJobId] = useState<string>("");
   const [orderId, setOrderId] = useState<string>("");
   const [imagesBase64, setImagesBase64] = useState<string[]>([]); // Can contain URIs or base64 strings
@@ -299,6 +301,51 @@ export default function VerificationResults() {
     }
   };
 
+  const handleRejectOrder = () => {
+    if (!orderId || !jobId) return;
+    Alert.alert(
+      "Reject Pickup",
+      "Are you sure you want to reject this pickup? The order will be marked as rejected and you will return to the job.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Reject",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setIsRejecting(true);
+              const { error } = await supabase
+                .from("orders")
+                .update({ status: "rejected" })
+                .eq("id", orderId);
+
+              if (error) {
+                console.error("Supabase reject error:", error);
+                Alert.alert(
+                  "Error",
+                  error.message || "Failed to reject order. Please try again.",
+                );
+                return;
+              }
+              // Navigate back to job details so the order shows as rejected
+              router.replace({
+                pathname: `/transporter/job/${jobId}`,
+                params: { rejected: orderId },
+              });
+            } catch (err: any) {
+              Alert.alert(
+                "Error",
+                err.message || "Failed to reject order. Please try again.",
+              );
+            } finally {
+              setIsRejecting(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
   if (checkingAuth || !isAuthenticated) {
     return (
       <View style={styles.centerContainer}>
@@ -410,11 +457,12 @@ export default function VerificationResults() {
               farmer provided grade ({farmerGrade}).
             </Text>
             <Text style={styles.mismatchSubText}>
-              Please re-verify the fruit quality by capturing images again.
+              Re-capture images to verify again, or reject this pickup.
             </Text>
             <TouchableOpacity
               style={styles.reverifyButton}
               onPress={handleReverify}
+              disabled={isRejecting}
             >
               <Ionicons
                 name="camera-outline"
@@ -423,6 +471,25 @@ export default function VerificationResults() {
                 style={{ marginRight: 8 }}
               />
               <Text style={styles.continueButtonText}>Re-verify</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.rejectOrderButton}
+              onPress={handleRejectOrder}
+              disabled={isRejecting}
+            >
+              {isRejecting ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Ionicons
+                    name="close-circle-outline"
+                    size={20}
+                    color="#fff"
+                    style={{ marginRight: 8 }}
+                  />
+                  <Text style={styles.continueButtonText}>Reject order</Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
         )}
@@ -603,6 +670,16 @@ const styles = StyleSheet.create({
     width: "100%",
     flexDirection: "row",
     justifyContent: "center",
+  },
+  rejectOrderButton: {
+    backgroundColor: "#dc2626",
+    padding: 16,
+    borderRadius: 10,
+    alignItems: "center",
+    width: "100%",
+    flexDirection: "row",
+    justifyContent: "center",
+    marginTop: 12,
   },
   continueButtonText: {
     color: "#fff",
