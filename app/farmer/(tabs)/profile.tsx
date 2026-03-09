@@ -1,4 +1,4 @@
-import api from "@/services/api";
+import { getFarmerDashboard, getSMSPreferences, updateSMSPreferences } from "@/services/farmerApi";
 import { supabase } from "@/utils/supabaseClient";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -8,16 +8,15 @@ import {
   SafeAreaView,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
 import { useTranslationContext } from "../../../context/TranslationContext";
 import {
-  FarmLocationMap,
   GrowingFruits,
   ProfileHeader,
-  RecentActivity,
 } from "../components";
 
 const PRIMARY_GREEN = "#2f855a";
@@ -35,13 +34,6 @@ interface Fruit {
   id: string;
   name: string;
   imageUri: string;
-}
-
-interface Activity {
-  id: string;
-  title: string;
-  date: string;
-  amount: string;
 }
 
 const mockFruits: Fruit[] = [
@@ -62,29 +54,9 @@ const mockFruits: Fruit[] = [
   },
 ];
 
-const mockActivities: Activity[] = [
-  {
-    id: "1",
-    title: "Delivered 120kg ripe pineapples",
-    date: "Jan 02, 2026",
-    amount: "LKR 360.00",
-  },
-  {
-    id: "2",
-    title: "Packed 40 boxes of golden pineapple",
-    date: "Jan 04, 2026",
-    amount: "LKR 210.00",
-  },
-  {
-    id: "3",
-    title: "Received advance for next pineapple lot",
-    date: "Jan 06, 2026",
-    amount: "LKR 150.00",
-  },
-];
-
 const demoOrderStats = {
   completedCount: 15,
+  pendingCount: 3,
   lastCompletedDate: "Jan 05, 2026",
   nextOrderDate: "Jan 12, 2026",
 };
@@ -95,6 +67,16 @@ export default function ProfileScreen() {
   const [user, setUser] = useState<UserData | null>(null);
   const [profileData, setProfileData] = useState<any>(null);
   const [orderStats, setOrderStats] = useState(demoOrderStats);
+  const [settings, setSettings] = useState({
+    notifications: true,
+  });
+  const [smsPreferences, setSmsPreferences] = useState({
+    sms_alerts_enabled: true,
+    sms_frequency: 'daily',
+    phone: '',
+  });
+  const [nextOrderDate, setNextOrderDate] = useState(new Date(orderStats.nextOrderDate));
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   const loadUser = useCallback(async () => {
     try {
@@ -109,19 +91,55 @@ export default function ProfileScreen() {
         setProfileData(JSON.parse(profileJson));
       }
 
-      // Fetch farmer profile from API
+      // Fetch farmer profile from Supabase (since API endpoint doesn't exist)
       try {
-        const profileResponse = await api.get("/api/auth/farmer/profile");
-        if (profileResponse) {
-          setProfileData(profileResponse);
-          await AsyncStorage.setItem("profile_data", JSON.stringify(profileResponse));
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) {
+          console.error('Session error:', sessionError);
+          return;
         }
-      } catch (apiErr) {
-        console.error("[Profile] Failed to fetch from API, using cached data:", apiErr);
+        if (!session?.user?.id) {
+          console.log('No authenticated user found');
+          return;
+        }
+
+        // Fetch profile data directly from Supabase farmers table
+        const { data: profileData, error: profileError } = await supabase
+          .from('farmers')
+          .select('user_id, farm_name, primary_crops')
+          .eq('user_id', session.user.id)
+          .single();
+
+        console.log('Database query result:', { profileData, profileError, userId: session.user.id });
+
+        if (profileError) {
+          console.error('Failed to fetch profile from database:', profileError);
+        } else if (profileData) {
+          console.log('Profile data loaded from database:', profileData);
+          // Map database fields to expected format
+          const mappedProfileData = {
+            farmName: profileData.farm_name || 'Farm Name',
+            memberSince: user?.memberSince || 'Member since Jan 2026',
+            avatarUri: null,
+            selectedFruits: Array.isArray(profileData.primary_crops) ? profileData.primary_crops : [],
+          };
+          console.log('Mapped profile data:', mappedProfileData);
+          setProfileData(mappedProfileData);
+          console.log('Profile data set to state:', mappedProfileData);
+          await AsyncStorage.setItem("profile_data", JSON.stringify(mappedProfileData));
+        }
+      } catch (dbErr) {
+        console.error("[Profile] Failed to fetch from database:", dbErr);
       }
 
       // Fetch order statistics
       await fetchOrderStats();
+
+      // Load settings
+      await loadSettings();
+
+      // Load SMS preferences
+      await loadSMSPreferences();
     } catch (err) {
       console.error(err);
     }
@@ -129,21 +147,26 @@ export default function ProfileScreen() {
 
   const fetchOrderStats = async () => {
     try {
-      // backend endpoint not available yet, using demo data
-      setOrderStats(demoOrderStats);
-      // Uncomment below when /api/farmer/orders/stats endpoint is available
-      // const stats = await api.get(`/api/farmer/orders/stats`);
-      // setOrderStats({
-      //   completedCount: stats.completedCount ?? demoOrderStats.completedCount,
-      //   lastCompletedDate: stats.lastCompletedDate
-      //     ? new Date(stats.lastCompletedDate).toLocaleDateString()
-      //     : demoOrderStats.lastCompletedDate,
-      //   nextOrderDate: stats.nextOrderDate
-      //     ? new Date(stats.nextOrderDate).toLocaleDateString()
-      //     : demoOrderStats.nextOrderDate,
-      // });
+      // Use dashboard API since orders/overview endpoint doesn't exist
+      const response = await getFarmerDashboard();
+      if (response?.stats) {
+        // Map dashboard stats to order overview format
+        const totalShipments = response.stats.totalShipments || 0;
+        const spoilageReduced = response.stats.spoilageReduced || 0;
+
+        setOrderStats({
+          completedCount: totalShipments,
+          pendingCount: Math.max(0, spoilageReduced - totalShipments), // Estimate pending from spoilage data
+          lastCompletedDate: totalShipments > 0 ? "Recent" : "No orders yet",
+          nextOrderDate: response.upcomingPickups?.length > 0 ? "Scheduled" : "Not scheduled",
+        });
+      } else {
+        // Fallback to demo data
+        setOrderStats(demoOrderStats);
+      }
     } catch (err) {
       console.error("Error fetching order stats:", err);
+      // Fallback to demo data
       setOrderStats(demoOrderStats);
     }
   };
@@ -174,6 +197,55 @@ export default function ProfileScreen() {
     router.replace("/login");
   };
 
+  const updateSetting = async (key: keyof typeof settings, value: boolean) => {
+    const newSettings = { ...settings, [key]: value };
+    setSettings(newSettings);
+    await AsyncStorage.setItem("farmer_settings", JSON.stringify(newSettings));
+  };
+
+  const updateSMSSetting = async (value: boolean) => {
+    // Update local state immediately for better UX
+    setSmsPreferences(prev => ({ ...prev, sms_alerts_enabled: value }));
+
+    try {
+      await updateSMSPreferences({ sms_alerts_enabled: value });
+    } catch (err) {
+      console.error("Error updating SMS preferences:", err);
+      // Revert on error
+      setSmsPreferences(prev => ({ ...prev, sms_alerts_enabled: !value }));
+    }
+  };
+
+  const onDateChange = (event: any, selectedDate?: Date) => {
+    setShowDatePicker(false);
+    if (selectedDate) {
+      setNextOrderDate(selectedDate);
+      // Here you could save to backend or AsyncStorage
+    }
+  };
+
+  const loadSettings = async () => {
+    try {
+      const settingsJson = await AsyncStorage.getItem("farmer_settings");
+      if (settingsJson) {
+        setSettings(JSON.parse(settingsJson));
+      }
+    } catch (err) {
+      console.error("Error loading settings:", err);
+    }
+  };
+
+  const loadSMSPreferences = async () => {
+    try {
+      const response = await getSMSPreferences();
+      if (response?.preferences) {
+        setSmsPreferences(response.preferences);
+      }
+    } catch (err) {
+      console.error("Error loading SMS preferences:", err);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
@@ -202,10 +274,8 @@ export default function ProfileScreen() {
         >
           {/* Profile Header Component */}
           <ProfileHeader
-            userName={profileData?.name || user?.name || ""}
-            farmName={
-              profileData?.farmName || user?.farmName || ""
-            }
+            userName={profileData?.farmName || user?.farmName || "Farmer"}
+            farmName=""
             memberSince={
               profileData?.memberSince ||
               user?.memberSince ||
@@ -214,61 +284,9 @@ export default function ProfileScreen() {
             avatarUri={profileData?.avatarUri}
           />
 
-          <Text style={styles.sectionTitle}>Overview</Text>
-
-          {/* Overview Cards */}
-          <View style={styles.overviewContainer}>
-            {/* Completed Orders Card */}
-            <View style={styles.overviewCard}>
-              <View style={styles.cardIconContainer}>
-                <Ionicons
-                  name="checkmark-circle"
-                  size={28}
-                  color={PRIMARY_GREEN}
-                />
-              </View>
-              <Text style={styles.cardValue}>{orderStats.completedCount}</Text>
-              <Text style={styles.cardLabel}>Completed Orders</Text>
-            </View>
-
-            {/* Last Order Completed Card */}
-            <View style={styles.overviewCard}>
-              <View style={styles.cardIconContainer}>
-                <Ionicons name="calendar" size={28} color={PRIMARY_GREEN} />
-              </View>
-              <Text style={styles.cardValue} numberOfLines={1}>
-                {orderStats.lastCompletedDate}
-              </Text>
-              <Text style={styles.cardLabel}>Last Order</Text>
-            </View>
-
-            {/* Next Order Card */}
-            <View style={styles.overviewCard}>
-              <View style={styles.cardIconContainer}>
-                <Ionicons name="hourglass" size={28} color={PRIMARY_GREEN} />
-              </View>
-              <Text style={styles.cardValue} numberOfLines={1}>
-                {orderStats.nextOrderDate}
-              </Text>
-              <Text style={styles.cardLabel}>Next Order</Text>
-            </View>
-          </View>
-
-          <FarmLocationMap
-            latitude={6.9271}
-            longitude={79.8612}
-            address={
-              profileData?.location ||
-              "No location set"
-            }
-            farmName={
-              profileData?.farmName || user?.farmName || ""
-            }
-          />
-
           <GrowingFruits
             fruits={
-              profileData?.selectedFruits
+              Array.isArray(profileData?.selectedFruits) && profileData.selectedFruits.length > 0
                 ? mockFruits.filter((fruit) =>
                     profileData.selectedFruits.includes(fruit.id),
                   )
@@ -276,7 +294,82 @@ export default function ProfileScreen() {
             }
           />
 
-          <RecentActivity activities={mockActivities} />
+          <Text style={styles.sectionTitle}>Overview</Text>
+
+          {/* Compact Overview */}
+          <View style={styles.compactOverview}>
+            <View style={styles.overviewStats}>
+              <View style={styles.statItem}>
+                <Ionicons name="checkmark-circle" size={20} color={PRIMARY_GREEN} />
+                <Text style={styles.statValue}>{orderStats.completedCount}</Text>
+                <Text style={styles.statLabel}>Completed</Text>
+              </View>
+              <View style={styles.statItem}>
+                <Ionicons name="time" size={20} color={PRIMARY_GREEN} />
+                <Text style={styles.statValue}>{orderStats.pendingCount}</Text>
+                <Text style={styles.statLabel}>Pending</Text>
+              </View>
+            </View>
+            <TouchableOpacity style={styles.calendarButton} onPress={() => setShowDatePicker(true)}>
+              <Ionicons name="calendar" size={20} color={PRIMARY_GREEN} style={styles.calendarIcon} />
+              <Text style={styles.calendarLabel}>Next Order</Text>
+              <Text style={styles.calendarDate}>
+                {nextOrderDate.toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                })}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Action Buttons */}
+          <View style={styles.buttonsContainer}>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => router.push("/farmer/screens/complaints-list")}
+            >
+              <Ionicons name="warning" size={20} color="#fff" />
+              <Text style={styles.actionButtonText}>View Complaints</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => router.push("/farmer/orders")}
+            >
+              <Ionicons name="list" size={20} color="#fff" />
+              <Text style={styles.actionButtonText}>My Orders</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Settings Section */}
+          <Text style={styles.sectionTitle}>Settings</Text>
+          <View style={styles.settingsContainer}>
+            <View style={styles.settingItem}>
+              <View style={styles.settingTextContainer}>
+                <Ionicons name="chatbubble" size={20} color={PRIMARY_GREEN} />
+                <Text style={styles.settingLabel}>SMS Service</Text>
+              </View>
+              <Switch
+                value={smsPreferences.sms_alerts_enabled}
+                onValueChange={updateSMSSetting}
+                trackColor={{ false: '#ccc', true: PRIMARY_GREEN }}
+                thumbColor={smsPreferences.sms_alerts_enabled ? '#fff' : '#f4f3f4'}
+              />
+            </View>
+
+            <View style={styles.settingItem}>
+              <View style={styles.settingTextContainer}>
+                <Ionicons name="notifications" size={20} color={PRIMARY_GREEN} />
+                <Text style={styles.settingLabel}>Notifications</Text>
+              </View>
+              <Switch
+                value={settings.notifications}
+                onValueChange={(value) => updateSetting('notifications', value)}
+                trackColor={{ false: '#ccc', true: PRIMARY_GREEN }}
+                thumbColor={settings.notifications ? '#fff' : '#f4f3f4'}
+              />
+            </View>
+          </View>
 
           {/* Logout Button */}
           <TouchableOpacity style={styles.logoutButton} onPress={logout}>
@@ -335,46 +428,54 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
-  overviewContainer: {
+  compactOverview: {
     flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingVertical: 12,
-    gap: 12,
-    justifyContent: "space-between",
-  },
-  overviewCard: {
-    flex: 1,
     backgroundColor: "#f7fdf9",
-    borderRadius: 14,
-    paddingVertical: 16,
-    paddingHorizontal: 12,
-    alignItems: "center",
+    borderRadius: 12,
+    marginHorizontal: 16,
     borderWidth: 1,
     borderColor: "rgba(47,133,90,0.12)",
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
   },
-  cardIconContainer: {
-    marginBottom: 10,
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+  overviewStats: {
+    flexDirection: "row",
+    gap: 20,
+  },
+  statItem: {
     alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#e8f4ef",
+    gap: 4,
   },
-  cardValue: {
+  statValue: {
     fontSize: 18,
     fontWeight: "800",
     color: PRIMARY_GREEN,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: "#4b5563",
+  },
+  calendarButton: {
+    alignItems: "center",
+    padding: 8,
+    backgroundColor: "rgba(47,133,90,0.1)",
+    borderRadius: 8,
+    minWidth: 80,
+  },
+  calendarIcon: {
     marginBottom: 4,
   },
-  cardLabel: {
-    fontSize: 11,
-    color: "#4b5563",
+  calendarLabel: {
+    fontSize: 10,
+    color: "#6b7280",
+    textAlign: "center",
+  },
+  calendarDate: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: PRIMARY_GREEN,
     textAlign: "center",
   },
   logoutButton: {
@@ -390,5 +491,73 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     color: "#e53e3e",
+  },
+  settingsContainer: {
+    marginHorizontal: 16,
+    marginBottom: 24,
+    backgroundColor: "#f7fdf9",
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "rgba(47,133,90,0.12)",
+  },
+  settingItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(47,133,90,0.1)",
+  },
+  settingTextContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  settingLabel: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#1f2937",
+  },
+  calendarContainer: {
+    marginHorizontal: 16,
+    marginBottom: 24,
+    backgroundColor: "#f7fdf9",
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "rgba(47,133,90,0.12)",
+  },
+  dateSelector: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 8,
+  },
+  dateText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: PRIMARY_GREEN,
+  },
+  buttonsContainer: {
+    flexDirection: "row",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 12,
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: PRIMARY_GREEN,
+    paddingVertical: 14,
+    borderRadius: 8,
+    gap: 8,
+  },
+  actionButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#fff",
   },
 });

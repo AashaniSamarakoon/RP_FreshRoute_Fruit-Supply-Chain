@@ -5,12 +5,12 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "../../../components/Header";
@@ -302,6 +302,7 @@ export default function FreshroutePricesForBuyer() {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2,
                           })}
+                          /kg
                           <Text style={styles.logisticText}>
                             {" "}
                             + Logistic Cost
