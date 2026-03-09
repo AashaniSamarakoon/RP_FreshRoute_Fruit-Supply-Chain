@@ -68,7 +68,7 @@ const TAB_STATUS_MAP: Record<TabKey, string[]> = {
     "IN_TRANSIT",
     "DELIVERED",
   ],
-  completed: ["COMPLETED"],
+  completed: ["DELIVERED", "COMPLETED"],
 
 };
 

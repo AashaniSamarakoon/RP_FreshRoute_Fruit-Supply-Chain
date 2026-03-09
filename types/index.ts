@@ -68,6 +68,42 @@ export type SlipVerificationStatus =
   | "APPROVED"
   | "REJECTED";
 
+export interface JourneyEntry {
+  txId: string;
+  timestamp: string;
+  blockNumber?: number | null;
+  status: string;
+  label: string;
+  phase: string;
+}
+
+export interface HarvestJourney {
+  batchId: string;
+  verifiedAt: string;
+  status: string;
+  currentPhase: string;
+  currentLabel: string;
+  farm: {
+    name: string | null;
+    region: string;
+    displayBio: string | null;
+  };
+  harvest: {
+    fruitType: string;
+    grade: string;
+    quantityKg: number;
+    harvestDate: string;
+    qualityImages: number;
+    blockchainTxId: string;
+  };
+  journey: JourneyEntry[];
+  economics?: {
+    fairTradeCertified: boolean;
+    farmerSharePercent: number;
+  };
+  verification?: Record<string, any>;
+}
+
 export interface PlacedOrder {
   id: string;
   buyer_id: string;

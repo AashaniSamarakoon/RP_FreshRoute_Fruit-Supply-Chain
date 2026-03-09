@@ -7,7 +7,7 @@ import api from "@/services/api";
 import {
   startPayHerePreapproval
 } from "@/services/payhereService";
-import { FarmerInfo, PlacedOrder, TransporterInfo } from "@/types";
+import { FarmerInfo, PlacedOrder, TransporterInfo, HarvestJourney } from "@/types";
 import { formatCurrency, formatDate } from "@/utils/formatters";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -110,6 +110,8 @@ export default function OrderDetailScreen() {
     title: string;
     message: string;
   } | null>(null);
+  // harvested journey data (blockchain history etc)
+  const [orderJourney, setOrderJourney] = useState<HarvestJourney | null>(null);
 
   // ── accordion + proof-of-harvest state ──
   // Start expanded; collapse automatically once the order is paid and in-transit
@@ -234,6 +236,24 @@ export default function OrderDetailScreen() {
       }
 
       setOrder(merged || null);
+
+      // attempt to load blockchain journey if harvest_id is available
+      if (merged.harvest_id) {
+        try {
+          const journeyData: any = await api.get(
+            `/api/public/verify/${merged.harvest_id}`,
+          );
+          setOrderJourney(journeyData);
+        } catch (err) {
+          // ignore failure – journey is optional
+          console.warn("Failed to load journey data", err);
+        }
+      }
+
+      // save optional journey section if backend provided it
+      if (data.journey) {
+        setOrderJourney(data.journey as HarvestJourney);
+      }
 
       if (data.farmer) {
         const userData = data.farmer.user || data.farmer.users || {};
@@ -470,13 +490,10 @@ export default function OrderDetailScreen() {
 
   const isOrderTrackable = [
     "AUTHORIZED_PAYMENT",
-    "AUTHORIZED_PAYMENT",
     "PACKING",
     "READY_FOR_PICKUP",
     "IN_TRANSIT",
-    "DELIVERED",
-    "COMPLETED",
-    "PICKED_UP",
+    // once we reach DELIVERED or beyond the map section should disappear
   ].includes(order?.status ?? "");
 
   if (loading && !refreshing) {
@@ -696,6 +713,22 @@ export default function OrderDetailScreen() {
                 </View>
               )}
             </View>
+
+            {/* journey button appears once order has been delivered (or completed) */}
+            {orderJourney &&
+              ["DELIVERED", "COMPLETED"].includes(order.status) && (
+              <TouchableOpacity
+                style={styles.journeyBtn}
+                onPress={() => {
+                  router.push({
+                    pathname: "/buyer/screens/JourneyScreen" as any,
+                    params: { journey: JSON.stringify(orderJourney) },
+                  });
+                }}
+              >
+                <Text style={styles.journeyBtnText}>View Journey</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           <View style={styles.solidSeparator} />
@@ -1459,6 +1492,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#9CA3AF",
     textAlign: "center",
+  },
+  journeyBtn: {
+    marginTop: 16,
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: BuyerColors.primaryGreen,
+    borderRadius: 20,
+  },
+  journeyBtnText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 14,
   },
   proofModalBadge: {
     position: "absolute",
