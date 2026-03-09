@@ -4,22 +4,23 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { Sprout } from "lucide-react-native";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Dimensions,
-    FlatList,
-    Image,
-    Modal,
-    RefreshControl,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Dimensions,
+  FlatList,
+  Image,
+  Modal,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "../../../components/Header";
 import { PillTabBar } from "../../../components/ui/PillTabBar";
 
+import { useModal } from "@/components/modals/ModalProvider";
+import AgreementModal from "../../../components/modals/AgreementModal";
 import HarvestCard from "../components/HarvestCard";
 import ProposalCard from "../components/ProposalCard";
 
@@ -186,6 +187,7 @@ function useOrdersData() {
   const [error, setError] = useState<string | null>(null);
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
 
+
   const load = useCallback(async (silent = false) => {
     if (!silent) { setLoading(true); setError(null); }
     try {
@@ -209,7 +211,6 @@ function useOrdersData() {
         let ordersRes: any = null;
         try {
           ordersRes = await api.get("/api/farmer/orders");
-          console.log("[DEBUG] /api/farmer/orders response", ordersRes);
         } catch (err) {
           console.warn("[DEBUG] failed to fetch farmer orders", err);
           ordersRes = null;
@@ -218,11 +219,9 @@ function useOrdersData() {
         const ordersArr: any[] = Array.isArray(ordersRes)
           ? ordersRes
           : (ordersRes?.orders ?? ordersRes ?? []);
-        console.log("[DEBUG] parsed ordersArr", ordersArr);
         
         const ordersMap: Record<string, any> = {};
         ordersArr.forEach((o: any) => { if (o && o.id) ordersMap[String(o.id)] = o; });
-        console.log("[DEBUG] ordersMap keys", Object.keys(ordersMap));
         setOrdersMapState(ordersMap);
 
         const rawProposals: Proposal[] = proposalRes?.proposals ?? [];
@@ -280,18 +279,21 @@ function useOrdersData() {
     setRefreshing(false);
   }, [load]);
 
+  const { showSuccess, showError } = useModal();
+
   const acceptProposal = useCallback(async (id: string) => {
     setProcessing(id, true);
     try {
       await api.post(`/api/farmer/proposals/${id}/accept`, {});
       await load(true); 
-      Alert.alert("Success", "Proposal accepted! Awaiting buyer payment.");
+      showSuccess("Success", "Proposal accepted! Awaiting buyer payment.");
     } catch (err) {
-      Alert.alert("Error", err instanceof Error ? err.message : "Failed to accept proposal");
+      showError("Error", err instanceof Error ? err.message : "Failed to accept proposal");
     } finally {
       setProcessing(id, false);
     }
-  }, [load]);
+  }, [load, showSuccess, showError]);
+
 
   const rejectProposal = useCallback(async (id: string) => {
     setProcessing(id, true);
@@ -300,9 +302,9 @@ function useOrdersData() {
       setProposals((prev) => 
         prev.map((p) => (p.id === id ? { ...p, status: "REJECTED" as const } : p))
       );
-      Alert.alert("Declined", "Proposal moved to Rejected.");
+      showSuccess("Declined", "Proposal moved to Rejected.");
     } catch (err) {
-      Alert.alert("Error", err instanceof Error ? err.message : "Failed to reject proposal");
+      showError("Error", err instanceof Error ? err.message : "Failed to reject proposal");
     } finally {
       setProcessing(id, false);
     }
@@ -313,10 +315,25 @@ function useOrdersData() {
   const markReady = useCallback(async (orderId: string) => {
     setProcessing(orderId, true);
     try {
-      await api.patch(`/api/farmer/orders/${orderId}/ready`, {});
+      // hits /ready which moves order to READY_FOR_PICKUP
+      const res = await api.patch(`/api/farmer/orders/${orderId}/ready`, {});
+      // markReady response
+      // optimistic local update to reflect the new status
+      setOrdersMapState((prev) => {
+        const existing = prev[String(orderId)] || {};
+        return {
+          ...prev,
+          [orderId]: { ...existing, status: "READY_FOR_PICKUP" },
+        };
+      });
+      setHarvests((prev) =>
+        prev.map((h) =>
+          h.id === String(orderId) ? { ...h, status: "READY_FOR_PICKUP" } : h,
+        ),
+      );
       await load(true);
     } catch (err: any) {
-      Alert.alert("Error", err?.message || "Failed to update status");
+      showError("Error", err?.message || "Failed to update status");
     } finally {
       setProcessing(orderId, false);
     }
@@ -367,6 +384,41 @@ export default function OrdersTab() {
   const [imageModalVisible, setImageModalVisible] = useState(false);
   const [currentImages, setCurrentImages] = useState<string[]>([]);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+
+  // agreement modal state for orders tab
+  const [agreementVisible, setAgreementVisible] = useState(false);
+  const [selectedProposal, setSelectedProposal] = useState<Proposal | null>(null);
+  const [forecastPrice, setForecastPrice] = useState<number | null>(null);
+
+  // helpers for opening/confirming agreements
+  const fetchForecastFor = async (prop: Proposal) => {
+    let fruitKey = `${prop.order.variant} ${prop.order.fruit_type}`;
+    fruitKey = fruitKey.replace(/_/g, "");
+    const dateParam = prop.order.required_date.slice(0,10);
+    try {
+      const res: any = await api.get(`/forecast/fruit?fruit=${encodeURIComponent(fruitKey)}&date=${encodeURIComponent(dateParam||"")}`);
+      const priceEntry = Array.isArray(res?.forecast)
+        ? res.forecast.find((e: any) => e.date === dateParam && e.target === "price")
+        : null;
+      setForecastPrice(priceEntry?.forecast_value ?? null);
+    } catch (err) {
+      setForecastPrice(null);
+    }
+  };
+
+  const handleAcceptTap = async (prop: Proposal) => {
+    setSelectedProposal(prop);
+    await fetchForecastFor(prop);
+    setAgreementVisible(true);
+  };
+
+  const confirmAcceptDeal = () => {
+    if (selectedProposal) {
+      acceptProposal(selectedProposal.id);
+    }
+    setAgreementVisible(false);
+    setSelectedProposal(null);
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -444,23 +496,22 @@ export default function OrdersTab() {
 
   const renderHarvest = useCallback(
   ({ item }: { item: Harvest }) => {
+    const attached = proposalsByStock[item.id] ?? [];
     return (
       <HarvestCard
         harvest={item}
-        proposals={proposalsByStock[item.id] ?? []}
         onPress={() => handleHarvestPress(item)}
         onImagePress={handleImagePress}
       />
     );
   },
-  [proposalsByStock, handleHarvestPress, handleImagePress],
+  [proposalsByStock, handleHarvestPress, handleImagePress, processingIds, acceptProposal, rejectProposal, handleViewProfile],
 );
 
 const renderProposal = useCallback(
     ({ item }: { item: Proposal }) => {
       const tabKey = getProposalTabKey(item);
       const isOrderPhase = tabKey === "payment_due" || tabKey === "processing" || tabKey === "completed";
-      console.log("[DEBUG] renderProposal called", item.id, "tabKey", tabKey, "isOrderPhase", isOrderPhase);
 
       const handleCardPress = () => {
         if (isOrderPhase && item.order_id) {
@@ -515,16 +566,13 @@ const renderProposal = useCallback(
            apiOrder.pricing?.farmerEarning ??
            item.pricing?.farmerEarning ??
            apiOrder.farmer_share_amount ?? null;
-         console.log("[DEBUG] renderProposal images", images, "earn", earning, "apiOrder", apiOrder, "harvest", harvest);
          return (
            <HarvestCard
              harvest={harvest}
-             proposals={[]}
              onPress={handleCardPress}
              onImagePress={handleImagePress}
              activeOrderStatus={apiOrder.status || item.order?.status}
              processing={processingIds.has(String(item.order_id))}
-             onStartPacking={undefined}
              onMarkReady={() => markReady(String(item.order_id))}
              earning={earning}
            />
@@ -536,7 +584,7 @@ const renderProposal = useCallback(
           <ProposalCard
             proposal={item}
             processing={processingIds.has(item.id)}
-            onAccept={() => acceptProposal(item.id)}
+            onAccept={() => handleAcceptTap(item)}
             onReject={() => rejectProposal(item.id)}
             onViewProfile={() => handleViewProfile(item)}
           />
@@ -603,7 +651,6 @@ const renderProposal = useCallback(
     }
 
     const filteredProposals = proposals.filter((p) => getProposalTabKey(p) === activeTab);
-
     return (
       <FlatList<Proposal>
         data={filteredProposals}
@@ -630,6 +677,20 @@ const renderProposal = useCallback(
       <Header title="Orders" showNotification onNotificationPress={() => router.push("/farmer/screens/notifications" as any)} />
       <PillTabBar tabs={tabData} activeKey={activeTab} onPress={setActiveTab} />
       {renderContent()}
+
+      {/* Render the Agreement Modal */}
+      {selectedProposal && (
+        <AgreementModal
+          visible={agreementVisible}
+          onCancel={() => setAgreementVisible(false)}
+          onApprove={confirmAcceptDeal}
+          forecastPrice={forecastPrice} // Pass the fetched price
+          quantity={selectedProposal.quantity_proposed}
+          fruitName={selectedProposal.order?.fruit_type}
+          variant={selectedProposal.order?.variant}
+          requiredDate={selectedProposal.order?.required_date}
+        />
+      )}
 
       <Modal visible={imageModalVisible} transparent animationType="fade" onRequestClose={() => setImageModalVisible(false)} statusBarTranslucent>
         <View style={styles.imageModalOverlay}>

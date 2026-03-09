@@ -52,7 +52,8 @@ export type OrderStatus =
   | "PENDING_BUYER"
   | "PENDING_FARMER"
   | "AWAITING_PAYMENT"
-  | "PAID_PENDING_DELIVERY"
+  | "AUTHORIZED_PAYMENT"  // deposit/authorization placed
+  | "AUTHORIZED_PAYMENT"
   | "IN_TRANSIT"
   | "DELIVERED"
   | "COMPLETED"

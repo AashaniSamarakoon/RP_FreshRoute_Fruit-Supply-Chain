@@ -1,21 +1,20 @@
-import api from "@/services/api";
 import { supabase } from "@/utils/supabaseClient";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Link, useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from "react-native";
+import { useModal } from "../components/modals/ModalProvider";
 
 type Role = "farmer" | "transporter" | "buyer" | "admin";
 
@@ -26,9 +25,11 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  const { showError } = useModal();
+
   const handleLogin = async () => {
     if (!identifier || !password) {
-      return Alert.alert("Required", "Please enter your Phone, NIC, or Email.");
+      return showError("Required", "Please enter your Phone, NIC, or Email.");
     }
 
     setLoading(true);
@@ -66,7 +67,7 @@ export default function Login() {
       const route = getDashboardRoute(userRole);
       router.replace(route as any);
     } catch (err: any) {
-      Alert.alert("Login Failed", err.message || "Invalid credentials.");
+      showError("Login Failed", err.message || "Invalid credentials.");
     } finally {
       setLoading(false);
     }

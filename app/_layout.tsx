@@ -1,12 +1,13 @@
 import {
-  DarkTheme,
-  DefaultTheme,
-  ThemeProvider,
+    DarkTheme,
+    DefaultTheme,
+    ThemeProvider,
 } from "@react-navigation/native";
 import { Stack } from "expo-router";
 import { StatusBar } from "react-native";
 import "react-native-reanimated";
 
+import { ModalProvider } from "@/components/modals/ModalProvider";
 import { NotificationBannerHost } from "@/components/notifications/NotificationBanner";
 import { TranslationProvider } from "@/context/TranslationContext";
 import { useColorScheme } from "@/hooks/use-color-scheme";
@@ -27,10 +28,11 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <TranslationProvider>
-        <ThemeProvider
-          value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
-        >
-          <Stack initialRouteName="index">
+        <ModalProvider>
+          <ThemeProvider
+            value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
+          >
+            <Stack initialRouteName="index">
             <Stack.Screen name="index" options={{ headerShown: false }} />
             {/* root-level placeholder for the onboarding folder; prevents the
               parent stack from drawing its own header when navigating into the
@@ -53,7 +55,8 @@ export default function RootLayout() {
           </Stack>
           <NotificationBannerHost />
           <StatusBar barStyle="dark-content"/>
-        </ThemeProvider>
+          </ThemeProvider>
+        </ModalProvider>
       </TranslationProvider>
     </GestureHandlerRootView>
   );

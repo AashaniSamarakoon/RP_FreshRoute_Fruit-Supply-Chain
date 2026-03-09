@@ -99,6 +99,11 @@ export interface PreapprovalParams {
     variant?: string | null;
     quantity: number;
     /**
+     * Amount to hold now (e.g. 50% deposit). If omitted, defaults to Rs.1 for
+     * simple tokenization.
+     */
+    depositAmount?: number | null;
+    /**
      * The AI-forecasted unit price shown to the buyer as an estimate.
      * The ACTUAL charge amount is determined by the backend on deliveryDate
      * by fetching the real market price for that day — same source as order.unitPrice.
@@ -134,10 +139,16 @@ export async function startPayHerePreapproval(
     const email = user?.email || "buyer@freshroutemobile.com";
     const phone = meta.phone || "0700000000";
 
-    // Rs.1 auth — PayHere immediately refunds this; it just validates the card.
-    const amount = "1.00";
+    // deposit amount to hold now (default Rs.1 for tokenization-only)
+    let amountNumber = params.depositAmount != null ? params.depositAmount : 1;
+    // sandbox accounts have very low limits; override with test value
+    // const SANDBOX_TEST_AMOUNT = 100.0;
+    // if (PAYHERE_IS_SANDBOX) {
+    //   amountNumber = SANDBOX_TEST_AMOUNT;
+    // }
+    const amount = amountNumber.toFixed(2);
     const currency = "LKR";
-    const items = `${params.fruitType}${params.variant ? ` (${params.variant})` : ""} - ${params.quantity}kg (Preapproval)`;
+    const items = `${params.fruitType}${params.variant ? ` (${params.variant})` : ""} - ${params.quantity}kg (Deposit)`;
 
     const { hash } = await api.post("/api/payhere/hash", {
         orderId: params.orderId,
@@ -145,7 +156,7 @@ export async function startPayHerePreapproval(
         currency,
     });
 
-    console.log(`[PayHere Preapproval] sandbox=${PAYHERE_IS_SANDBOX} merchantId=${MERCHANT_ID} orderId=${params.orderId}`);
+    console.log(`[PayHere Preapproval] sandbox=${PAYHERE_IS_SANDBOX} merchantId=${MERCHANT_ID} orderId=${params.orderId} amount=${amount}`);
 
     const paymentObject = {
         sandbox: PAYHERE_IS_SANDBOX,

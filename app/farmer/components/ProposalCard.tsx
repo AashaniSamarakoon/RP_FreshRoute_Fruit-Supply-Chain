@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+
 
 const PRIMARY_GREEN = "#2E7D32";
 const DANGER_RED = "#DC2626";
@@ -39,6 +40,36 @@ interface Props {
 const ProposalCard: React.FC<Props> = ({ proposal, processing, onAccept, onReject, onViewProfile }) => {
   const buyerName =
     proposal.order?.buyer?.company_name || proposal.order?.buyer?.user?.first_name || "Verified Buyer";
+
+  // --- track individual button loading states ---
+  const [accepting, setAccepting] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+
+  // clear when parent processing flag resets
+  useEffect(() => {
+    if (!processing) {
+      setAccepting(false);
+      setRejecting(false);
+    }
+  }, [processing]);
+
+
+
+  const handleAccept = () => {
+    // clear any previous reject state
+    setRejecting(false);
+    setAccepting(true);
+    onAccept();
+  };
+
+
+
+  const handleReject = () => {
+    // clear accept state if somehow still true
+    setAccepting(false);
+    setRejecting(true);
+    onReject();
+  };
 
   return (
     <View style={styles.card}>
@@ -109,11 +140,12 @@ const ProposalCard: React.FC<Props> = ({ proposal, processing, onAccept, onRejec
           <View style={styles.actionsRow}>
             <TouchableOpacity
               style={[styles.actionBtn, styles.rejectBtn]}
-              onPress={onReject}
-              disabled={processing}
+              onPress={handleReject}
+              disabled={rejecting} // disabled only when reject action is running
               activeOpacity={0.8}
             >
-              {processing ? (
+              {/* spinner tied only to rejecting flag */}
+              {rejecting ? (
                 <ActivityIndicator size="small" color="#DC2626" />
               ) : (
                 <Text style={styles.rejectBtnText}>Decline</Text>
@@ -122,11 +154,12 @@ const ProposalCard: React.FC<Props> = ({ proposal, processing, onAccept, onRejec
 
             <TouchableOpacity
               style={[styles.actionBtn, styles.acceptBtn]}
-              onPress={onAccept}
-              disabled={processing}
+              onPress={handleAccept}
+              disabled={accepting} // disabled only when accept action is running
               activeOpacity={0.8}
             >
-              {processing ? (
+              {/* spinner tied only to accepting flag */}
+              {accepting ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <>

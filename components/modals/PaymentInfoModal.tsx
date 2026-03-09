@@ -18,10 +18,9 @@ interface PaymentInfoModalProps {
   predictedUnitPrice: number;
   isFetchingForecast: boolean;
   currentUnitPrice: number | null;
-  requestedDate?: string;
+  requiredDate?: string;
   isPriceLocked: boolean;
   onPayNow: () => void;
-  onPayLater?: () => void;
 }
 
 export default function PaymentInfoModal({
@@ -32,13 +31,17 @@ export default function PaymentInfoModal({
   predictedUnitPrice,
   isFetchingForecast,
   currentUnitPrice,
-  requestedDate,
+  requiredDate,
   isPriceLocked,
   onPayNow,
-  onPayLater,
 }: PaymentInfoModalProps) {
   const formatPrice = (price: number | null) =>
     price != null ? `Rs. ${price.toLocaleString()}` : "N/A";
+
+  // Format dates cleanly
+  const formattedDate = requiredDate
+    ? new Date(requiredDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    : "Delivery Day";
 
   return (
     <Modal
@@ -75,7 +78,7 @@ export default function PaymentInfoModal({
               <View style={styles.priceLabel}>
                 <Ionicons name="pricetag-outline" size={16} color="#6B7280" />
                 <Text style={styles.priceLabelText}>
-                  {isPriceLocked ? "Locked Unit Price" : "Today Unit Price"}
+                  {isPriceLocked ? "Locked Unit Price" : "Today's Est. Unit Price"}
                 </Text>
                 {isPriceLocked && (
                   <View style={styles.lockedBadge}>
@@ -95,7 +98,7 @@ export default function PaymentInfoModal({
                 <Ionicons name="analytics-outline" size={16} color="#6B7280" />
                 <Text style={styles.priceLabelText}>
                   Forecasted Market Price
-                  {requestedDate ? ` (${requestedDate})` : ""}
+                  {requiredDate ? ` (${requiredDate})` : ""}
                 </Text>
               </View>
               {isFetchingForecast ? (
@@ -122,18 +125,28 @@ export default function PaymentInfoModal({
             </View>
           </View>
 
+          <View style={styles.divider} />
+
+          {/* --- NEW: Clear Deposit & Tokenization Notice --- */}
+          <View style={styles.depositNotice}>
+            <Ionicons name="shield-checkmark" size={20} color="#059669" />
+            <View style={styles.depositTextContainer}>
+              <Text style={styles.depositNoticeTitle}>50% Deposit to Secure Order</Text>
+              <Text style={styles.depositNoticeText}>
+                You will only be charged a 50% deposit today. Your card will be securely saved to automatically process the remaining balance upon successful delivery.
+              </Text>
+            </View>
+          </View>
+
           {/* Payment Timing Explanation */}
           <View style={styles.explanationBox}>
             <Ionicons
               name="information-circle-outline"
-              size={16}
+              size={18}
               color="#6B7280"
             />
             <Text style={styles.explanationText}>
-              The displayed price is a forecast based on current market trends
-              for your requested delivery date. Actual prices may fluctuate. You
-              have the option to secure this rate by paying now or proceed with
-              payment upon delivery.
+              The final balance will be calculated using the official <Text style={{fontWeight: '700', color: '#374151'}}>FreshRoute Market Price</Text> active on {formattedDate}. This protects you from overpaying if the market price drops before delivery.
             </Text>
           </View>
 
@@ -172,21 +185,19 @@ export default function PaymentInfoModal({
                 >
                   {currentUnitPrice <= predictedUnitPrice
                     ? "Great deal! You're paying at or below the forecasted market price."
-                    : "Your price is above the forecasted market price."}
+                    : "Your estimated price is above the forecasted market price."}
                 </Text>
               </View>
             )}
 
-          <View style={styles.divider} />
-
           {/* Actions */}
           <View style={styles.actions}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={onPayLater ?? onClose}>
-              <Text style={styles.cancelBtnText}>Pay Later</Text>
+            <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
+              <Text style={styles.cancelBtnText}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.payBtn} onPress={onPayNow}>
               <Ionicons name="card-outline" size={18} color="#fff" />
-              <Text style={styles.payBtnText}>Pay Now</Text>
+              <Text style={styles.payBtnText}>Pay 50% Deposit</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -198,38 +209,41 @@ export default function PaymentInfoModal({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
+    backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "flex-end",
   },
   sheet: {
     backgroundColor: "#fff",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 20,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 24,
     paddingBottom: 32,
     paddingTop: 12,
+    maxHeight: "95%",
   },
   handle: {
-    width: 40,
-    height: 4,
+    width: 44,
+    height: 5,
     backgroundColor: "#D1D5DB",
-    borderRadius: 2,
+    borderRadius: 3,
     alignSelf: "center",
-    marginBottom: 16,
+    marginBottom: 20,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 16,
+    marginBottom: 20,
   },
   title: {
-    fontSize: 18,
-    fontWeight: "700",
+    fontSize: 20,
+    fontWeight: "800",
     color: "#111827",
   },
   closeBtn: {
-    padding: 4,
+    padding: 6,
+    backgroundColor: "#F3F4F6",
+    borderRadius: 20,
   },
   productRow: {
     flexDirection: "row",
@@ -238,22 +252,22 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   productName: {
-    fontSize: 16,
-    fontWeight: "700",
+    fontSize: 18,
+    fontWeight: "800",
     color: "#111827",
   },
   productVariant: {
-    fontSize: 14,
+    fontSize: 15,
     color: "#6B7280",
-    fontWeight: "500",
+    fontWeight: "600",
   },
   divider: {
     height: 1,
     backgroundColor: "#E5E7EB",
-    marginVertical: 14,
+    marginVertical: 16,
   },
   priceSection: {
-    gap: 14,
+    gap: 16,
   },
   priceRow: {
     flexDirection: "row",
@@ -263,13 +277,13 @@ const styles = StyleSheet.create({
   priceLabel: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 8,
     flex: 1,
   },
   priceLabelText: {
-    fontSize: 13,
+    fontSize: 14,
     color: "#4B5563",
-    fontWeight: "500",
+    fontWeight: "600",
     flexShrink: 1,
   },
   lockedBadge: {
@@ -287,13 +301,13 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   priceValue: {
-    fontSize: 15,
-    fontWeight: "700",
+    fontSize: 16,
+    fontWeight: "800",
     color: "#111827",
     marginLeft: 8,
   },
   goodDeal: {
-    color: "#22C55E",
+    color: "#059669",
   },
   aboveMarket: {
     color: "#F97316",
@@ -302,46 +316,73 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    borderRadius: 10,
+    borderRadius: 12,
     padding: 12,
-    marginTop: 14,
+    marginTop: 16,
+    borderWidth: 1,
   },
   insightGood: {
-    backgroundColor: "#F0FDF4",
+    backgroundColor: "#ECFDF5",
+    borderColor: "#A7F3D0",
   },
   insightWarning: {
     backgroundColor: "#FFF7ED",
+    borderColor: "#FFEDD5",
   },
   insightText: {
     fontSize: 13,
     flex: 1,
     lineHeight: 18,
+    fontWeight: "500",
   },
   insightTextGood: {
-    color: "#15803D",
+    color: "#065F46",
   },
   insightTextWarning: {
-    color: "#C2410C",
+    color: "#9A3412",
+  },
+  depositNotice: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    backgroundColor: "#ECFDF5",
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  depositTextContainer: {
+    flex: 1,
+  },
+  depositNoticeTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#065F46",
+    marginBottom: 4,
+  },
+  depositNoticeText: {
+    fontSize: 13,
+    color: "#065F46",
+    lineHeight: 20,
   },
   explanationBox: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 8,
-    backgroundColor: "#F9FAFB",
-    borderRadius: 10,
+    gap: 12,
     padding: 12,
-    marginTop: 14,
+    marginTop: 4,
   },
   explanationText: {
     fontSize: 13,
-    color: "#4B5563",
+    color: "#6B7280",
     flex: 1,
-    lineHeight: 18,
+    lineHeight: 20,
   },
   actions: {
     flexDirection: "row",
     gap: 12,
-    marginTop: 4,
+    marginTop: 24,
   },
   cancelBtn: {
     flex: 1,
@@ -350,10 +391,11 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: "#D1D5DB",
     alignItems: "center",
+    justifyContent: "center",
   },
   cancelBtnText: {
     fontSize: 15,
-    fontWeight: "600",
+    fontWeight: "700",
     color: "#6B7280",
   },
   payBtn: {
@@ -365,10 +407,15 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 25,
     gap: 8,
+    shadowColor: BuyerColors.primaryGreen,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
   payBtnText: {
     fontSize: 15,
-    fontWeight: "700",
+    fontWeight: "800",
     color: "#fff",
   },
 });

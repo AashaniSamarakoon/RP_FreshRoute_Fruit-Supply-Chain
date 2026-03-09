@@ -45,7 +45,7 @@ const getStatusStyles = (status: string) => {
       return { bg: "#FFF7ED", text: "#F97316", label: "Pending" };
     case "MATCHED":
       return { bg: "#EEF2FF", text: "#6366F1", label: "Matched" };
-    case "PAID_PENDING_DELIVERY":
+    case "AUTHORIZED_PAYMENT":
     case "IN_TRANSIT":
       return { bg: "#EFF6FF", text: "#3B82F6", label: "In Transit" };
     case "READY_FOR_PICKUP":
@@ -104,7 +104,7 @@ export default function OrderDetailScreen() {
   useEffect(() => {
     if (!order?.status) return;
     const trackableStatuses = [
-      "PAID_PENDING_DELIVERY",
+      "AUTHORIZED_PAYMENT",
       "IN_TRANSIT",
       "DELIVERED",
       "COMPLETED",

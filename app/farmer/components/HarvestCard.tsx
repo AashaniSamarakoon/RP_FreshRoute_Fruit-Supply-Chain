@@ -1,8 +1,9 @@
 import { formatCurrency } from "@/utils/formatters";
 import { Ionicons } from "@expo/vector-icons";
-import React, { useMemo } from "react";
+import React from "react";
 import { ActivityIndicator, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { getFruitMeta, ORDER_STATUS_META, parseImageUrls } from "./cardHelpers";
+
 
 export interface Harvest {
   id: string;
@@ -19,7 +20,6 @@ export interface Harvest {
 
 interface Props {
   harvest: Harvest;
-  proposals: Array<{ status: string }>;
   onPress: () => void;
   onImagePress: (urls: string[]) => void;
   // --- Props for Order Actions ---
@@ -34,7 +34,6 @@ const PRIMARY_GREEN = "#2E7D32";
 
 const HarvestCard: React.FC<Props> = ({ 
   harvest, 
-  proposals, 
   onPress, 
   onImagePress,
   activeOrderStatus,
@@ -44,10 +43,7 @@ const HarvestCard: React.FC<Props> = ({
   earning,
 }) => {
   const fruit = getFruitMeta(harvest.fruit_type);
-  const pendingCount = useMemo(
-    () => proposals.filter((p) => p.status === "PENDING_FARMER").length,
-    [proposals],
-  );
+  const pendingCount = 0; // proposals not displayed here
 
   const images = parseImageUrls(harvest.image_url);
   
@@ -139,9 +135,9 @@ const HarvestCard: React.FC<Props> = ({
       </TouchableOpacity>
 
       {/* Bottom Section: Action Buttons (Only visible in Authorized / Packing phases) */}
-      {(activeOrderStatus === "AUTHORIZED_PAYMENT" || activeOrderStatus === "PACKING") && (
+      {(activeOrderStatus === "AUTHORIZED_PAYMENT") && (
         <View style={styles.activeOrderFooter}>
-          {activeOrderStatus === "AUTHORIZED_PAYMENT" && (
+          {/* {activeOrderStatus === "AUTHORIZED_PAYMENT" && (
             <TouchableOpacity 
               style={styles.fullWidthBtn} 
               onPress={onStartPacking} 
@@ -155,9 +151,9 @@ const HarvestCard: React.FC<Props> = ({
                 </>
               )}
             </TouchableOpacity>
-          )}
+          )} */}
           
-          {activeOrderStatus === "PACKING" && (
+          {activeOrderStatus === "AUTHORIZED_PAYMENT" && (
             <TouchableOpacity 
               style={styles.fullWidthBtn} 
               onPress={onMarkReady} 
@@ -174,6 +170,7 @@ const HarvestCard: React.FC<Props> = ({
           )}
         </View>
       )}
+
     </View>
   );
 };

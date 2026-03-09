@@ -1,12 +1,12 @@
 import {
-  AlertCircle,
-  CheckCircle,
-  Clock,
-  DollarSign,
-  LucideIcon,
-  Package,
-  Truck,
-  XCircle,
+    AlertCircle,
+    CheckCircle,
+    Clock,
+    DollarSign,
+    LucideIcon,
+    Package,
+    Truck,
+    XCircle,
 } from "lucide-react-native";
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
@@ -55,7 +55,7 @@ const statusColors: Record<string, StatusConfig> = {
     icon: DollarSign,
     label: "Awaiting Payment",
   },
-  PAID_PENDING_DELIVERY: {
+  AUTHORIZED_PAYMENT: {
     bg: "#E0F2F1",
     color: "#00897B",
     icon: Package,

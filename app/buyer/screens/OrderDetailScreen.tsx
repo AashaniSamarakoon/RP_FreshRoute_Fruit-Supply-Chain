@@ -1,13 +1,11 @@
 import Header from "@/components/Header";
 import ErrorModal from "@/components/modals/ErrorModal";
 import PaymentInfoModal from "@/components/modals/PaymentInfoModal";
-import PreapprovalConsentModal from "@/components/modals/PreapprovalConsentModal";
 import SuccessModal from "@/components/modals/SuccessModal";
 import { BuyerColors } from "@/constants/theme";
 import api from "@/services/api";
 import {
-  startPayHerePayment,
-  startPayHerePreapproval,
+  startPayHerePreapproval
 } from "@/services/payhereService";
 import { FarmerInfo, PlacedOrder, TransporterInfo } from "@/types";
 import { formatCurrency, formatDate } from "@/utils/formatters";
@@ -55,7 +53,7 @@ const getStatusStyles = (status: string) => {
       return { bg: "#FFF7ED", text: "#F97316", label: "Pending" };
     case "MATCHED":
       return { bg: "#EEF2FF", text: "#6366F1", label: "Matched" };
-    case "PAID_PENDING_DELIVERY":
+    case "AUTHORIZED_PAYMENT":
     case "IN_TRANSIT":
       return { bg: "#EFF6FF", text: "#3B82F6", label: "In Transit" };
     case "PACKING":
@@ -96,15 +94,13 @@ export default function OrderDetailScreen() {
   const [harvestDate, setHarvestDate] = useState<string | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
-  const [preapprovalConsentVisible, setPreapprovalConsentVisible] =
-    useState(false);
-  const [preapprovalLoading, setPreapprovalLoading] = useState(false);
+  // preapproval state removed; we now always hold via PayHere payment
   const [isPriceLocked, setIsPriceLocked] = useState(false);
   const [lockedUnitPrice, setLockedUnitPrice] = useState<number | null>(null);
   const [predictedPrice, setPredictedPrice] = useState<number>(0);
   const [isFetchingForecast, setIsFetchingForecast] = useState(false);
   const [payherePaymentId, setPayherePaymentId] = useState<string | null>(null);
-  const [preapprovalAuthorized, setPreapprovalAuthorized] = useState(false);
+  const [depositPaid, setDepositPaid] = useState<number | null>(null);
   const [successModal, setSuccessModal] = useState<{
     title: string;
     message: string;
@@ -118,6 +114,7 @@ export default function OrderDetailScreen() {
   // ── accordion + proof-of-harvest state ──
   // Start expanded; collapse automatically once the order is paid and in-transit
   const [productDetailExpanded, setProductDetailExpanded] = useState(true);
+  const [locationExpanded, setLocationExpanded] = useState(true);
   const [farmerCoords, setFarmerCoords] = useState<{
     latitude: number;
     longitude: number;
@@ -139,15 +136,20 @@ export default function OrderDetailScreen() {
   useEffect(() => {
     if (!order?.status) return;
     const trackableStatuses = [
-      "PAID_PENDING_DELIVERY",
-      "IN_TRANSIT",
+      "AUTHORIZED_PAYMENT",
+      "READY_FOR_PICKUP",
+      "PICKED_UP",
       "DELIVERED",
       "COMPLETED",
     ];
     if (trackableStatuses.includes(order.status)) {
       setProductDetailExpanded(false);
+      setLocationExpanded(false);
     } else {
+      // when the order returns to a non-trackable status we should
+      // re-open both sections so the user can inspect them again.
       setProductDetailExpanded(true);
+      setLocationExpanded(true);
     }
   }, [order?.status]);
 
@@ -185,10 +187,7 @@ export default function OrderDetailScreen() {
       if (params.farmerPickup) {
         try {
           passedFarmerPickup = JSON.parse(params.farmerPickup);
-          console.log(
-            "Using farmerPickup from navigation params:",
-            passedFarmerPickup,
-          );
+          // debug: farmerPickup carried over from the orders list
         } catch (e) {
           console.warn("Failed to parse farmerPickup from params:", e);
         }
@@ -197,7 +196,6 @@ export default function OrderDetailScreen() {
       let data: any = await api.get(
         `/api/buyer/place-order/details/${params.orderId}`,
       );
-      console.log("Order details response:", data);
       const orderData = data.order || {};
       const merged: any = { ...orderData };
 
@@ -215,6 +213,26 @@ export default function OrderDetailScreen() {
           data[camel] ?? data[snake] ?? orderData[camel] ?? orderData[snake];
         if (val !== undefined && val !== null) merged[camel] = val;
       });
+
+      // if backend omitted price details, try to infer from totals & quantity
+      if ((merged.unitPrice == null || merged.basePrice == null) && merged.quantity) {
+        // total_amount includes platform + transporter fees etc
+        const totalAmount = data.order?.total_amount ?? null;
+        const platformFee = data.order?.platform_fee_amount ?? 0;
+        const transporterFee = data.order?.transporter_fee_amount ?? 0;
+        if (totalAmount != null) {
+          const inferredBase = totalAmount - platformFee - transporterFee;
+          merged.basePrice = merged.basePrice ?? inferredBase;
+          if (merged.quantity) {
+            merged.unitPrice = merged.unitPrice ?? inferredBase / merged.quantity;
+          }
+        }
+      }
+      // if totalPrice still missing, compute from unitPrice * quantity
+      if (merged.totalPrice == null && merged.unitPrice != null && merged.quantity) {
+        merged.totalPrice = merged.unitPrice * merged.quantity;
+      }
+
       setOrder(merged || null);
 
       if (data.farmer) {
@@ -278,7 +296,7 @@ export default function OrderDetailScreen() {
         merged?.fruit_type &&
         merged?.required_date
       ) {
-        fetchForecastPrice(merged.fruit_type, merged.required_date);
+        fetchForecastPrice(merged.fruit_type, merged.required_date, merged.variant);
       }
     } catch (error: any) {
       setFetchError(error?.message || "Failed to load order details");
@@ -301,130 +319,102 @@ export default function OrderDetailScreen() {
   const fetchForecastPrice = async (
     fruitType: string,
     requiredDate: string,
+    variant?: string,
   ) => {
     try {
       setIsFetchingForecast(true);
-      const data: Array<{
-        fruit: string;
-        target: string;
-        date: string;
-        forecast_value: number;
-      }> = await api.get(
-        `/forecast/fruit?fruit=${encodeURIComponent(fruitType)}`,
-      );
+      const dateParam = requiredDate.slice(0, 10);
 
-      // Match the row whose date == order's required_date (compare YYYY-MM-DD)
-      const targetDate = requiredDate.slice(0, 10);
-      const match = Array.isArray(data)
-        ? data.find((row) => row.date?.slice(0, 10) === targetDate)
-        : null;
+      // try multiple naming formats until one returns a price
+      const candidates: string[] = [];
+      if (variant) {
+        candidates.push(`${variant} ${fruitType}`);
+        candidates.push(`${fruitType}${variant}`);
+        candidates.push(`${fruitType} ${variant}`);
+      }
+      candidates.push(fruitType);
 
-      setPredictedPrice(match?.forecast_value ?? 0);
-    } catch {
+      let price: number | null = null;
+      for (const key of candidates) {
+        const normalized = key.replace(/_/g, "");
+        // console.log("[forecast] buyer request key", normalized, dateParam);
+        const res: any = await api.get(
+          `/forecast/fruit?fruit=${encodeURIComponent(normalized)}&date=${encodeURIComponent(dateParam)}`,
+        );
+        // console.log("[forecast] buyer response", res);
+        const priceEntry = Array.isArray(res?.forecast)
+          ? res.forecast.find(
+              (e: any) => e.date === dateParam && e.target === "price",
+            )
+          : null;
+        if (priceEntry?.forecast_value != null) {
+          price = priceEntry.forecast_value;
+          break;
+        }
+      }
+
+      setPredictedPrice(price ?? 0);
+    } catch (e) {
+      // console.log("[forecast] buyer failed", e);
       setPredictedPrice(0);
     } finally {
       setIsFetchingForecast(false);
     }
   };
 
-  /** "Pay Later" — show preapproval consent; actual charge will be real
-   * market unit price fetched by the backend on the requested delivery date. */
-  const handlePayLater = () => {
-    if (!order) return;
-    setPaymentModalVisible(false);
-    setPreapprovalConsentVisible(true);
-  };
 
-  /** User confirmed consent — launch PayHere native preapproval sheet */
-  const handlePreapprovalConfirm = async () => {
-    if (!order) return;
-    setPreapprovalConsentVisible(false);
-    setPreapprovalLoading(true);
-    try {
-      await startPayHerePreapproval(
-        {
-          orderId: order.id,
-          fruitType: order.fruit_type,
-          variant: order.variant ?? null,
-          quantity: order.quantity,
-          estimatedUnitPrice: predictedPrice > 0 ? predictedPrice : null,
-          deliveryDate: order.required_date ?? null,
-          deliveryLocation: order.delivery_location ?? null,
-        },
-        (paymentId) => {
-          console.log("[Preapproval] authorized, paymentId:", paymentId);
-          setPreapprovalAuthorized(true);
-          setSuccessModal({
-            title: "Auto-Payment Scheduled",
-            message:
-              "Your card has been authorized. We\u2019ll automatically charge you on delivery day \u2014 no action needed.",
-            onClose: () => fetchOrderDetails(),
-          });
-        },
-        (error) => {
-          setErrorModal({
-            title: "Authorization Failed",
-            message:
-              error || "Unable to start authorization. Please try again.",
-          });
-        },
-        () => {
-          // User intentionally dismissed — no notification needed
-        },
-      );
-    } catch (error: any) {
-      setErrorModal({
-        title: "Authorization Failed",
-        message:
-          error?.message || "Unable to start authorization. Please try again.",
-      });
-    } finally {
-      setPreapprovalLoading(false);
-    }
-  };
 
   /** Called when user taps Pay Now inside the info modal */
   const handlePayNow = async () => {
     if (!order || !priceLockKey) return;
 
-    // Lock the price locally
-    const priceToLock = lockedUnitPrice ?? order.unitPrice ?? null;
-    if (priceToLock != null) {
+    // compute 50% deposit as hold amount
+    const depositAmount = order.totalPrice != null ? order.totalPrice / 2 : null;
+    // lock the deposit locally for UI badge
+    const lockValue = lockedUnitPrice ?? depositAmount ?? order.unitPrice ?? null;
+    if (lockValue != null) {
       const lock = {
-        lockedPrice: priceToLock,
+        lockedPrice: lockValue,
         lockedDate: new Date().toISOString().slice(0, 10),
       };
       await AsyncStorage.setItem(priceLockKey, JSON.stringify(lock));
-      setLockedUnitPrice(priceToLock);
+      setLockedUnitPrice(lockValue);
       setIsPriceLocked(true);
     }
     setPaymentModalVisible(false);
 
-    await startPayHerePayment(
+    // launch PayHere preapproval/deposit flow
+    await startPayHerePreapproval(
       {
         orderId: order.id,
         fruitType: order.fruit_type,
         variant: order.variant ?? null,
         quantity: order.quantity,
-        totalPrice: order.totalPrice ?? null,
+        depositAmount,
+        deliveryDate: order.required_date ?? null,
         deliveryLocation: order.delivery_location ?? null,
       },
       (paymentId) => {
+        setDepositPaid(depositAmount);
         setPayherePaymentId(paymentId);
+        // mark order temporarily authorized
+        setOrder((o) => o ? { ...o, status: "AUTHORIZED_PAYMENT" } : o);
         setSuccessModal({
-          title: "Payment Authorized",
-          message: `Your card has been authorized and a hold placed for the order amount. You won't be charged until quality of the harvest is confirmed.\n\nAuthorization ID: ${paymentId}`,
+          title: "Deposit Paid",
+          message: depositAmount
+            ? `A 50% deposit of Rs. ${depositAmount.toLocaleString()} has been paid successfully. The remaining balance will be automatically processed on delivery based on the final market price.`
+            : "Your deposit has been paid successfully.",
           onClose: () => fetchOrderDetails(),
         });
       },
       (error) => {
         setErrorModal({
-          title: "Payment Failed",
+          title: "Deposit Failed",
           message: `Something went wrong: ${error}\n\nPlease try again or contact support.`,
         });
       },
       () => {
-        // User dismissed the sheet — no action needed
+        // dismissed
       },
     );
   };
@@ -435,7 +425,7 @@ export default function OrderDetailScreen() {
     // — tracking is handled via the inline mini-map section
     if (
       [
-        "PAID_PENDING_DELIVERY",
+        "AUTHORIZED_PAYMENT",
         "IN_TRANSIT",
         "DELIVERED",
         "COMPLETED",
@@ -445,7 +435,7 @@ export default function OrderDetailScreen() {
     }
     switch (order.status) {
       case "AWAITING_PAYMENT":
-        if (order.payment_status === "AUTHORIZED" || preapprovalAuthorized) {
+        if (order.payment_status === "AUTHORIZED") {
           return {
             label: order.required_date
               ? `Auto-payment scheduled · ${formatDate(order.required_date)}`
@@ -463,9 +453,18 @@ export default function OrderDetailScreen() {
     }
   };
 
+  // used for showing proof-of-harvest: start once order is READY_FOR_PICKUP
+  const showProofSection = [
+    "READY_FOR_PICKUP",
+    "IN_TRANSIT",
+    "DELIVERED",
+    "COMPLETED",
+    "PICKED_UP",
+  ].includes(order?.status ?? "");
+
   const isOrderTrackable = [
     "AUTHORIZED_PAYMENT",
-    "PAID_PENDING_DELIVERY",
+    "AUTHORIZED_PAYMENT",
     "PACKING",
     "READY_FOR_PICKUP",
     "IN_TRANSIT",
@@ -699,7 +698,16 @@ export default function OrderDetailScreen() {
           <View style={styles.section}>
             <TouchableOpacity
               style={styles.accordionHeader}
-              onPress={() => setProductDetailExpanded((v) => !v)}
+              onPress={() =>
+                setProductDetailExpanded((v) => {
+                  const next = !v;
+                  if (!next) {
+                    // also collapse location when product section is closed
+                    setLocationExpanded(false);
+                  }
+                  return next;
+                })
+              }
               activeOpacity={0.7}
             >
               <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>
@@ -780,8 +788,8 @@ export default function OrderDetailScreen() {
 
           <View style={styles.solidSeparator} />
 
-          {/* Section: Proof of Harvest — visible from IN_TRANSIT onwards */}
-          {isOrderTrackable && (
+          {/* Section: Proof of Harvest — visible once order is READY_FOR_PICKUP or later */}
+          {showProofSection && (
             <>
               <View style={styles.section}>
                 <View style={styles.accordionHeader}>
@@ -843,39 +851,53 @@ export default function OrderDetailScreen() {
 
           {/* Section: Logistics */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Location</Text>
-            <View style={styles.logisticsContainer}>
-              {farmer && (
-                <View style={styles.logisticsRow}>
+            <TouchableOpacity
+              style={styles.accordionHeader}
+              onPress={() => setLocationExpanded((v) => !v)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Location</Text>
+              <Ionicons
+                name={locationExpanded ? "chevron-up" : "chevron-down"}
+                size={20}
+                color="#6B7280"
+              />
+            </TouchableOpacity>
+
+            {locationExpanded && (
+              <View style={styles.logisticsContainer}>
+                {farmer && (
+                  <View style={styles.logisticsRow}>
+                    <View style={styles.iconColumn}>
+                      <Ionicons name="storefront" size={20} color="#6B7280" />
+                      <View style={styles.verticalDottedLine} />
+                    </View>
+                    <View style={styles.addressBlock}>
+                      <Text style={styles.addressLabel}>Pickup Location</Text>
+                      <Text style={styles.addressValue}>
+                        {farmer.location ?? "—"}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                <View style={[styles.logisticsRow, { marginTop: 4 }]}>
                   <View style={styles.iconColumn}>
-                    <Ionicons name="storefront" size={20} color="#6B7280" />
-                    <View style={styles.verticalDottedLine} />
+                    <Ionicons
+                      name="location"
+                      size={20}
+                      color={BuyerColors.primaryGreen}
+                    />
                   </View>
                   <View style={styles.addressBlock}>
-                    <Text style={styles.addressLabel}>Pickup Location</Text>
+                    <Text style={styles.addressLabel}>Delivery Address</Text>
                     <Text style={styles.addressValue}>
-                      {farmer.location ?? "—"}
+                      {order.delivery_location}
                     </Text>
                   </View>
                 </View>
-              )}
-
-              <View style={[styles.logisticsRow, { marginTop: 4 }]}>
-                <View style={styles.iconColumn}>
-                  <Ionicons
-                    name="location"
-                    size={20}
-                    color={BuyerColors.primaryGreen}
-                  />
-                </View>
-                <View style={styles.addressBlock}>
-                  <Text style={styles.addressLabel}>Delivery Address</Text>
-                  <Text style={styles.addressValue}>
-                    {order.delivery_location}
-                  </Text>
-                </View>
               </View>
-            </View>
+            )}
           </View>
         </ScrollView>
 
@@ -892,6 +914,15 @@ export default function OrderDetailScreen() {
                 </Text>
               </View>
             )}
+            {depositPaid != null && (
+              <View style={styles.receiptRow}>
+                <Text style={styles.receiptLabel}>Deposit Paid</Text>
+                <Text style={styles.receiptValue}>
+                  Rs. {formatCurrency(depositPaid)}
+                </Text>
+              </View>
+            )}
+
             {(() => {
               const basePrice =
                 order.basePrice ??
@@ -993,30 +1024,14 @@ export default function OrderDetailScreen() {
               ? lockedUnitPrice
               : (order.unitPrice ?? null)
           }
-          requestedDate={
+          requiredDate={
             order.required_date ? formatDate(order.required_date) : undefined
           }
           isPriceLocked={isPriceLocked}
           onPayNow={handlePayNow}
-          onPayLater={handlePayLater}
         />
       )}
 
-      {/* Preapproval Consent Modal (Pay Later) */}
-      {order && (
-        <PreapprovalConsentModal
-          visible={preapprovalConsentVisible}
-          onClose={() => setPreapprovalConsentVisible(false)}
-          onConfirm={handlePreapprovalConfirm}
-          fruitType={order.fruit_type}
-          quantity={order.quantity}
-          estimatedUnitPrice={predictedPrice > 0 ? predictedPrice : null}
-          deliveryDate={
-            order.required_date ? formatDate(order.required_date) : null
-          }
-          loading={preapprovalLoading}
-        />
-      )}
 
       {/* Product Image Viewer Modal */}
       <Modal
@@ -1189,7 +1204,7 @@ const styles = StyleSheet.create({
   },
   orderIdValue: { fontSize: 20, fontWeight: "800", color: "#111827" },
   paymentRefValue: {
-    fontSize: 14,
+    fontSize: 20,
     fontWeight: "700",
     color: "#16A34A",
     letterSpacing: 0.2,

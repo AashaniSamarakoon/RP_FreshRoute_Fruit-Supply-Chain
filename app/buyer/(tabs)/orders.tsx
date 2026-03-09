@@ -117,7 +117,7 @@ const STATUS_META: Record<
     bg: "#FFE4E6",
     icon: "wallet-outline",
   },
-  PAID_PENDING_DELIVERY: {
+  AUTHORIZED_PAYMENT: {
     label: "Dispatching",
     color: "#0F766E",
     bg: "#CCFBF1",
@@ -463,7 +463,7 @@ export default function BuyerOrders() {
             </View>
           )}
 
-          {(item.status === "PAID_PENDING_DELIVERY" ||
+          {(item.status === "AUTHORIZED_PAYMENT" ||
             item.status === "IN_TRANSIT") && (
             <View
               style={[

@@ -30,7 +30,7 @@ interface PlacedOrder {
   latitude?: number;
   longitude?: number;
   status: 'OPEN' | 'PENDING_BUYER' | 'PENDING_FARMER' | 'AWAITING_PAYMENT' | 
-          'PAID_PENDING_DELIVERY' | 'IN_TRANSIT' | 'DELIVERED' | 'COMPLETED';
+          'AUTHORIZED_PAYMENT' | 'IN_TRANSIT' | 'DELIVERED' | 'COMPLETED';
   payment_status: 'UNPAID' | 'AUTHORIZED' | 'RELEASED';
   total_amount: number;
   selected_farmer_id?: string;
@@ -134,7 +134,7 @@ GET    /api/buyer/payment/status/:orderId
 
 3. **Context-Aware Action Buttons**
    - AWAITING_PAYMENT: "Upload Payment Slip" (primary CTA)
-   - PAID_PENDING_DELIVERY: "Contact Farmer", "View Payment"
+   - AUTHORIZED_PAYMENT: "Contact Farmer", "View Payment"
    - IN_TRANSIT: "Track Delivery", "Contact Driver"
    - DELIVERED: "Confirm Receipt", "Report Issue"
    - COMPLETED: "Reorder", "Leave Review"
@@ -317,7 +317,7 @@ interface StatusBadgeProps {
 // Color mapping
 const statusColors = {
   AWAITING_PAYMENT: { bg: '#FFF3E0', color: '#F57C00', icon: '💰' },
-  PAID_PENDING_DELIVERY: { bg: '#E3F2FD', color: '#1976D2', icon: '📦' },
+  AUTHORIZED_PAYMENT: { bg: '#E3F2FD', color: '#1976D2', icon: '📦' },
   IN_TRANSIT: { bg: '#E8F5E9', color: '#388E3C', icon: '🚚' },
   // ... complete all statuses
 };

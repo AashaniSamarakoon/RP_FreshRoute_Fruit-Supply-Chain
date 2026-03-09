@@ -1,3 +1,4 @@
+import { useModal } from "@/components/modals/ModalProvider";
 import api from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -6,7 +7,6 @@ import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
-    Alert,
     Animated,
     Image,
     Platform,
@@ -16,7 +16,7 @@ import {
     Text,
     TextInput,
     TouchableOpacity,
-    View,
+    View
 } from "react-native";
 import RNPickerSelect, { PickerSelectProps } from "react-native-picker-select";
 
@@ -158,6 +158,8 @@ export default function AddStock() {
   const [loading, setLoading] = useState(true);
   const [images, setImages] = useState<string[]>([]);
 
+  const { showSuccess, showError } = useModal();
+
   useEffect(() => {
     const load = async () => {
       try {
@@ -171,7 +173,7 @@ export default function AddStock() {
         try {
           raw = await api.get(`/api/fruit-properties`);
         } catch (err) {
-          Alert.alert("Error", `Failed to load fruit properties`);
+          showError("Error", `Failed to load fruit properties`);
           setLoading(false);
           return;
         }
@@ -181,7 +183,7 @@ export default function AddStock() {
           : (raw?.fruits ?? raw?.data ?? raw?.items ?? []);
 
         if (!Array.isArray(data)) {
-          Alert.alert("Error", "Unexpected data format from server");
+          showError("Error", "Unexpected data format from server");
           setLoading(false);
           return;
         }
@@ -196,7 +198,7 @@ export default function AddStock() {
           "[AddStock] exception while loading fruit properties:",
           e,
         );
-        Alert.alert("Error", "Could not load fruit properties");
+        showError("Error", "Could not load fruit properties");
       } finally {
         setLoading(false);
       }
@@ -222,7 +224,7 @@ export default function AddStock() {
   const pickImageFromGallery = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
-      return Alert.alert("Permission Denied", "We need access to your gallery.");
+      showError("Permission Denied", "We need access to your gallery.");
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: "images",
@@ -239,7 +241,7 @@ export default function AddStock() {
   const takePhotoWithCamera = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== "granted") {
-      return Alert.alert("Permission Denied", "We need access to your camera.");
+      showError("Permission Denied", "We need access to your camera.");
     }
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: "images",
@@ -265,11 +267,11 @@ export default function AddStock() {
 
   const onSubmit = async () => {
     if (!fruit || !category || !quantity) {
-      return Alert.alert("Error", "Please fill fruit, category and quantity");
+      return showError("Error", "Please fill fruit, category and quantity");
     }
     // require a future date (tomorrow or later)
     if (!estimatedDate || !isFutureDate(estimatedDate)) {
-      return Alert.alert(
+      return showError(
         "Error",
         "Please select a future estimated harvest date (tomorrow or later)",
       );
@@ -281,7 +283,7 @@ export default function AddStock() {
           ? `${token.slice(0, 6)}...${token.slice(-4)}`
           : token
         : null;
-      if (!token) return Alert.alert("Error", "Not authenticated");
+      if (!token) return showError("Error", "Not authenticated");
 
       const formData = new FormData();
       formData.append("fruit_type", fruit!);
@@ -309,14 +311,14 @@ export default function AddStock() {
         const body = await api.postForm(`/api/farmer/add-predict-stock`, formData);
       } catch (err: any) {
         console.error("Submit error:", err);
-        return Alert.alert("Error", err.message || "Failed to submit stock");
+        return showError("Error", err.message || "Failed to submit stock");
       }
 
-      Alert.alert("Success", "Stock submitted successfully");
+      showSuccess("Success", "Stock submitted successfully");
       router.back();
     } catch (err) {
       console.error(err);
-      Alert.alert("Error", "Could not submit stock");
+      showError("Error", "Could not submit stock");
     }
   };
 

@@ -1,28 +1,29 @@
 import api from "@/services/api";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
-    Calendar,
-    CheckCircle2,
-    ChevronRight,
-    MapPin,
-    PackageOpen,
-    PackageSearch,
-    ShieldCheck,
-    XCircle,
+  Calendar,
+  CheckCircle2,
+  ChevronRight,
+  MapPin,
+  PackageOpen,
+  PackageSearch,
+  ShieldCheck,
+  XCircle,
 } from "lucide-react-native";
 import React, { useCallback, useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    RefreshControl,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  FlatList,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "../../../components/Header";
+import AgreementModal from "../../../components/modals/AgreementModal";
+import { useModal } from "../../../components/modals/ModalProvider";
 
 // Aligning with the new Forest Green theme
 const PRIMARY_GREEN = "#2E7D32"; 
@@ -86,6 +87,11 @@ export default function HarvestProposalsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
 
+  // agreement modal state
+  const [showAgreement, setShowAgreement] = useState(false);
+  const [selectedProposal, setSelectedProposal] = useState<Proposal | null>(null);
+  const [forecastPrice, setForecastPrice] = useState<number | null>(null);
+
   const setProcessing = (id: string, on: boolean) =>
     setProcessingIds((prev) => {
       const next = new Set(prev);
@@ -114,16 +120,18 @@ export default function HarvestProposalsScreen() {
     setRefreshing(false);
   }, [load]);
 
-  const acceptProposal = async (id: string) => {
+  const { showSuccess, showError } = useModal();
+
+  const performAccept = async (id: string) => {
     setProcessing(id, true);
     try {
       await api.post(`/api/farmer/proposals/${id}/accept`, {});
       setProposals((prev) =>
         prev.map((p) => (p.id === id ? { ...p, status: "ACCEPTED" as const } : p)),
       );
-      Alert.alert("Success", "Contract mathematically verified and accepted.");
+      // no success alert here; modal acknowledges
     } catch (err) {
-      Alert.alert("Error", err instanceof Error ? err.message : "Failed to accept proposal");
+      showError("Error", err instanceof Error ? err.message : "Failed to accept proposal");
     } finally {
       setProcessing(id, false);
     }
@@ -135,7 +143,7 @@ export default function HarvestProposalsScreen() {
       await api.post(`/api/farmer/proposals/${id}/reject`, {});
       setProposals((prev) => prev.filter((p) => p.id !== id));
     } catch (err) {
-      Alert.alert("Error", err instanceof Error ? err.message : "Failed to decline proposal");
+      showError("Error", err instanceof Error ? err.message : "Failed to decline proposal");
     } finally {
       setProcessing(id, false);
     }
@@ -154,6 +162,31 @@ export default function HarvestProposalsScreen() {
 
   const renderProposal = ({ item }: { item: Proposal }) => {
     const isProcessing = processingIds.has(item.id);
+
+    const onAcceptPress = async () => {
+      // load data then show modal
+      try {
+        // API uses the table format "variant fruit" (e.g. "TJC Mango").
+        // Start by placing variant first, then fruit type.
+        let fruitKey = `${item.order?.variant} ${item.order?.fruit_type}`;
+        // strip any underscores just in case
+        fruitKey = fruitKey.replace(/_/g, "");
+        const dateParam = item.order?.required_date?.slice(0,10);
+        console.log("[forecast] requesting for", fruitKey, dateParam);
+        const res: any = await api.get(`/forecast/fruit?fruit=${encodeURIComponent(fruitKey)}&date=${encodeURIComponent(dateParam||"")}`);
+        console.log("[forecast] response", res);
+        // response returns an array of {date, forecast_value, target}
+        const priceEntry = Array.isArray(res?.forecast)
+          ? res.forecast.find((e: any) => e.date === dateParam && e.target === "price")
+          : null;
+        setForecastPrice(priceEntry?.forecast_value ?? null);
+      } catch (err) {
+        console.log("[forecast] failed", err);
+        setForecastPrice(null);
+      }
+      setSelectedProposal(item);
+      setShowAgreement(true);
+    };
 
     return (
       <View style={styles.card}>
@@ -232,7 +265,7 @@ Net of platform fees                </Text>
           {item.status === "ACCEPTED" ? (
             <View style={styles.statusSuccess}>
               <CheckCircle2 size={16} color={PRIMARY_GREEN} />
-              <Text style={styles.statusSuccessText}>Deal Locked & Verified</Text>
+              <Text style={styles.statusSuccessText}>Deal Locked & Agreed</Text>
             </View>
           ) : item.status === "PENDING_FARMER" ? (
             <View style={styles.actionsRow}>
@@ -251,7 +284,7 @@ Net of platform fees                </Text>
               
               <TouchableOpacity
                 style={[styles.actionBtn, styles.acceptBtn]}
-                onPress={() => acceptProposal(item.id)}
+                onPress={onAcceptPress}
                 disabled={isProcessing}
                 activeOpacity={0.8}
               >
@@ -341,6 +374,27 @@ Net of platform fees                </Text>
           }
         />
       )}
+
+      <AgreementModal
+        visible={showAgreement}
+        onCancel={() => {
+          setShowAgreement(false);
+          setSelectedProposal(null);
+        }}
+        onApprove={() => {
+          if (selectedProposal) {
+            performAccept(selectedProposal.id);
+          }
+          setShowAgreement(false);
+          setSelectedProposal(null);
+        }}
+        forecastPrice={forecastPrice}
+        requiredDate={selectedProposal?.order?.required_date}
+        fruitName={selectedProposal?.order?.fruit_type}
+        variant={selectedProposal?.order?.variant}
+        quantity={selectedProposal?.quantity_proposed}
+      />
+
     </SafeAreaView>
   );
 }
