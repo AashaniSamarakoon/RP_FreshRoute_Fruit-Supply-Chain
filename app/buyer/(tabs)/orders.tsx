@@ -195,7 +195,18 @@ export default function BuyerOrders() {
     if (matchingOrders.length === 0) return;
     try {
       const results = await Promise.allSettled(
-        matchingOrders.map((o) => api.get(`/api/buyer/matching/order/${o.id}`)),
+        matchingOrders.map(async (o) => {
+          try {
+            return await api.get(`/api/buyer/matching/order/${o.id}`);
+          } catch (e: any) {
+            // try legacy path
+            if (e?.message?.includes("404")) {
+              console.warn("order matching fallback for", o.id);
+              return await api.get(`/api/buyer/matching/${o.id}`);
+            }
+            throw e;
+          }
+        }),
       );
       const counts: Record<string, number> = {};
       const prices: Record<string, { min: number; max: number }> = {};

@@ -4,16 +4,18 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { Sprout } from "lucide-react-native";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-    ActivityIndicator,
-    Dimensions,
-    FlatList,
-    Image,
-    Modal,
-    RefreshControl,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  FlatList,
+  Image,
+  Modal,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "../../../components/Header";
@@ -126,7 +128,7 @@ type StatusMeta = { label: string; color: string; bg: string };
 const ORDER_STATUS_META: Record<string, StatusMeta> = {
   AWAITING_PAYMENT: { label: "Payment Due", color: "#BE123C", bg: "#FFE4E6" },
   READY_FOR_PICKUP: { label: "Ready", color: "#065F46", bg: "#D1FAE5" },
-  PICKED_UP: { label: "In Transit", color: "#1D4ED8", bg: "#DBEAFE" },
+  IN_TRANSIT: { label: "In Transit", color: "#1D4ED8", bg: "#DBEAFE" },
   DELIVERED: { label: "Delivered", color: "#166534", bg: "#BBF7D0" },
   COMPLETED: { label: "Completed", color: "#166534", bg: "#BBF7D0" },
   AUTHORIZED_PAYMENT: { label: "Authorized", color: "#B45309", bg: "#FEF3C7" },
@@ -187,6 +189,80 @@ function useOrdersData() {
   const [error, setError] = useState<string | null>(null);
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
 
+  // small utility for toggling the ‘processingIds’ set used by cards and
+  // other controls. defined early so callbacks defined below can use it.
+  const setProcessing = (id: string, on: boolean) =>
+    setProcessingIds((prev) => {
+      const next = new Set(prev);
+      on ? next.add(id) : next.delete(id);
+      return next;
+    });
+
+  // modal helpers are needed by several helper functions defined in
+  // this hook (deleteHarvest, acceptProposal, rejectProposal, etc.).
+  // extract them immediately after state initialization so they are
+  // available to callbacks defined later.
+  const { showSuccess, showError } = useModal();
+
+  // ---- client-side editing/deletion helpers ----
+  // when the farmer removes a harvest prediction we need to call the
+  // backend so that the stock is deleted from the server as well as
+  // removing it from local state. the UI previously just removed the
+  // item locally which is why the user saw the card disappear but no
+  // network request was issued.
+  const deleteHarvest = useCallback(async (id: string) => {
+    setProcessing(id, true);
+    try {
+      try {
+        // first attempt the namespaced endpoint
+        await api.del(`/api/farmer/predictStock/${id}`);
+      } catch (innerErr: any) {
+        // if server responds 404 we may be running against a version that
+        // only exposes the old /predictStock route, so try that as a fallback
+        if (innerErr.message && innerErr.message.includes("404")) {
+          console.warn("deleteHarvest: fallback to /predictStock because first call returned 404");
+          await api.del(`/predictStock/${id}`);
+        } else {
+          throw innerErr;
+        }
+      }
+
+      // update local state optimistically
+      setHarvests((prev) => prev.filter((h) => h.id !== id));
+      showSuccess("Deleted", "Harvest prediction removed.");
+    } catch (err: any) {
+      console.error("[deleteHarvest] failed", err);
+      showError("Error", err?.message ?? "Failed to delete harvest");
+    } finally {
+      setProcessing(id, false);
+    }
+  }, [showSuccess, showError]);
+
+  const updateHarvest = useCallback((id: string, updates: Partial<Harvest>) => {
+    setHarvests((prev) =>
+      prev.map((h) => (h.id === id ? { ...h, ...updates } : h)),
+    );
+  }, []);
+
+  const deleteProposal = useCallback((id: string) => {
+    setProposals((prev) => prev.filter((p) => p.id !== id));
+    setOrdersMapState((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }, []);
+
+  const updateProposal = useCallback(
+    (id: string, updates: Partial<Proposal>) => {
+      setProposals((prev) =>
+        prev.map((p) => (p.id === id ? { ...p, ...updates } : p)),
+      );
+      // we don't rely on ordersMapState when editing locally; ignore order id
+    },
+    [],
+  );
+
 
   const load = useCallback(async (silent = false) => {
     if (!silent) { setLoading(true); setError(null); }
@@ -195,8 +271,13 @@ function useOrdersData() {
       try {
         harvestRes = await api.get("/api/farmer/estimated-stocks");
       } catch (err: any) {
-        if (!silent) setError(err?.message ?? "Failed to load harvests");
-        return;
+        console.warn("[DEBUG] estimated-stocks endpoint failed, trying predictStock", err);
+        try {
+          harvestRes = await api.get("/api/farmer/predictStock");
+        } catch (err2: any) {
+          if (!silent) setError(err2?.message ?? "Failed to load harvests");
+          return;
+        }
       }
 
       const stocks: Harvest[] = Array.isArray(harvestRes)
@@ -273,13 +354,14 @@ function useOrdersData() {
     }
   }, []);
 
+
   const refresh = useCallback(async () => {
     setRefreshing(true);
     await load(true);
     setRefreshing(false);
   }, [load]);
 
-  const { showSuccess, showError } = useModal();
+  // refreshControl will be generated by consumer of hook (OrdersTab)
 
   const acceptProposal = useCallback(async (id: string) => {
     setProcessing(id, true);
@@ -339,12 +421,6 @@ function useOrdersData() {
     }
   }, [load]);
 
-  const setProcessing = (id: string, on: boolean) =>
-    setProcessingIds((prev) => {
-      const next = new Set(prev);
-      on ? next.add(id) : next.delete(id);
-      return next;
-    });
 
   return {
     harvests,
@@ -359,6 +435,10 @@ function useOrdersData() {
     acceptProposal,
     rejectProposal,
     markReady,    // Restored!
+    deleteHarvest,
+    updateHarvest,
+    deleteProposal,
+    updateProposal,
   };
 }
 
@@ -378,7 +458,20 @@ export default function OrdersTab() {
     acceptProposal,
     rejectProposal,
     markReady,
+    deleteHarvest,
+    updateHarvest,
+    deleteProposal,
+    updateProposal,
   } = useOrdersData();
+
+  const refreshControl = (
+    <RefreshControl
+      refreshing={refreshing}
+      onRefresh={refresh}
+      colors={[PRIMARY_GREEN]}
+      tintColor={PRIMARY_GREEN}
+    />
+  );
 
   const [activeTab, setActiveTab] = useState<TabKey>("harvests");
   const [imageModalVisible, setImageModalVisible] = useState(false);
@@ -450,6 +543,70 @@ export default function OrdersTab() {
     });
   };
 
+  // === editing modal state ===
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editTarget, setEditTarget] = useState<
+    | { type: "harvest" | "proposal"; item: any }
+    | null
+  >(null);
+  const [editFields, setEditFields] = useState<{ fruit_type?: string; quantity?: string }>({});
+
+  // editing helpers must exist before handlers that reference them
+  const openEdit = (type: "harvest" | "proposal", item: any) => {
+    setEditTarget({ type, item });
+    setEditFields({
+      fruit_type: item.fruit_type ?? item.order?.fruit_type ?? "",
+      quantity: String(item.quantity ?? item.order?.quantity ?? ""),
+    });
+    setEditModalVisible(true);
+  };
+
+  const saveEdit = () => {
+    if (!editTarget) return;
+    const { type, item } = editTarget;
+    const qty = Number(editFields.quantity || 0);
+    if (type === "harvest") {
+      updateHarvest(item.id, { fruit_type: editFields.fruit_type, quantity: qty });
+    } else {
+      updateProposal(item.id, {
+        order: {
+          ...(item.order || {}),
+          fruit_type: editFields.fruit_type,
+          quantity: qty,
+        },
+      });
+    }
+    setEditModalVisible(false);
+    setEditTarget(null);
+  };
+
+  const handleHarvestLongPress = (h: Harvest) => {
+    Alert.alert("Actions", "What would you like to do?", [
+      { text: "Edit", onPress: () => openEdit("harvest", h) },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => {
+          // double-confirm before removing since it's destructive
+          Alert.alert(
+            "Confirm delete",
+            "Are you sure you want to delete this harvest?",
+            [
+              { text: "Cancel", style: "cancel" },
+              {
+                text: "Delete",
+                style: "destructive",
+                onPress: () => deleteHarvest(h.id),
+              },
+            ],
+          );
+        },
+      },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  };
+
+
   const handleImagePress = (urls: string[]) => {
     if (urls && urls.length > 0) {
       setCurrentImages(urls);
@@ -501,6 +658,7 @@ export default function OrdersTab() {
       <HarvestCard
         harvest={item}
         onPress={() => handleHarvestPress(item)}
+        onLongPress={() => handleHarvestLongPress(item)}
         onImagePress={handleImagePress}
       />
     );
@@ -509,16 +667,23 @@ export default function OrdersTab() {
 );
 
 const renderProposal = useCallback(
-    ({ item }: { item: Proposal }) => {
-      const tabKey = getProposalTabKey(item);
-      const isOrderPhase = tabKey === "payment_due" || tabKey === "processing" || tabKey === "completed";
+  ({ item }: { item: Proposal }) => {
+    const tabKey = getProposalTabKey(item);
+    const isOrderPhase =
+      tabKey === "payment_due" ||
+      tabKey === "processing" ||
+      tabKey === "completed";
 
-      const handleCardPress = () => {
-        if (isOrderPhase && item.order_id) {
-          // navigate to farmer-specific detail screen instead of buyer
-          router.push(`/farmer/screens/OrderDetailScreen?orderId=${encodeURIComponent(String(item.order_id))}`);
-        } else {
-          const harvestToPass = harvests.find(h => h.id === item.stock_id) || {
+    const handleCardPress = () => {
+      if (isOrderPhase && item.order_id) {
+        router.push(
+          `/farmer/screens/OrderDetailScreen?orderId=${encodeURIComponent(
+            String(item.order_id),
+          )}`,
+        );
+      } else {
+        const harvestToPass =
+          harvests.find((h) => h.id === item.stock_id) || {
             id: item.stock_id,
             fruit_type: item.order?.fruit_type || "",
             variant: item.order?.variant || "",
@@ -526,90 +691,72 @@ const renderProposal = useCallback(
             quantity: item.order?.quantity || item.quantity_proposed,
             estimated_harvest_date: item.order?.required_date || "",
           } as Harvest;
-          
-          handleHarvestPress(harvestToPass);
-        }
+
+        handleHarvestPress(harvestToPass);
+      }
+    };
+
+    // proposals do not support long-press anymore
+    const handleLong = () => {
+      // no-op
+    };
+
+    if (isOrderPhase) {
+      const apiOrder = ordersMap[String(item.order_id)] || item.order || {};
+
+      const harvestFromList = harvests.find((h) => h.id === item.stock_id);
+      const fallbackHarvest: Harvest = {
+        id: String(item.stock_id || apiOrder.harvest_id || ""),
+        fruit_type: apiOrder.fruit_type || item.order?.fruit_type || "",
+        variant: apiOrder.variant || item.order?.variant || "",
+        grade: apiOrder.grade || item.order?.grade || "",
+        quantity:
+          apiOrder.quantity || item.order?.quantity || item.quantity_proposed,
+        estimated_harvest_date:
+          apiOrder.harvestDate ||
+          apiOrder.required_date ||
+          item.order?.required_date ||
+          "",
+        status: apiOrder.status || item.order?.status || "",
+        created_at: apiOrder.created_at || "",
+        price_per_kg:
+          apiOrder.pricing?.unitPrice || item.pricing?.unitPrice || 0,
       };
+      const harvest = harvestFromList || fallbackHarvest;
 
-      if (isOrderPhase) {
-         // reuse HarvestCard for orders; pass earning and images plus status
-         const apiOrder = ordersMap[String(item.order_id)] || item.order || {};
+      const orderImages = parseImageUrls(
+        apiOrder.productImages ??
+          apiOrder.product_images ??
+          apiOrder.image_url ??
+          apiOrder.images ??
+          null,
+      );
+      const harvestImages = parseImageUrls(
+        harvestFromList?.image_url ?? apiOrder.image_url ?? null,
+      );
+      const images = orderImages.length > 0 ? orderImages : harvestImages;
 
-         // find matching harvest if still cached, otherwise build a minimal object
-         const harvestFromList = harvests.find(h => h.id === item.stock_id);
-         const fallbackHarvest: Harvest = {
-           id: String(item.stock_id || apiOrder.harvest_id || ""),
-           fruit_type: apiOrder.fruit_type || item.order?.fruit_type || "",
-           variant: apiOrder.variant || item.order?.variant || "",
-           grade: apiOrder.grade || item.order?.grade || "",
-           quantity: apiOrder.quantity || item.order?.quantity || item.quantity_proposed,
-           estimated_harvest_date:
-             apiOrder.harvestDate || apiOrder.required_date || item.order?.required_date || "",
-           status: apiOrder.status || item.order?.status || "",
-           created_at: apiOrder.created_at || "",
-           price_per_kg: apiOrder.pricing?.unitPrice || item.pricing?.unitPrice || 0,
-         };
-         const harvest = harvestFromList || fallbackHarvest;
-
-         const orderImages = parseImageUrls(
-           apiOrder.productImages ?? apiOrder.product_images ?? apiOrder.image_url ?? apiOrder.images ?? null
-         );
-         const harvestImages = parseImageUrls(harvestFromList?.image_url ?? apiOrder.image_url ?? null);
-         const images = orderImages.length > 0 ? orderImages : harvestImages;
-
-         // ensure card knows about the chosen image(s)
-         if (images.length > 0) {
-           harvest.image_url = images;
-         }
-
-         const earning =
-           apiOrder.pricing?.farmerEarning ??
-           item.pricing?.farmerEarning ??
-           apiOrder.farmer_share_amount ?? null;
-         return (
-           <HarvestCard
-             harvest={harvest}
-             onPress={handleCardPress}
-             onImagePress={handleImagePress}
-             activeOrderStatus={apiOrder.status || item.order?.status}
-             processing={processingIds.has(String(item.order_id))}
-             onMarkReady={() => markReady(String(item.order_id))}
-             earning={earning}
-           />
-         );
+      if (images.length > 0) {
+        harvest.image_url = images;
       }
 
-      return (
-        <TouchableOpacity activeOpacity={0.95} onPress={handleCardPress}>
-          <ProposalCard
-            proposal={item}
-            processing={processingIds.has(item.id)}
-            onAccept={() => handleAcceptTap(item)}
-            onReject={() => rejectProposal(item.id)}
-            onViewProfile={() => handleViewProfile(item)}
-          />
-        </TouchableOpacity>
-      );
-    },
-    [processingIds, acceptProposal, rejectProposal, handleViewProfile, router, harvests, handleImagePress, handleHarvestPress, markReady],
-  );
-  
-  const refreshControl = (
-    <RefreshControl
-      refreshing={refreshing}
-      onRefresh={refresh}
-      colors={[PRIMARY_GREEN]}
-      tintColor={PRIMARY_GREEN}
-    />
-  );
+      const earning =
+        apiOrder.pricing?.farmerEarning ??
+        item.pricing?.farmerEarning ??
+        apiOrder.farmer_share_amount ??
+        null;
 
-  const renderContent = () => {
-    if (loading) {
       return (
-        <View style={styles.stateView}>
-          <ActivityIndicator size="large" color={PRIMARY_GREEN} />
-          <Text style={styles.stateText}>Loading...</Text>
-        </View>
+        <HarvestCard
+          harvest={harvest}
+          onPress={handleCardPress}
+          onLongPress={handleLong}
+          onImagePress={handleImagePress}
+          activeOrderStatus={apiOrder.status || item.order?.status}
+          processing={processingIds.has(String(item.order_id))}
+          onMarkReady={() => markReady(String(item.order_id))}
+          earning={earning}
+        />
       );
     }
 
@@ -628,49 +775,99 @@ const renderProposal = useCallback(
       );
     }
 
-    if (activeTab === "harvests") {
-      return (
-        <FlatList<Harvest>
-          data={harvests}
-          keyExtractor={(item) => item.id}
-          renderItem={renderHarvest}
-          contentContainerStyle={harvests.length === 0 ? styles.emptyContainer : styles.listContent}
-          showsVerticalScrollIndicator={false}
-          refreshControl={refreshControl}
-          ListEmptyComponent={
-            <View style={styles.stateView}>
-              <View style={styles.emptyIconBox}>
-                <Sprout size={36} color="#9CA3AF" />
-              </View>
-              <Text style={styles.emptyTitle}>No harvests yet</Text>
-              <Text style={styles.emptySubtitle}>Add an expected harvest to start receiving buyer proposals.</Text>
-            </View>
-          }
-        />
-      );
-    }
-
-    const filteredProposals = proposals.filter((p) => getProposalTabKey(p) === activeTab);
+    // for non-order-phase proposals we simply render the card above
     return (
-      <FlatList<Proposal>
-        data={filteredProposals}
+      <ProposalCard
+        proposal={item}
+        processing={processingIds.has(item.id)}
+        onAccept={() => handleAcceptTap(item)}
+        onReject={() => rejectProposal(item.id)}
+        onViewProfile={() => handleViewProfile(item)}
+      />
+    );
+  },
+  [
+    processingIds,
+    acceptProposal,
+    rejectProposal,
+    handleViewProfile,
+    router,
+    harvests,
+    handleImagePress,
+    handleHarvestPress,
+    markReady,
+  ],
+);
+
+// renderContent handles the overall list display and status states
+const renderContent = () => {
+  if (loading) {
+    return (
+      <View style={styles.stateView}>
+        <ActivityIndicator size="large" color={PRIMARY_GREEN} />
+        <Text style={styles.stateText}>Loading...</Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.stateView}>
+        <View style={styles.emptyIconBox}>
+          <Ionicons name="alert-circle-outline" size={36} color={DANGER_RED} />
+        </View>
+        <Text style={[styles.emptyTitle, { color: DANGER_RED }]}>Could not load harvests</Text>
+        <Text style={styles.emptySubtitle}>{error}</Text>
+        <TouchableOpacity style={styles.retryBtn} onPress={() => load()}>
+          <Text style={styles.retryBtnText}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (activeTab === "harvests") {
+    return (
+      <FlatList<Harvest>
+        data={harvests}
         keyExtractor={(item) => item.id}
-        renderItem={renderProposal}
-        contentContainerStyle={filteredProposals.length === 0 ? styles.emptyContainer : styles.listContent}
+        renderItem={renderHarvest}
+        contentContainerStyle={harvests.length === 0 ? styles.emptyContainer : styles.listContent}
         showsVerticalScrollIndicator={false}
         refreshControl={refreshControl}
         ListEmptyComponent={
           <View style={styles.stateView}>
             <View style={styles.emptyIconBox}>
-              <Ionicons name="receipt-outline" size={36} color="#9CA3AF" />
+              <Sprout size={36} color="#9CA3AF" />
             </View>
-            <Text style={styles.emptyTitle}>No orders found</Text>
-            <Text style={styles.emptySubtitle}>You don't have any orders matching this status.</Text>
+            <Text style={styles.emptyTitle}>No harvests yet</Text>
+            <Text style={styles.emptySubtitle}>Add an expected harvest to start receiving buyer proposals.</Text>
           </View>
         }
       />
     );
-  };
+  }
+
+  const filteredProposals = proposals.filter((p) => getProposalTabKey(p) === activeTab);
+  return (
+    <FlatList<Proposal>
+      data={filteredProposals}
+      keyExtractor={(item) => item.id}
+      renderItem={renderProposal}
+      contentContainerStyle={filteredProposals.length === 0 ? styles.emptyContainer : styles.listContent}
+      showsVerticalScrollIndicator={false}
+      refreshControl={refreshControl}
+      ListEmptyComponent={
+        <View style={styles.stateView}>
+          <View style={styles.emptyIconBox}>
+            <Ionicons name="receipt-outline" size={36} color="#9CA3AF" />
+          </View>
+          <Text style={styles.emptyTitle}>No orders found</Text>
+          <Text style={styles.emptySubtitle}>You don't have any orders matching this status.</Text>
+        </View>
+      }
+    />
+  );
+};
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -691,6 +888,46 @@ const renderProposal = useCallback(
           requiredDate={selectedProposal.order?.required_date}
         />
       )}
+
+      {/* edit dialog for harvests/orders */}
+      <Modal
+        visible={editModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setEditModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>
+              Edit {editTarget?.type === "harvest" ? "Harvest" : "Order"}
+            </Text>
+            <TextInput
+              style={styles.modalInput}
+              value={editFields.fruit_type}
+              onChangeText={(t) => setEditFields((f) => ({ ...f, fruit_type: t }))}
+              placeholder="Fruit type"
+            />
+            <TextInput
+              style={styles.modalInput}
+              value={editFields.quantity}
+              onChangeText={(t) => setEditFields((f) => ({ ...f, quantity: t }))}
+              placeholder="Quantity"
+              keyboardType="numeric"
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalButton}
+                onPress={() => setEditModalVisible(false)}
+              >
+                <Text>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalButton} onPress={saveEdit}>
+                <Text>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={imageModalVisible} transparent animationType="fade" onRequestClose={() => setImageModalVisible(false)} statusBarTranslucent>
         <View style={styles.imageModalOverlay}>
@@ -793,5 +1030,44 @@ const styles = StyleSheet.create({
   imageModalFull: {
     width: SCREEN_WIDTH,
     height: SCREEN_WIDTH * 1.2,
+  },
+
+  // ---- edit dialog styles ----
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContent: {
+    width: "85%",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 20,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: 12,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 12,
+  },
+  modalButtons: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 12,
+  },
+  modalButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: PRIMARY_GREEN,
   },
 });

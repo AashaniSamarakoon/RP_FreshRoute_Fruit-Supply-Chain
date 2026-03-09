@@ -61,31 +61,44 @@ export default function BuyerDashboardScreen(): React.JSX.Element {
 
       let data: any;
       try {
-        // note: `/api/buyer/matching/buyer/:id` now treats `id` as a
-        // user UUID rather than the buyer table's numeric idx.
+        // primary endpoint expects user UUID after `buyer/`
         data = await api.get(`/api/buyer/matching/buyer/${buyerId}`);
-      } catch (err) {
-        throw err;
+      } catch (err: any) {
+        // if backend still using old route without "buyer" segment,
+        // fall back to legacy path on 404
+        console.warn("primary matching endpoint failed", err?.message);
+        if (err?.message?.includes("404")) {
+          try {
+            data = await api.get(`/api/buyer/matching/${buyerId}`);
+            console.log("fell back to legacy matching path");
+          } catch (err2: any) {
+            console.error("fallback matching failed", err2?.message);
+            throw err2;
+          }
+        } else {
+          throw err;
+        }
       }
       console.log("Matching deals data:", data);
 
       // Transform API response to DealData format
-      const matchingDeals = (data.proposals || data || []).map(
-        (proposal: any) => {
-          console.log("Raw proposal from backend:", proposal);
-          return {
-            id: proposal.id,
-            title:
-              `${proposal.stock?.fruit_type || "Unknown"} ${proposal.stock?.variant || ""}`.trim(),
-            price: proposal.stock?.price_per_kg || "",
-            unit: "kg",
-            location: proposal.stock?.farmer?.location || "Unknown",
-            grade: proposal.order?.grade || "Unknown",
-            quality: proposal.order?.grade || "Unknown", // Using grade as quality for now
-            quantity_proposed: proposal.quantity_proposed || "0",
-          };
-        },
-      );
+      // ensure proposals array exists
+      const proposalsList: any[] =
+        Array.isArray(data.proposals) ? data.proposals : data.proposals ? [data.proposals] : [];
+      const matchingDeals = proposalsList.map((proposal: any) => {
+        console.log("Raw proposal from backend:", proposal);
+        return {
+          id: proposal.id,
+          title:
+            `${proposal.stock?.fruit_type || "Unknown"} ${proposal.stock?.variant || ""}`.trim(),
+          price: proposal.stock?.price_per_kg || "",
+          unit: "kg",
+          location: proposal.stock?.farmer?.location || "Unknown",
+          grade: proposal.order?.grade || "Unknown",
+          quality: proposal.order?.grade || "Unknown", // Using grade as quality for now
+          quantity_proposed: proposal.quantity_proposed || "0",
+        };
+      });
 
       // Only set deals if there are matching deals, otherwise empty array
       setDeals(matchingDeals.length > 0 ? matchingDeals : []);

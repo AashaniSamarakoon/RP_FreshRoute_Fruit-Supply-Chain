@@ -492,7 +492,7 @@ export default function OrderDetailScreen() {
     "AUTHORIZED_PAYMENT",
     "PACKING",
     "READY_FOR_PICKUP",
-    "IN_TRANSIT",
+    "PICKED_UP",
     // once we reach DELIVERED or beyond the map section should disappear
   ].includes(order?.status ?? "");
 
