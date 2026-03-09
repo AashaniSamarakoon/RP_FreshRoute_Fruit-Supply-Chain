@@ -131,9 +131,11 @@ export default function PaymentInfoModal({
           <View style={styles.depositNotice}>
             <Ionicons name="shield-checkmark" size={20} color="#059669" />
             <View style={styles.depositTextContainer}>
-              <Text style={styles.depositNoticeTitle}>50% Deposit to Secure Order</Text>
+              <Text style={styles.depositNoticeTitle}>Deposit to Secure Order</Text>
               <Text style={styles.depositNoticeText}>
-                You will only be charged a 50% deposit today. Your card will be securely saved to automatically process the remaining balance upon successful delivery.
+                You will only be charged a deposit today. It will be 50% of the order
+                total, capped at Rs. 25 000. Your card will be securely saved to
+                automatically process the remaining balance upon successful delivery.
               </Text>
             </View>
           </View>
@@ -197,7 +199,7 @@ export default function PaymentInfoModal({
             </TouchableOpacity>
             <TouchableOpacity style={styles.payBtn} onPress={onPayNow}>
               <Ionicons name="card-outline" size={18} color="#fff" />
-              <Text style={styles.payBtnText}>Pay 50% Deposit</Text>
+              <Text style={styles.payBtnText}>Pay Deposit</Text>
             </TouchableOpacity>
           </View>
         </View>

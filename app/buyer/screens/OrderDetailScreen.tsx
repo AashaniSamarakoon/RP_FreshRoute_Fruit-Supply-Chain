@@ -368,9 +368,15 @@ export default function OrderDetailScreen() {
   const handlePayNow = async () => {
     if (!order || !priceLockKey) return;
 
-    // compute 50% deposit as hold amount
-    const depositAmount = order.totalPrice != null ? order.totalPrice / 2 : null;
-    // lock the deposit locally for UI badge
+    // compute deposit: half the total, but never more than Rs. 250 000
+    let depositAmount: number | null = null;
+    if (order.totalPrice != null) {
+      depositAmount = order.totalPrice / 2;
+      if (depositAmount > 25000) {
+        depositAmount =25000;
+      }
+    }
+    // lock the deposit locally for UI badge (fall back to unit price if nothing else)
     const lockValue = lockedUnitPrice ?? depositAmount ?? order.unitPrice ?? null;
     if (lockValue != null) {
       const lock = {
