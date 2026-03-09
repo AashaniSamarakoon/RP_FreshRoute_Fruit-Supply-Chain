@@ -4,10 +4,13 @@ import PaymentInfoModal from "@/components/modals/PaymentInfoModal";
 import SuccessModal from "@/components/modals/SuccessModal";
 import { BuyerColors } from "@/constants/theme";
 import api from "@/services/api";
+import { startPayHerePreapproval } from "@/services/payhereService";
 import {
-  startPayHerePreapproval
-} from "@/services/payhereService";
-import { FarmerInfo, HarvestJourney, PlacedOrder, TransporterInfo } from "@/types";
+  FarmerInfo,
+  HarvestJourney,
+  PlacedOrder,
+  TransporterInfo,
+} from "@/types";
 import { formatCurrency, formatDate } from "@/utils/formatters";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -217,7 +220,10 @@ export default function OrderDetailScreen() {
       });
 
       // if backend omitted price details, try to infer from totals & quantity
-      if ((merged.unitPrice == null || merged.basePrice == null) && merged.quantity) {
+      if (
+        (merged.unitPrice == null || merged.basePrice == null) &&
+        merged.quantity
+      ) {
         // total_amount includes platform + transporter fees etc
         const totalAmount = data.order?.total_amount ?? null;
         const platformFee = data.order?.platform_fee_amount ?? 0;
@@ -226,12 +232,17 @@ export default function OrderDetailScreen() {
           const inferredBase = totalAmount - platformFee - transporterFee;
           merged.basePrice = merged.basePrice ?? inferredBase;
           if (merged.quantity) {
-            merged.unitPrice = merged.unitPrice ?? inferredBase / merged.quantity;
+            merged.unitPrice =
+              merged.unitPrice ?? inferredBase / merged.quantity;
           }
         }
       }
       // if totalPrice still missing, compute from unitPrice * quantity
-      if (merged.totalPrice == null && merged.unitPrice != null && merged.quantity) {
+      if (
+        merged.totalPrice == null &&
+        merged.unitPrice != null &&
+        merged.quantity
+      ) {
         merged.totalPrice = merged.unitPrice * merged.quantity;
       }
 
@@ -316,7 +327,11 @@ export default function OrderDetailScreen() {
         merged?.fruit_type &&
         merged?.required_date
       ) {
-        fetchForecastPrice(merged.fruit_type, merged.required_date, merged.variant);
+        fetchForecastPrice(
+          merged.fruit_type,
+          merged.required_date,
+          merged.variant,
+        );
       }
     } catch (error: any) {
       setFetchError(error?.message || "Failed to load order details");
@@ -382,8 +397,6 @@ export default function OrderDetailScreen() {
     }
   };
 
-
-
   /** Called when user taps Pay Now inside the info modal */
   const handlePayNow = async () => {
     if (!order || !priceLockKey) return;
@@ -393,11 +406,12 @@ export default function OrderDetailScreen() {
     if (order.totalPrice != null) {
       depositAmount = order.totalPrice / 2;
       if (depositAmount > 25000) {
-        depositAmount =25000;
+        depositAmount = 25000;
       }
     }
     // lock the deposit locally for UI badge (fall back to unit price if nothing else)
-    const lockValue = lockedUnitPrice ?? depositAmount ?? order.unitPrice ?? null;
+    const lockValue =
+      lockedUnitPrice ?? depositAmount ?? order.unitPrice ?? null;
     if (lockValue != null) {
       const lock = {
         lockedPrice: lockValue,
@@ -424,7 +438,7 @@ export default function OrderDetailScreen() {
         setDepositPaid(depositAmount);
         setPayherePaymentId(paymentId);
         // mark order temporarily authorized
-        setOrder((o) => o ? { ...o, status: "AUTHORIZED_PAYMENT" } : o);
+        setOrder((o) => (o ? { ...o, status: "AUTHORIZED_PAYMENT" } : o));
         setSuccessModal({
           title: "Deposit Paid",
           message: depositAmount
@@ -450,12 +464,9 @@ export default function OrderDetailScreen() {
     // Once payment is done (AUTHORIZED_PAYMENTand beyond) no action button is shown
     // — tracking is handled via the inline mini-map section
     if (
-      [
-        "AUTHORIZED_PAYMENT",
-        "IN_TRANSIT",
-        "DELIVERED",
-        "COMPLETED",
-      ].includes(order.status)
+      ["AUTHORIZED_PAYMENT", "IN_TRANSIT", "DELIVERED", "COMPLETED"].includes(
+        order.status,
+      )
     ) {
       return null;
     }
@@ -493,6 +504,7 @@ export default function OrderDetailScreen() {
     "PACKING",
     "READY_FOR_PICKUP",
     "IN_TRANSIT",
+    "PICKED_UP",
     // once we reach DELIVERED or beyond the map section should disappear
   ].includes(order?.status ?? "");
 
@@ -717,18 +729,18 @@ export default function OrderDetailScreen() {
             {/* journey button appears once order has been delivered (or completed) */}
             {orderJourney &&
               ["DELIVERED", "COMPLETED"].includes(order.status) && (
-              <TouchableOpacity
-                style={styles.journeyBtn}
-                onPress={() => {
-                  router.push({
-                    pathname: "/buyer/screens/JourneyScreen" as any,
-                    params: { journey: JSON.stringify(orderJourney) },
-                  });
-                }}
-              >
-                <Text style={styles.journeyBtnText}>View Journey</Text>
-              </TouchableOpacity>
-            )}
+                <TouchableOpacity
+                  style={styles.journeyBtn}
+                  onPress={() => {
+                    router.push({
+                      pathname: "/buyer/screens/JourneyScreen" as any,
+                      params: { journey: JSON.stringify(orderJourney) },
+                    });
+                  }}
+                >
+                  <Text style={styles.journeyBtnText}>View Journey</Text>
+                </TouchableOpacity>
+              )}
           </View>
 
           <View style={styles.solidSeparator} />
@@ -895,7 +907,9 @@ export default function OrderDetailScreen() {
               onPress={() => setLocationExpanded((v) => !v)}
               activeOpacity={0.7}
             >
-              <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Location</Text>
+              <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>
+                Location
+              </Text>
               <Ionicons
                 name={locationExpanded ? "chevron-up" : "chevron-down"}
                 size={20}
@@ -1070,7 +1084,6 @@ export default function OrderDetailScreen() {
           onPayNow={handlePayNow}
         />
       )}
-
 
       {/* Product Image Viewer Modal */}
       <Modal
