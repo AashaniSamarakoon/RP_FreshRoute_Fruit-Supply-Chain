@@ -47,7 +47,10 @@ export default function VerificationResults() {
           return;
         }
         const user = JSON.parse(userJson);
-        if (user.role !== "transporter") {
+        const role = (user.user_metadata?.role ?? user.role ?? "")
+          .toString()
+          .toLowerCase();
+        if (role !== "transporter") {
           router.replace("/transporter");
           return;
         }
@@ -67,6 +70,7 @@ export default function VerificationResults() {
     const loadData = async () => {
       try {
         const errorParam = params.error;
+        const resultsStorageKey = (params.resultsStorageKey as string) || "";
         const resultsParam = params.results;
         const farmerGradeParam = params.farmerGrade;
 
@@ -76,55 +80,64 @@ export default function VerificationResults() {
           return;
         }
 
-        if (!resultsParam) {
-          // Wait for params to be available
-          return;
-        }
-
-        const resultsData = JSON.parse(resultsParam as string);
         const farmerGradeData = (farmerGradeParam as string) || "Grade A";
         const jobIdParam = (params.job_id as string) || "";
         const orderIdParam = (params.order_id as string) || "";
-        const imageUrisParam = (params.imageUris as string) || "";
-        const imagesBase64Param = (params.imagesBase64 as string) || ""; // Fallback for old method
-        const imagesStorageKey = (params.imagesStorageKey as string) || ""; // Fallback for AsyncStorage method
-
-        setResults(resultsData);
         setFarmerGrade(farmerGradeData);
         setJobId(jobIdParam || "");
         setOrderId(orderIdParam || "");
 
-        // Store image URIs for later base64 conversion
-        if (imageUrisParam) {
-          try {
-            const imageUris = JSON.parse(imageUrisParam);
-            // Store URIs - we'll convert to base64 when saving
-            setImagesBase64(imageUris); // Temporarily store URIs, will convert to base64 later
-          } catch (e) {
-            console.error("Error parsing image URIs:", e);
+        let resultsData: VerificationResult[];
+
+        if (resultsStorageKey) {
+          // Load results + imageUris from AsyncStorage (avoids URL/params size limit)
+          const stored = await AsyncStorage.getItem(resultsStorageKey);
+          if (!stored) {
+            setHasError(true);
+            paramsProcessed.current = true;
+            return;
           }
-        } else if (imagesStorageKey) {
-          // Fallback: Try to load from AsyncStorage
-          try {
-            const storedImages = await AsyncStorage.getItem(imagesStorageKey);
-            if (storedImages) {
-              setImagesBase64(JSON.parse(storedImages));
-              console.log("✅ Loaded base64 images from AsyncStorage");
-              AsyncStorage.removeItem(imagesStorageKey).catch(() => {});
+          const parsed = JSON.parse(stored) as { results: VerificationResult[]; imageUris: string[] };
+          resultsData = parsed.results || [];
+          if (parsed.imageUris?.length) {
+            setImagesBase64(parsed.imageUris);
+          }
+          AsyncStorage.removeItem(resultsStorageKey).catch(() => {});
+        } else if (resultsParam) {
+          // Legacy: results passed in params
+          resultsData = JSON.parse(resultsParam as string);
+          const imageUrisParam = (params.imageUris as string) || "";
+          const imagesBase64Param = (params.imagesBase64 as string) || "";
+          const imagesStorageKey = (params.imagesStorageKey as string) || "";
+          if (imageUrisParam) {
+            try {
+              setImagesBase64(JSON.parse(imageUrisParam));
+            } catch (e) {
+              console.error("Error parsing image URIs:", e);
             }
-          } catch (e) {
-            console.error("Error loading base64 images from storage:", e);
+          } else if (imagesStorageKey) {
+            try {
+              const storedImages = await AsyncStorage.getItem(imagesStorageKey);
+              if (storedImages) {
+                setImagesBase64(JSON.parse(storedImages));
+                AsyncStorage.removeItem(imagesStorageKey).catch(() => {});
+              }
+            } catch (e) {
+              console.error("Error loading images from storage:", e);
+            }
+          } else if (imagesBase64Param) {
+            try {
+              setImagesBase64(JSON.parse(imagesBase64Param));
+            } catch (e) {
+              console.error("Error parsing base64 images:", e);
+            }
           }
-        } else if (imagesBase64Param) {
-          // Fallback: Old method (URL params)
-          try {
-            setImagesBase64(JSON.parse(imagesBase64Param));
-          } catch (e) {
-            console.error("Error parsing base64 images from params:", e);
-          }
+        } else {
+          return; // Wait for params
         }
 
-        // Check if all detected grades match farmer's declared grade
+        setResults(resultsData);
+
         const allMatch = resultsData.every(
           (result: VerificationResult) =>
             result.detectedGrade === farmerGradeData,
@@ -143,8 +156,11 @@ export default function VerificationResults() {
     isAuthenticated,
     checkingAuth,
     params.error,
+    params.resultsStorageKey,
     params.results,
     params.farmerGrade,
+    params.job_id,
+    params.order_id,
     params.imageUris,
     params.imagesStorageKey,
     params.imagesBase64,
@@ -260,8 +276,10 @@ export default function VerificationResults() {
         console.error("Error saving verified order:", error);
       }
 
-      // Navigate back to job details page
-      router.push(`/transporter/job/${jobId}`);
+      // Navigate back to job details; pass verified in URL so job details shows "Confirm Pickup" immediately
+      router.replace(
+        `/transporter/job/${jobId}?verified=${encodeURIComponent(orderId)}` as any,
+      );
     } catch (error) {
       console.error("Error saving grading data:", error);
       Alert.alert(
@@ -329,8 +347,8 @@ export default function VerificationResults() {
               }
               // Navigate back to job details so the order shows as rejected
               router.replace({
-                pathname: `/transporter/job/${jobId}`,
-                params: { rejected: orderId },
+                pathname: "/transporter/job/[id]" as const,
+                params: { id: jobId, rejected: orderId },
               });
             } catch (err: any) {
               Alert.alert(

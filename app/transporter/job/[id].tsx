@@ -44,6 +44,8 @@ interface OrderInfo {
   fruit_variant: string;
   quantity: number;
   status?: string;
+  /** Order grade from buyer/farmer (e.g. "A" or "Grade A") — used for grading verification. */
+  grade?: string;
   farmer: { name: string; phone: string } | null;
   buyer: { name: string; phone: string } | null;
   specs: {
@@ -55,10 +57,12 @@ interface OrderInfo {
 }
 
 export default function JobDetails() {
-  const { id, rejected: rejectedOrderIdParam } = useLocalSearchParams<{
-    id: string;
-    rejected?: string;
-  }>();
+  const { id, rejected: rejectedOrderIdParam, verified: verifiedOrderIdParam } =
+    useLocalSearchParams<{
+      id: string;
+      rejected?: string;
+      verified?: string;
+    }>();
   const router = useRouter();
 
   const [job, setJob] = useState<any>(null);
@@ -83,15 +87,31 @@ export default function JobDetails() {
 
   useFocusEffect(
     useCallback(() => {
+      // Apply verified param immediately so "Confirm Pickup" shows without waiting for AsyncStorage
+      const verifiedId = verifiedOrderIdParam?.trim();
+      if (verifiedId) {
+        setVerifiedOrders((prev) => new Set(prev).add(String(verifiedId)));
+      }
+
       const syncState = async () => {
         try {
-          const verifiedOrdersJson = await AsyncStorage.getItem(
+          let verifiedOrdersJson = await AsyncStorage.getItem(
             `verified_orders_${id}`,
           );
-          if (verifiedOrdersJson) {
-            const orders = JSON.parse(verifiedOrdersJson);
-            setVerifiedOrders(new Set(orders));
+          let orders: string[] = verifiedOrdersJson
+            ? JSON.parse(verifiedOrdersJson)
+            : [];
+          if (verifiedId) {
+            const normalized = String(verifiedId);
+            if (!orders.some((o) => String(o) === normalized)) {
+              orders.push(normalized);
+              await AsyncStorage.setItem(
+                `verified_orders_${id}`,
+                JSON.stringify(orders),
+              );
+            }
           }
+          setVerifiedOrders(new Set(orders.map((o) => String(o))));
         } catch (error) {
           console.error("Error checking verified orders:", error);
         }
@@ -109,7 +129,7 @@ export default function JobDetails() {
         }
       };
       syncState();
-    }, [id, rejectedOrderIdParam]),
+    }, [id, rejectedOrderIdParam, verifiedOrderIdParam]),
   );
 
   const reverseGeocodeStops = async (cleanManifest: ManifestItem[]) => {
@@ -244,11 +264,14 @@ export default function JobDetails() {
   /** Navigate to fruit-grading flow for this pickup order (real verification/grading). */
   const handleOpenGrading = (stop: ManifestItem) => {
     if (stop.type !== "PICKUP") return;
+    const orderInfo = ordersData[stop.order_id];
+    const orderGrade = orderInfo?.grade?.trim();
     router.push({
       pathname: "/transporter/fruit-grading",
       params: {
         job_id: String(id),
         order_id: stop.order_id,
+        ...(orderGrade ? { order_grade: orderGrade } : {}),
         ...(stop.lat != null && stop.lng != null
           ? {
               pickup_lat: String(stop.lat),
@@ -807,7 +830,7 @@ export default function JobDetails() {
                             Awaiting Pickup
                           </Text>
                         </View>
-                      ) : isPickup && !verifiedOrders.has(stop.order_id) ? (
+                      ) : isPickup && !verifiedOrders.has(String(stop.order_id)) ? (
                         /* 4. Quality Verification Gate → opens fruit-grading flow */
                         <TouchableOpacity
                           style={[
