@@ -28,6 +28,34 @@ import {
 import MapView, { Marker } from "react-native-maps";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+type BuyerGradingImage = {
+  id: number;
+  image_base64: string;
+  predicted_grade: string;
+  accuracy: number;
+  sequence: number;
+  created_at: string;
+};
+
+type BuyerGrading = {
+  grading_id: string;
+  job_id: string;
+  order_id: string; // transport order id (orders.id)
+  created_at: string;
+  images: BuyerGradingImage[];
+  images_count: number;
+};
+
+type BuyerGradingsResponse = {
+  success: boolean;
+  message: string;
+  order_id: string; // placed order id (placed_orders.id)
+  gradings: BuyerGrading[];
+  total_gradings?: number;
+};
+
+type ReVerifyResult = { detectedGrade: string; confidence: number };
+
 // --- Helpers ---
 const getFruitMeta = (fruit: string) => {
   const f = fruit?.toLowerCase() || "";
@@ -125,6 +153,19 @@ export default function OrderDetailScreen() {
   const [proofViewerVisible, setProofViewerVisible] = useState(false);
   const [proofViewerIndex, setProofViewerIndex] = useState(0);
 
+  // ── buyer-side grading history (delivered/completed) ──
+  const [buyerGradings, setBuyerGradings] = useState<BuyerGrading[]>([]);
+  const [buyerGradingsLoading, setBuyerGradingsLoading] = useState(false);
+  const [buyerGradingsError, setBuyerGradingsError] = useState<string | null>(
+    null,
+  );
+  const [showGradingsPopup, setShowGradingsPopup] = useState(false);
+  const [showReverifyConfirm, setShowReverifyConfirm] = useState(false);
+  const [reverifyLoading, setReverifyLoading] = useState(false);
+  const [reverifyResults, setReverifyResults] = useState<ReVerifyResult[] | null>(
+    null,
+  );
+
   // ── Price-lock key per order ──
   const priceLockKey = params.orderId
     ? `PAYMENT_PRICE_LOCK_${params.orderId}`
@@ -177,6 +218,100 @@ export default function OrderDetailScreen() {
     }, 30000);
     return () => clearInterval(interval);
   }, [params.orderId, loading]);
+
+  const fetchBuyerGradings = async (placedOrderId: string) => {
+    if (!placedOrderId) return;
+    setBuyerGradingsLoading(true);
+    setBuyerGradingsError(null);
+    try {
+      const data: BuyerGradingsResponse = await api.get(
+        `/api/buyer/gradings/${placedOrderId}`,
+      );
+      const list = Array.isArray(data?.gradings) ? data.gradings : [];
+      setBuyerGradings(list);
+
+      // Prefer showing the stored grading images (base64 data URIs) when available
+      const latest = list?.[0];
+      const imgs = (latest?.images ?? []).slice().sort((a, b) => {
+        const s0 = Number(a.sequence ?? 0);
+        const s1 = Number(b.sequence ?? 0);
+        return s0 - s1;
+      });
+      if (imgs.length > 0) {
+        const uris = imgs.map((img) => {
+          const b64 = img.image_base64 ?? "";
+          return b64.startsWith("data:")
+            ? b64
+            : `data:image/jpeg;base64,${b64}`;
+        });
+        setHarvestProofImages(uris);
+      }
+    } catch (e) {
+      setBuyerGradings([]);
+      setBuyerGradingsError(
+        e instanceof Error ? e.message : "Failed to load gradings",
+      );
+    } finally {
+      setBuyerGradingsLoading(false);
+    }
+  };
+
+  const handleBuyerReverify = async () => {
+    const latest = buyerGradings?.[0];
+    const images = (latest?.images ?? []).slice().sort((a, b) => {
+      const s0 = Number(a.sequence ?? 0);
+      const s1 = Number(b.sequence ?? 0);
+      return s0 - s1;
+    });
+    if (images.length !== 5) {
+      setErrorModal({
+        title: "Not available",
+        message:
+          images.length === 0
+            ? "No grading images found to re-verify."
+            : "Re-verify expects exactly 5 grading images.",
+      });
+      return;
+    }
+
+    setReverifyLoading(true);
+    setReverifyResults(null);
+    try {
+      const formData = new FormData();
+      images.forEach((img, i) => {
+        const uri = (img.image_base64 ?? "").startsWith("data:")
+          ? img.image_base64
+          : `data:image/jpeg;base64,${img.image_base64 ?? ""}`;
+        formData.append("images", {
+          uri,
+          type: "image/jpeg",
+          name: `img_${i + 1}.jpg`,
+        } as any);
+      });
+
+      const data: any = await api.postForm(`/api/fruit-grading/predict`, formData);
+      if (!data?.success || !Array.isArray(data?.predictions)) {
+        throw new Error(data?.message || "Invalid response from server");
+      }
+      const results: ReVerifyResult[] = data.predictions.map((p: any) => ({
+        detectedGrade:
+          (p?.predictedClass || "").toString().replace(/_/g, " ").trim() || "—",
+        confidence: p?.confidence ?? 0,
+      }));
+      setReverifyResults(results);
+      setShowGradingsPopup(true);
+    } catch (e) {
+      setErrorModal({
+        title: "Re-verify failed",
+        message:
+          e instanceof Error
+            ? e.message
+            : "Failed to re-verify. Please try again.",
+      });
+    } finally {
+      setReverifyLoading(false);
+    }
+  };
 
   const fetchOrderDetails = async (silent = false) => {
     try {
@@ -309,6 +444,16 @@ export default function OrderDetailScreen() {
       setHarvestProofImages(
         Array.isArray(rawProof) ? rawProof : rawProof ? [rawProof] : [],
       );
+
+      // Delivered/completed: fetch stored grading images + history for buyer
+      const status = (merged?.status ?? "").toString();
+      if (["DELIVERED", "COMPLETED"].includes(status)) {
+        fetchBuyerGradings(String(params.orderId));
+      } else {
+        setBuyerGradings([]);
+        setBuyerGradingsError(null);
+        setReverifyResults(null);
+      }
 
       // Fetch forecast price when order is awaiting payment
       if (
@@ -499,6 +644,10 @@ export default function OrderDetailScreen() {
   // Show Add complaint when order is delivered or completed (button lives in fixed panel so it's not covered)
   const showAddComplaint = ["DELIVERED", "COMPLETED"].includes(
     order?.status ?? ""
+  );
+
+  const showBuyerReverify = ["DELIVERED", "COMPLETED"].includes(
+    order?.status ?? "",
   );
 
   if (loading && !refreshing) {
@@ -887,6 +1036,73 @@ export default function OrderDetailScreen() {
                     </Text>
                   </View>
                 )}
+
+                {showBuyerReverify && (
+                  <View style={{ marginTop: 14 }}>
+                    <TouchableOpacity
+                      style={[
+                        styles.reverifyBtn,
+                        (buyerGradingsLoading || reverifyLoading) &&
+                          styles.reverifyBtnDisabled,
+                      ]}
+                      onPress={() => setShowGradingsPopup(true)}
+                      disabled={buyerGradingsLoading || reverifyLoading}
+                      activeOpacity={0.85}
+                    >
+                      {buyerGradingsLoading ? (
+                        <ActivityIndicator color="#fff" size="small" />
+                      ) : (
+                        <>
+                          <Ionicons
+                            name="shield-checkmark-outline"
+                            size={18}
+                            color="#fff"
+                            style={{ marginRight: 8 }}
+                          />
+                          <Text style={styles.reverifyBtnText}>
+                            View verification
+                          </Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.reverifySecondaryBtn,
+                        (buyerGradingsLoading || reverifyLoading) &&
+                          styles.reverifySecondaryBtnDisabled,
+                      ]}
+                      onPress={() => setShowReverifyConfirm(true)}
+                      disabled={buyerGradingsLoading || reverifyLoading}
+                      activeOpacity={0.85}
+                    >
+                      {reverifyLoading ? (
+                        <ActivityIndicator
+                          color={BuyerColors.primaryGreen}
+                          size="small"
+                        />
+                      ) : (
+                        <>
+                          <Ionicons
+                            name="help-circle-outline"
+                            size={18}
+                            color={BuyerColors.primaryGreen}
+                            style={{ marginRight: 8 }}
+                          />
+                          <Text style={styles.reverifySecondaryBtnText}>
+                            Have doubt? Reverify
+                          </Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+
+                    {buyerGradingsError ? (
+                      <Text style={styles.reverifyHintError}>
+                        {buyerGradingsError}
+                      </Text>
+                    ) : null}
+                  </View>
+                )}
               </View>
 
               <View style={styles.solidSeparator} />
@@ -1210,6 +1426,140 @@ export default function OrderDetailScreen() {
         onClose={() => setErrorModal(null)}
         onButtonPress={() => setErrorModal(null)}
       />
+
+      {/* Buyer grading popup (existing + optional new re-verify results) */}
+      <Modal visible={showGradingsPopup} transparent animationType="fade">
+        <View style={styles.gradingsOverlay}>
+          <View style={styles.gradingsCard}>
+            <View style={styles.gradingsHeader}>
+              <Text style={styles.gradingsTitle}>Verification</Text>
+              <TouchableOpacity
+                style={styles.gradingsCloseBtn}
+                onPress={() => setShowGradingsPopup(false)}
+              >
+                <Ionicons name="close" size={22} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              style={{ maxHeight: Dimensions.get("window").height * 0.68 }}
+              showsVerticalScrollIndicator={false}
+            >
+              {buyerGradings.length === 0 ? (
+                <View style={styles.gradingsEmpty}>
+                  <Ionicons name="images-outline" size={44} color="#cbd5e1" />
+                  <Text style={styles.gradingsEmptyTitle}>No gradings yet</Text>
+                  <Text style={styles.gradingsEmptyText}>
+                    No grading images found for this order.
+                  </Text>
+                </View>
+              ) : (
+                (() => {
+                  const latest = buyerGradings[0];
+                  const images =
+                    latest?.images
+                      ?.slice()
+                      .sort((a, b) => a.sequence - b.sequence) ?? [];
+                  return (
+                    <>
+                      <Text style={styles.gradingsMeta}>
+                        Existing verifications: {buyerGradings.length}
+                      </Text>
+
+                      <View style={styles.gradingsGrid}>
+                        {images.map((img, idx) => {
+                          const uri = (img.image_base64 ?? "").startsWith("data:")
+                            ? img.image_base64
+                            : `data:image/jpeg;base64,${img.image_base64 ?? ""}`;
+                          return (
+                            <View
+                              key={String(img.id ?? idx)}
+                              style={styles.gradingsImgCard}
+                            >
+                              <Image source={{ uri }} style={styles.gradingsImg} />
+                              <Text style={styles.gradingsImgLabel}>
+                                Fruit {idx + 1}
+                              </Text>
+                              <Text style={styles.gradingsImgValue}>
+                                {(img.predicted_grade ?? "")
+                                  .replace(/_/g, " ")
+                                  .trim() || "—"}{" "}
+                                ({img.accuracy ?? 0}%)
+                              </Text>
+
+                              {reverifyResults && reverifyResults[idx] ? (
+                                <View style={styles.gradingsNewBox}>
+                                  <Text style={styles.gradingsNewLabel}>
+                                    New verification
+                                  </Text>
+                                  <Text style={styles.gradingsNewValue}>
+                                    {reverifyResults[idx].detectedGrade} (
+                                    {reverifyResults[idx].confidence}%)
+                                  </Text>
+                                </View>
+                              ) : null}
+                            </View>
+                          );
+                        })}
+                      </View>
+                    </>
+                  );
+                })()
+              )}
+            </ScrollView>
+
+            <View style={styles.gradingsFooter}>
+              <TouchableOpacity
+                style={[
+                  styles.gradingsPrimaryBtn,
+                  (buyerGradingsLoading || reverifyLoading) &&
+                    styles.gradingsBtnDisabled,
+                ]}
+                onPress={() => setShowReverifyConfirm(true)}
+                disabled={buyerGradingsLoading || reverifyLoading}
+              >
+                {reverifyLoading ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.gradingsPrimaryBtnText}>
+                    Have doubt? Reverify
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Confirm before re-verify */}
+      <Modal visible={showReverifyConfirm} transparent animationType="fade">
+        <View style={styles.gradingsOverlay}>
+          <View style={styles.confirmCard}>
+            <Text style={styles.confirmTitle}>Re-verify grades?</Text>
+            <Text style={styles.confirmMessage}>
+              We’ll re-run the same grading model on the existing 5 proof images.
+              New results will be shown in the popup and are not saved.
+            </Text>
+            <View style={styles.confirmBtnRow}>
+              <TouchableOpacity
+                style={styles.confirmCancelBtn}
+                onPress={() => setShowReverifyConfirm(false)}
+              >
+                <Text style={styles.confirmCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.confirmReverifyBtn}
+                onPress={() => {
+                  setShowReverifyConfirm(false);
+                  handleBuyerReverify();
+                }}
+              >
+                <Text style={styles.confirmReverifyText}>Re verify</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1439,6 +1789,183 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#B45309",
   },
+
+  reverifyBtn: {
+    backgroundColor: BuyerColors.primaryGreen,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+  },
+  reverifyBtnDisabled: { opacity: 0.7 },
+  reverifyBtnText: { color: "#fff", fontWeight: "800", fontSize: 14 },
+  reverifySecondaryBtn: {
+    marginTop: 10,
+    backgroundColor: "#ECFDF5",
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+  },
+  reverifySecondaryBtnDisabled: { opacity: 0.7 },
+  reverifySecondaryBtnText: {
+    color: BuyerColors.primaryGreen,
+    fontWeight: "800",
+    fontSize: 14,
+  },
+  reverifyHintError: {
+    marginTop: 8,
+    color: "#ef4444",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+
+  // ── gradings popup ─────────────────────────────────────────────────────────
+  gradingsOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 18,
+  },
+  gradingsCard: {
+    width: "100%",
+    maxWidth: 420,
+    backgroundColor: "#fff",
+    borderRadius: 18,
+    padding: 16,
+  },
+  gradingsHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  gradingsTitle: { fontSize: 18, fontWeight: "900", color: "#111827" },
+  gradingsCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#f1f5f9",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  gradingsMeta: {
+    fontSize: 12,
+    color: "#6b7280",
+    fontWeight: "700",
+    marginBottom: 10,
+  },
+  gradingsEmpty: { alignItems: "center", paddingVertical: 24 },
+  gradingsEmptyTitle: {
+    marginTop: 10,
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#111827",
+  },
+  gradingsEmptyText: {
+    marginTop: 6,
+    fontSize: 13,
+    color: "#6b7280",
+    textAlign: "center",
+  },
+  gradingsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+  },
+  gradingsImgCard: {
+    width: "48%",
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 12,
+    alignItems: "center",
+  },
+  gradingsImg: { width: "100%", height: 120, borderRadius: 10, marginBottom: 8 },
+  gradingsImgLabel: { fontSize: 12, color: "#6b7280", fontWeight: "600" },
+  gradingsImgValue: {
+    marginTop: 4,
+    fontSize: 13,
+    fontWeight: "900",
+    color: BuyerColors.primaryGreen,
+    textAlign: "center",
+  },
+  gradingsNewBox: {
+    marginTop: 8,
+    width: "100%",
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#e5e7eb",
+    alignItems: "center",
+  },
+  gradingsNewLabel: { fontSize: 11, color: "#6b7280", fontWeight: "700" },
+  gradingsNewValue: {
+    marginTop: 2,
+    fontSize: 13,
+    fontWeight: "900",
+    color: "#0F766E",
+    textAlign: "center",
+  },
+  gradingsFooter: { marginTop: 6 },
+  gradingsPrimaryBtn: {
+    backgroundColor: BuyerColors.primaryGreen,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  gradingsPrimaryBtnText: { color: "#fff", fontWeight: "900", fontSize: 14 },
+  gradingsBtnDisabled: { opacity: 0.7 },
+
+  // ── confirm popup ──────────────────────────────────────────────────────────
+  confirmCard: {
+    width: "100%",
+    maxWidth: 420,
+    backgroundColor: "#fff",
+    borderRadius: 18,
+    padding: 18,
+  },
+  confirmTitle: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: "#111827",
+    textAlign: "center",
+  },
+  confirmMessage: {
+    marginTop: 10,
+    fontSize: 13,
+    color: "#6b7280",
+    textAlign: "center",
+    lineHeight: 18,
+  },
+  confirmBtnRow: { flexDirection: "row", gap: 10, marginTop: 16 },
+  confirmCancelBtn: {
+    flex: 1,
+    backgroundColor: "#f1f5f9",
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  confirmCancelText: { color: "#475569", fontWeight: "900", fontSize: 14 },
+  confirmReverifyBtn: {
+    flex: 1,
+    backgroundColor: BuyerColors.primaryGreen,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  confirmReverifyText: { color: "#fff", fontWeight: "900", fontSize: 14 },
 
   modalBg: {
     flex: 1,
