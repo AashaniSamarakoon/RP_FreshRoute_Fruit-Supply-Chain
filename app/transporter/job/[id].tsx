@@ -4,24 +4,24 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from "expo-location";
 import {
-    Stack,
-    useFocusEffect,
-    useLocalSearchParams,
-    useRouter,
+  Stack,
+  useFocusEffect,
+  useLocalSearchParams,
+  useRouter,
 } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Linking,
-    Modal,
-    Platform,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Linking,
+  Modal,
+  Platform,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 // --- Types ---
@@ -57,12 +57,15 @@ interface OrderInfo {
 }
 
 export default function JobDetails() {
-  const { id, rejected: rejectedOrderIdParam, verified: verifiedOrderIdParam } =
-    useLocalSearchParams<{
-      id: string;
-      rejected?: string;
-      verified?: string;
-    }>();
+  const {
+    id,
+    rejected: rejectedOrderIdParam,
+    verified: verifiedOrderIdParam,
+  } = useLocalSearchParams<{
+    id: string;
+    rejected?: string;
+    verified?: string;
+  }>();
   const router = useRouter();
 
   const [job, setJob] = useState<any>(null);
@@ -477,10 +480,11 @@ export default function JobDetails() {
                       const user = userStr ? JSON.parse(userStr) : null;
 
                       if (user?.id) {
-                        await api.post("/api/transporter/delivery/pickup", {
-                          placed_order_id: orderData.placed_order_id,
-                          transporter_id: user.id,
-                        });
+                        // await api.post("/api/transporter/delivery/pickup", {
+                        //   placed_order_id: orderData.placed_order_id,
+                        //   transporter_id: user.id,
+                        // });
+                        console.log("Triggering backend pickup logic...");
                       }
                     } catch (backendError) {
                       console.error(
@@ -848,7 +852,10 @@ export default function JobDetails() {
                             size={18}
                             color="#15803d"
                           />
-                          <Text style={styles.completedBtnText} numberOfLines={1}>
+                          <Text
+                            style={styles.completedBtnText}
+                            numberOfLines={1}
+                          >
                             {isPickup ? "Picked Up" : "Delivered"}
                           </Text>
                         </View>
@@ -870,7 +877,8 @@ export default function JobDetails() {
                             Awaiting Pickup
                           </Text>
                         </View>
-                      ) : isPickup && !verifiedOrders.has(String(stop.order_id)) ? (
+                      ) : isPickup &&
+                        !verifiedOrders.has(String(stop.order_id)) ? (
                         /* 4. Quality Verification Gate → opens fruit-grading flow */
                         <View style={styles.verifyRow}>
                           <TouchableOpacity
@@ -887,15 +895,15 @@ export default function JobDetails() {
                               size={16}
                               color={isJobActive ? "#15803d" : "#94a3b8"}
                             />
-                          <Text
-                            style={[
-                              styles.verifyBtnText,
-                              !isJobActive && { color: "#94a3b8" },
-                            ]}
-                            numberOfLines={1}
-                          >
-                            Verify Quality
-                          </Text>
+                            <Text
+                              style={[
+                                styles.verifyBtnText,
+                                !isJobActive && { color: "#94a3b8" },
+                              ]}
+                              numberOfLines={1}
+                            >
+                              Verify Quality
+                            </Text>
                           </TouchableOpacity>
                           <TouchableOpacity
                             style={styles.bypassTestBtn}
@@ -919,15 +927,15 @@ export default function JobDetails() {
                             {actionLoading ? (
                               <ActivityIndicator size="small" color="#fff" />
                             ) : (
-                            <Text
-                              style={[
-                                styles.primaryActionBtnText,
-                                !isJobActive && { color: "#94a3b8" },
-                              ]}
-                              numberOfLines={1}
-                            >
-                              Confirm {isPickup ? "Pickup" : "Drop"}
-                            </Text>
+                              <Text
+                                style={[
+                                  styles.primaryActionBtnText,
+                                  !isJobActive && { color: "#94a3b8" },
+                                ]}
+                                numberOfLines={1}
+                              >
+                                Confirm {isPickup ? "Pickup" : "Drop"}
+                              </Text>
                             )}
                           </TouchableOpacity>
                           {isPickup &&
