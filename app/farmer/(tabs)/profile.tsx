@@ -1,4 +1,5 @@
 import DigitalPassportModal from "@/components/modals/DigitalPassportModal";
+import ErrorModal from "@/components/modals/ErrorModal";
 import api from "@/services/api";
 import { getOrdersOverview, getSMSPreferences, updateSMSPreferences } from "@/services/farmerApi";
 import { supabase } from "@/utils/supabaseClient";
@@ -85,6 +86,8 @@ export default function ProfileScreen() {
   const [certModalVisible, setCertModalVisible] = useState(false);
   const [passportData, setPassportData] = useState<any | null>(null);
   const [loadingCert, setLoadingCert] = useState(false);
+  const [certErrorMessage, setCertErrorMessage] = useState("");
+  const [certErrorVisible, setCertErrorVisible] = useState(false);
 
   const loadUser = useCallback(async () => {
     try {
@@ -294,18 +297,31 @@ export default function ProfileScreen() {
       if (data.success) {
         setPassportData(data.digitalPassport);
       } else {
-        throw new Error("ID not found");
+        throw new Error(data.message || "ID not found");
       }
-    } catch (e) {
-      console.warn("Certificate fetch failed, showing placeholder", e);
-      setPassportData({
-        serialNumber: "FR-8892-4B2A-9011",
-        issuer: "FreshRoute Root CA",
-        subject: user?.name || "Farmer",
-        validFrom: new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
-        validTo: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
-        fingerprint: "A2:4F:99:B1:0C:E3",
-      });
+    } catch (e: any) {
+      console.warn("Certificate fetch failed", e);
+      // treat missing identity as validation error and show a better message
+      setPassportData(null);
+
+      // try to extract a simple text from any JSON wrapper
+      let msg = e instanceof Error ? e.message : String(e);
+      try {
+        const parsed = JSON.parse(msg);
+        if (parsed && typeof parsed.message === "string") {
+          msg = parsed.message;
+        }
+      } catch {
+        // ignore
+      }
+
+      // convert backend jargon into user‑friendly text
+      if (msg.toLowerCase().includes("no identity found")) {
+        msg = "No blockchain identity found for your account. Please register or verify your account.";
+      }
+
+      setCertErrorMessage(msg);
+      setCertErrorVisible(true);
     } finally {
       setLoadingCert(false);
     }
@@ -717,6 +733,13 @@ export default function ProfileScreen() {
         onClose={() => setCertModalVisible(false)}
         loading={loadingCert}
         passportData={passportData}
+      />
+
+      <ErrorModal
+        visible={certErrorVisible}
+        onClose={() => setCertErrorVisible(false)}
+        title="Certificate Error"
+        message={certErrorMessage}
       />
     </SafeAreaView>
   );

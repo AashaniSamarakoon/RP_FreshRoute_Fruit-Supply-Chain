@@ -214,13 +214,15 @@ function useOrdersData() {
     setProcessing(id, true);
     try {
       try {
-        // first attempt the namespaced endpoint
-        await api.del(`/api/farmer/predictStock/${id}`);
+        // use the 'add-predict-stock' route which handles both add/update/delete
+        await api.del(`/api/farmer/add-predict-stock/${id}`);
       } catch (innerErr: any) {
-        // if server responds 404 we may be running against a version that
-        // only exposes the old /predictStock route, so try that as a fallback
+        // older backend versions may still use the predictStock path,
+        // so fall back if we see a 404
         if (innerErr.message && innerErr.message.includes("404")) {
-          console.warn("deleteHarvest: fallback to /predictStock because first call returned 404");
+          console.warn(
+            "deleteHarvest: fallback to /predictStock because first call returned 404",
+          );
           await api.del(`/predictStock/${id}`);
         } else {
           throw innerErr;
@@ -238,10 +240,19 @@ function useOrdersData() {
     }
   }, [showSuccess, showError]);
 
-  const updateHarvest = useCallback((id: string, updates: Partial<Harvest>) => {
+  const updateHarvest = useCallback(async (id: string, updates: Partial<Harvest>) => {
+    // optimistic local update
     setHarvests((prev) =>
       prev.map((h) => (h.id === id ? { ...h, ...updates } : h)),
     );
+
+    try {
+      // propagate change to backend using the documented update endpoint
+      await api.put(`/api/farmer/add-predict-stock/${id}`, updates);
+    } catch (err: any) {
+      console.error("[updateHarvest] server update failed", err);
+      // optionally show error or rollback; keeping simple for now
+    }
   }, []);
 
   const deleteProposal = useCallback((id: string) => {
@@ -464,6 +475,9 @@ export default function OrdersTab() {
     updateProposal,
   } = useOrdersData();
 
+  // access modal helpers inside the component as well for UI feedback
+  const { showError } = useModal();
+
   const refreshControl = (
     <RefreshControl
       refreshing={refreshing}
@@ -581,6 +595,15 @@ export default function OrdersTab() {
   };
 
   const handleHarvestLongPress = (h: Harvest) => {
+    // only allow edits/deletes when the record is still open
+    if (h.status !== "OPEN") {
+      showError(
+        "Not allowed",
+        "Only harvests with status 'OPEN' can be edited or deleted."
+      );
+      return;
+    }
+
     Alert.alert("Actions", "What would you like to do?", [
       { text: "Edit", onPress: () => openEdit("harvest", h) },
       {

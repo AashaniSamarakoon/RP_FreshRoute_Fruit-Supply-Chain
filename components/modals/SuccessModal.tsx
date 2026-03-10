@@ -40,15 +40,13 @@ export default function SuccessModal({
           {/* Message */}
           <Text style={styles.message}>{message}</Text>
 
-          {/* Optional Button */}
-          {buttonText && (
-            <TouchableOpacity
-              style={styles.button}
-              onPress={onButtonPress || onClose}
-            >
-              <Text style={styles.buttonText}>{buttonText}</Text>
-            </TouchableOpacity>
-          )}
+          {/* Button (always shown) */}
+          <TouchableOpacity
+            style={styles.button}
+            onPress={onButtonPress || onClose}
+          >
+            <Text style={styles.buttonText}>{buttonText ?? "OK"}</Text>
+          </TouchableOpacity>
         </View>
       </View>
     </Modal>

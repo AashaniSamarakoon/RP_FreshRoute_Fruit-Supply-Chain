@@ -35,7 +35,7 @@ export const ModalProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const showSuccess = (
     title: string,
     message: string,
-    buttonText?: string,
+    buttonText: string = "OK",
     onButtonPress?: () => void
   ) => {
     setSuccessState({ visible: true, title, message, buttonText, onButtonPress });

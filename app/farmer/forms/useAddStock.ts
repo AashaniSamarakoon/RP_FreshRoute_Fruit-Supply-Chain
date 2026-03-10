@@ -282,8 +282,37 @@ export const useAddStock = () => {
       // api helper throws on non-ok responses
       // Success - let the caller handle the success feedback
     } catch (err) {
-      console.error("[addStock] submit failed", err);
-      throw err;
+      // normalise the message string so consumers don't see JSON blobs
+      let msg = "";
+      if (err instanceof Error) {
+        msg = err.message;
+      } else {
+        msg = String(err);
+      }
+
+      // log at an appropriate level; validation failures are not real errors
+      if (msg.toLowerCase().includes("blockchain identity")) {
+        console.warn("[addStock] validation failed", msg);
+      } else {
+        console.error("[addStock] submit failed", err);
+      }
+
+      try {
+        const parsed = JSON.parse(msg);
+        if (parsed && typeof parsed.message === "string") {
+          msg = parsed.message;
+        }
+      } catch {
+        // ignore
+      }
+
+      // treat missing blockchain identity as validation rather than crash
+      if (msg.toLowerCase().includes("blockchain identity")) {
+        // throw a plain error; caller will interpret based on message
+        throw new Error(msg);
+      }
+
+      throw new Error(msg);
     }
   };
 

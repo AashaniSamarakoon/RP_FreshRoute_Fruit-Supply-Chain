@@ -1,15 +1,19 @@
+import { useModal } from "@/components/modals/ModalProvider";
 import api from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
 import {
-  ActivityIndicator,
-  FlatList,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    FlatList,
+    Modal,
+    RefreshControl,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "../../../components/Header";
@@ -190,6 +194,36 @@ export default function BuyerOrders() {
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>("all");
 
+  const { showSuccess, showError } = useModal();
+
+  // editing modal state for buyer orders
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editOrder, setEditOrder] = useState<PlacedOrder | null>(null);
+  const [editFields, setEditFields] = useState<{ quantity?: string; grade?: string }>({});
+
+  // update / cancel helpers
+  const updateOrder = async (id: string, updates: Partial<PlacedOrder>) => {
+    try {
+      await api.put(`/api/buyer/place-order/${id}`, updates);
+      setOrders((prev) =>
+        prev.map((o) => (o.id === id ? { ...o, ...updates } : o)),
+      );
+      showSuccess("Updated", "Order updated successfully");
+    } catch (err: any) {
+      showError("Error", err?.message || "Failed to update order");
+    }
+  };
+
+  const cancelOrder = async (id: string) => {
+    try {
+      await api.del(`/api/buyer/place-order/${id}`);
+      setOrders((prev) => prev.filter((o) => o.id !== id));
+      showSuccess("Cancelled", "Order has been cancelled");
+    } catch (err: any) {
+      showError("Error", err?.message || "Failed to cancel order");
+    }
+  };
+
   const fetchProposalCounts = async (orderList: PlacedOrder[]) => {
     const matchingOrders = orderList.filter((o) => MATCHING_PHASE.includes(o.status));
     if (matchingOrders.length === 0) return;
@@ -338,6 +372,40 @@ export default function BuyerOrders() {
     }
   };
 
+  const handleOrderLongPress = (item: PlacedOrder) => {
+    // only allow modifications when order is OPEN
+    if (item.status !== "OPEN") {
+      showError("Not allowed", "Only orders with status 'OPEN' can be edited or cancelled.");
+      return;
+    }
+
+    Alert.alert("Actions", "What would you like to do?", [
+      {
+        text: "Edit",
+        onPress: () => {
+          setEditOrder(item);
+          setEditFields({ quantity: String(item.quantity), grade: item.grade });
+          setEditModalVisible(true);
+        },
+      },
+      {
+        text: "Cancel Order",
+        style: "destructive",
+        onPress: () => {
+          Alert.alert(
+            "Confirm",
+            "Are you sure you want to cancel this order?",
+            [
+              { text: "No", style: "cancel" },
+              { text: "Yes", style: "destructive", onPress: () => cancelOrder(item.id) },
+            ],
+          );
+        },
+      },
+      { text: "Close", style: "cancel" },
+    ]);
+  };
+
   const renderCard = ({ item }: { item: PlacedOrder }) => {
     const fruit = getFruitMeta(item.fruit_type);
     const meta = STATUS_META[item.status] ?? {
@@ -358,6 +426,7 @@ export default function BuyerOrders() {
         style={styles.card}
         activeOpacity={0.8}
         onPress={() => handlePress(item)}
+        onLongPress={() => handleOrderLongPress(item)}
       >
         {badgeCount !== null && (
           <View style={styles.cardCountBadge}>
@@ -577,6 +646,55 @@ export default function BuyerOrders() {
           }
         />
       )}
+
+      {/* edit dialog for orders */}
+      <Modal
+        visible={editModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setEditModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Edit Order</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={editFields.quantity}
+              onChangeText={(t) => setEditFields((f) => ({ ...f, quantity: t }))}
+              placeholder="Quantity"
+              keyboardType="numeric"
+            />
+            <TextInput
+              style={styles.modalInput}
+              value={editFields.grade}
+              onChangeText={(t) => setEditFields((f) => ({ ...f, grade: t }))}
+              placeholder="Grade"
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalButton}
+                onPress={() => setEditModalVisible(false)}
+              >
+                <Text>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalButton}
+                onPress={() => {
+                  if (editOrder) {
+                    updateOrder(editOrder.id, {
+                      quantity: Number(editFields.quantity) || editOrder.quantity,
+                      grade: (editFields.grade as "A" | "B" | "C") || editOrder.grade,
+                    });
+                  }
+                  setEditModalVisible(false);
+                }}
+              >
+                <Text>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -823,5 +941,44 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     color: "#fff",
+  },
+
+  // modal editing styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    width: '85%',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 12,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  modalButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: BuyerColors.primaryGreen,
   },
 });

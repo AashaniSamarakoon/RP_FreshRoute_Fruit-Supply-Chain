@@ -276,6 +276,23 @@ const api = {
     delete: (id: string) =>
       fetchWithAuth(buildUrl(`/predictStock/${id}`), { method: "DELETE" }),
   },
+  // new endpoints matching the current backend naming for add/update/delete
+  addPredictStock: {
+    add: (body: any) =>
+      fetchWithAuth(buildUrl("/api/farmer/add-predict-stock"), {
+        method: "POST",
+        body,
+      }),
+    update: (id: string, body: any) =>
+      fetchWithAuth(buildUrl(`/api/farmer/add-predict-stock/${id}`), {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }),
+    delete: (id: string) =>
+      fetchWithAuth(buildUrl(`/api/farmer/add-predict-stock/${id}`), {
+        method: "DELETE",
+      }),
+  },
   // buyer-side order mutators (used for placed orders)
   buyerOrder: {
     update: (orderId: string, body: any) =>
