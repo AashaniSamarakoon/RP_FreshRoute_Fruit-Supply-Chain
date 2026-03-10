@@ -131,17 +131,35 @@ export default function MatchedStocksScreen() {
 
         if (!fetchId) return;
 
-        const apiUrl = isPerOrderMode
-          ? `/api/buyer/matching/order/${fetchId}`
-          : `/api/buyer/matching/${fetchId}`;
-        
+        // build API url; when not per-order we prefer the newer "buyer" route
+        let apiUrl: string;
+        if (isPerOrderMode) {
+          apiUrl = `/api/buyer/matching/order/${fetchId}`;
+        } else {
+          apiUrl = `/api/buyer/matching/buyer/${fetchId}`;
+        }
+
         let data: any;
         try {
           data = await api.get(apiUrl);
         } catch (err: any) {
-          setError(err.message || "Failed to load matched stocks");
-          setLoading(false);
-          return;
+          console.warn("matched stocks primary endpoint failed", err?.message, apiUrl);
+          // fallback to legacy route if necessary
+          if (!isPerOrderMode && err?.message?.includes("404")) {
+            try {
+              data = await api.get(`/api/buyer/matching/${fetchId}`);
+              console.log("used legacy matching endpoint as fallback");
+            } catch (err2: any) {
+              console.error("fallback matching endpoint also failed", err2?.message);
+              setError(err2.message || "Failed to load matched stocks");
+              setLoading(false);
+              return;
+            }
+          } else {
+            setError(err.message || "Failed to load matched stocks");
+            setLoading(false);
+            return;
+          }
         }
 
         let matches: any[] = [];
@@ -161,21 +179,25 @@ export default function MatchedStocksScreen() {
           return;
         }
 
-        // Transform data
+        // Transform data (with extra logging to diagnose missing items)
+        console.log("matched stocks raw data", data);
         const transformedStocks = matches
-          .map((item: any) => {
+          .map((item: any, idx: number) => {
+            console.log("proposal item", idx, item);
             const stock = item.stock || {};
             const farmer = stock.farmer || {};
             const order = item.order || {};
 
-            if (!stock?.id || !item.id) return null;
+            if (!item.id) {
+              console.warn("proposal missing id, still including object", item);
+            }
 
             return {
-              id: item.id,
-              stockId: stock.id,
+              id: item.id || "",
+              stockId: stock.id || "",
               orderId: order.id || "Unknown Order",
               farmerId: farmer?.user?.id || farmer?.id || "",
-              farmerName: farmer?.user?.first_name + " " + farmer?.user?.last_name,
+              farmerName: (farmer?.user?.first_name || "") + " " + (farmer?.user?.last_name || ""),
               fruitType: order.fruit_type || stock.fruit_type || "Fruit",
               category: order.variant || stock.variant || "Unknown",
               quantity: parseInt(item.quantity_proposed ?? stock.quantity ?? 0, 10),
@@ -199,8 +221,9 @@ export default function MatchedStocksScreen() {
                     estimatedTotal: Number(item.pricing.estimatedTotal),
                   }
                 : null,
-            };
+            } as MatchedStock;
           })
+          // don't filter out anything; let mapping determine empties
           .filter((item) => item !== null) as MatchedStock[];
 
         // Group by Order

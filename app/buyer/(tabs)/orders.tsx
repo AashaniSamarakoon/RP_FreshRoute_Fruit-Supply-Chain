@@ -14,7 +14,9 @@ import {
     TextInput,
     TouchableOpacity,
     View,
+    Platform,
 } from "react-native";
+import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "../../../components/Header";
 import { PillTabBar } from "../../../components/ui/PillTabBar";
@@ -40,6 +42,7 @@ interface PlacedOrder {
   selected_farmer_id: string | null;
   harvest_id: string | null;
   blockchain_status: string | null;
+  blockchain_tx_id?: string; // added for copying
   quality_confirmed_at: string | null;
   delivered_at: string | null;
   delivery_notes: string | null;
@@ -270,13 +273,22 @@ export default function BuyerOrders() {
     try {
       if (!silent) setLoading(true);
       const body: any = await api.get(`/api/buyer/place-order`);
+      console.log("[BuyerOrders] fetchOrders response", body);
       const list: PlacedOrder[] = (body.orders || []).map((o: any) => {
         const raw = o.totalPrice ?? o.total_price ?? null;
-        return { ...o, totalPrice: raw != null ? String(raw) : null };
+        let tx = o.blockchain_tx_id;
+        if (typeof tx === "string") {
+          try {
+            const parsed = JSON.parse(tx);
+            if (Array.isArray(parsed) && parsed.length > 0) tx = String(parsed[0]);
+          } catch {}
+        }
+        return { ...o, totalPrice: raw != null ? String(raw) : null, blockchain_tx_id: tx };
       });
       setOrders(list);
       fetchProposalCounts(list);
-    } catch {
+    } catch (e) {
+      console.error("[BuyerOrders] fetchOrders failed", e);
       if (!silent) setOrders([]);
     } finally {
       if (!silent) setLoading(false);
@@ -298,7 +310,14 @@ export default function BuyerOrders() {
       const body: any = await api.get(`/api/buyer/place-order`);
       const list: PlacedOrder[] = (body.orders || []).map((o: any) => {
         const raw = o.totalPrice ?? o.total_price ?? null;
-        return { ...o, totalPrice: raw != null ? String(raw) : null };
+        let tx = o.blockchain_tx_id;
+        if (typeof tx === "string") {
+          try {
+            const parsed = JSON.parse(tx);
+            if (Array.isArray(parsed) && parsed.length > 0) tx = String(parsed[0]);
+          } catch {}
+        }
+        return { ...o, totalPrice: raw != null ? String(raw) : null, blockchain_tx_id: tx };
       });
       await triggerMatchingForOpenOrders(list);
       // Re-fetch after triggering to get updated statuses
@@ -753,6 +772,12 @@ const styles = StyleSheet.create({
   cardCountBadgeText: { fontSize: 12, fontWeight: "800", color: "#FFFFFF" },
   cardBody: {
     padding: 16,
+  },
+  txIdText: {
+    marginTop: 4,
+    fontSize: 12,
+    color: "#6B7280",
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
   },
 
   // Header Row
