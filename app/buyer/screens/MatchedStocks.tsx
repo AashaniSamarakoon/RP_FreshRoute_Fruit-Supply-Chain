@@ -2,26 +2,25 @@ import api from "@/services/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import {
-  Calendar,
-  ChevronRight,
-  Image as ImageIcon,
-  MapPin,
-  PackageSearch,
-  ShieldCheck,
+    Calendar,
+    ChevronRight,
+    Image as ImageIcon,
+    MapPin,
+    PackageSearch,
+    ShieldCheck,
 } from "lucide-react-native";
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Dimensions,
-  FlatList,
-  Image,
-  Modal,
-  Platform,
-  SectionList,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Dimensions,
+    FlatList,
+    Image,
+    Modal,
+    SectionList,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "../../../components/Header";
