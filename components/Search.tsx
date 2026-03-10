@@ -1,13 +1,21 @@
-import React from 'react';
-import { View, TextInput, StyleSheet } from 'react-native';
 import { Search as SearchIcon } from 'lucide-react-native';
+import React from 'react';
+import { StyleSheet, TextInput, View } from 'react-native';
 import { BuyerColors } from '../constants/theme';
 
-const Search = () => (
+interface SearchProps {
+    value?: string;
+    onChangeText?: (text: string) => void;
+    placeholder?: string;
+}
+
+const Search = ({ value = "", onChangeText, placeholder = "Search fruits, SKUs..." }: SearchProps) => (
     <View style={styles.searchContainer}>
         <SearchIcon size={20} color={BuyerColors.textGray} style={styles.searchIcon} />
         <TextInput
-            placeholder="Search fruits, SKUs..."
+            value={value}
+            onChangeText={onChangeText}
+            placeholder={placeholder}
             placeholderTextColor={BuyerColors.textGray}
             style={styles.searchInput}
         />

@@ -4,24 +4,24 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from "expo-location";
 import {
-  Stack,
-  useFocusEffect,
-  useLocalSearchParams,
-  useRouter,
+    Stack,
+    useFocusEffect,
+    useLocalSearchParams,
+    useRouter,
 } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Linking,
-  Modal,
-  Platform,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Linking,
+    Modal,
+    Platform,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 // --- Types ---
@@ -44,6 +44,8 @@ interface OrderInfo {
   fruit_variant: string;
   quantity: number;
   status?: string;
+  /** Order grade from buyer/farmer (e.g. "A" or "Grade A") — used for grading verification. */
+  grade?: string;
   farmer: { name: string; phone: string } | null;
   buyer: { name: string; phone: string } | null;
   specs: {
@@ -55,10 +57,12 @@ interface OrderInfo {
 }
 
 export default function JobDetails() {
-  const { id, rejected: rejectedOrderIdParam } = useLocalSearchParams<{
-    id: string;
-    rejected?: string;
-  }>();
+  const { id, rejected: rejectedOrderIdParam, verified: verifiedOrderIdParam } =
+    useLocalSearchParams<{
+      id: string;
+      rejected?: string;
+      verified?: string;
+    }>();
   const router = useRouter();
 
   const [job, setJob] = useState<any>(null);
@@ -83,15 +87,31 @@ export default function JobDetails() {
 
   useFocusEffect(
     useCallback(() => {
+      // Apply verified param immediately so "Confirm Pickup" shows without waiting for AsyncStorage
+      const verifiedId = verifiedOrderIdParam?.trim();
+      if (verifiedId) {
+        setVerifiedOrders((prev) => new Set(prev).add(String(verifiedId)));
+      }
+
       const syncState = async () => {
         try {
-          const verifiedOrdersJson = await AsyncStorage.getItem(
+          let verifiedOrdersJson = await AsyncStorage.getItem(
             `verified_orders_${id}`,
           );
-          if (verifiedOrdersJson) {
-            const orders = JSON.parse(verifiedOrdersJson);
-            setVerifiedOrders(new Set(orders));
+          let orders: string[] = verifiedOrdersJson
+            ? JSON.parse(verifiedOrdersJson)
+            : [];
+          if (verifiedId) {
+            const normalized = String(verifiedId);
+            if (!orders.some((o) => String(o) === normalized)) {
+              orders.push(normalized);
+              await AsyncStorage.setItem(
+                `verified_orders_${id}`,
+                JSON.stringify(orders),
+              );
+            }
           }
+          setVerifiedOrders(new Set(orders.map((o) => String(o))));
         } catch (error) {
           console.error("Error checking verified orders:", error);
         }
@@ -109,7 +129,7 @@ export default function JobDetails() {
         }
       };
       syncState();
-    }, [id, rejectedOrderIdParam]),
+    }, [id, rejectedOrderIdParam, verifiedOrderIdParam]),
   );
 
   const reverseGeocodeStops = async (cleanManifest: ManifestItem[]) => {
@@ -193,9 +213,9 @@ export default function JobDetails() {
     });
   };
 
-  const updateJobStatus = async (newStatus: "IN_TRANSIT" | "COMPLETED") => {
+  const updateJobStatus = async (newStatus: "PICKED_UP" | "COMPLETED") => {
     const actionText =
-      newStatus === "IN_TRANSIT"
+      newStatus === "PICKED_UP"
         ? "start this job"
         : "mark this job as completed";
 
@@ -225,7 +245,7 @@ export default function JobDetails() {
 
               Alert.alert(
                 "Success",
-                `Job ${newStatus === "IN_TRANSIT" ? "Started" : "Completed"}!`,
+                `Job ${newStatus === "PICKED_UP" ? "Started" : "Completed"}!`,
               );
             } else {
               throw new Error("API did not return a success flag");
@@ -241,14 +261,55 @@ export default function JobDetails() {
     ]);
   };
 
+  /** Bypass grading (test only): mark order as verified so "Confirm Pickup" shows. No API, no grading flow. */
+  const handleBypassGrading = async (stop: ManifestItem) => {
+    if (stop.type !== "PICKUP") return;
+    const orderIdStr = String(stop.order_id);
+    setVerifiedOrders((prev) => new Set(prev).add(orderIdStr));
+    try {
+      const key = `verified_orders_${id}`;
+      const existing = await AsyncStorage.getItem(key);
+      const list: string[] = existing ? JSON.parse(existing) : [];
+      if (!list.some((o) => String(o) === orderIdStr)) {
+        list.push(orderIdStr);
+        await AsyncStorage.setItem(key, JSON.stringify(list));
+      }
+    } catch (e) {
+      console.warn("Bypass: AsyncStorage write failed", e);
+    }
+  };
+
+  /** Remove order from verified list so "Verify Quality" shows again (undo Test bypass). */
+  const handleRevertVerify = async (stop: ManifestItem) => {
+    if (stop.type !== "PICKUP") return;
+    const orderIdStr = String(stop.order_id);
+    setVerifiedOrders((prev) => {
+      const next = new Set(prev);
+      next.delete(orderIdStr);
+      return next;
+    });
+    try {
+      const key = `verified_orders_${id}`;
+      const existing = await AsyncStorage.getItem(key);
+      const list: string[] = existing ? JSON.parse(existing) : [];
+      const filtered = list.filter((o) => String(o) !== orderIdStr);
+      await AsyncStorage.setItem(key, JSON.stringify(filtered));
+    } catch (e) {
+      console.warn("Revert verify: AsyncStorage write failed", e);
+    }
+  };
+
   /** Navigate to fruit-grading flow for this pickup order (real verification/grading). */
   const handleOpenGrading = (stop: ManifestItem) => {
     if (stop.type !== "PICKUP") return;
+    const orderInfo = ordersData[stop.order_id];
+    const orderGrade = orderInfo?.grade?.trim();
     router.push({
       pathname: "/transporter/fruit-grading",
       params: {
         job_id: String(id),
         order_id: stop.order_id,
+        ...(orderGrade ? { order_grade: orderGrade } : {}),
         ...(stop.lat != null && stop.lng != null
           ? {
               pickup_lat: String(stop.lat),
@@ -515,7 +576,7 @@ export default function JobDetails() {
       </View>
     );
 
-  const isJobActive = job?.status === "IN_TRANSIT";
+  const isJobActive = job?.status === "PICKED_UP";
   const isJobCompleted = job?.status === "COMPLETED";
 
   return (
@@ -601,7 +662,7 @@ export default function JobDetails() {
                   styles.jobStatusBtn,
                   { backgroundColor: "#2563eb", borderColor: "#1d4ed8" },
                 ]}
-                onPress={() => updateJobStatus("IN_TRANSIT")}
+                onPress={() => updateJobStatus("PICKED_UP")}
               >
                 <Text style={styles.jobStatusText}>Start Job</Text>
               </TouchableOpacity>
@@ -774,6 +835,7 @@ export default function JobDetails() {
                               styles.completedBtnText,
                               { color: "#94a3b8" },
                             ]}
+                            numberOfLines={1}
                           >
                             Order Rejected
                           </Text>
@@ -786,7 +848,7 @@ export default function JobDetails() {
                             size={18}
                             color="#15803d"
                           />
-                          <Text style={styles.completedBtnText}>
+                          <Text style={styles.completedBtnText} numberOfLines={1}>
                             {isPickup ? "Picked Up" : "Delivered"}
                           </Text>
                         </View>
@@ -803,59 +865,84 @@ export default function JobDetails() {
                               styles.completedBtnText,
                               { color: "#94a3b8" },
                             ]}
+                            numberOfLines={1}
                           >
                             Awaiting Pickup
                           </Text>
                         </View>
-                      ) : isPickup && !verifiedOrders.has(stop.order_id) ? (
+                      ) : isPickup && !verifiedOrders.has(String(stop.order_id)) ? (
                         /* 4. Quality Verification Gate → opens fruit-grading flow */
-                        <TouchableOpacity
-                          style={[
-                            styles.actionBtn,
-                            styles.verifyBtn,
-                            !isJobActive && styles.disabledBtn,
-                          ]}
-                          onPress={() => handleOpenGrading(stop)}
-                          disabled={!isJobActive}
-                        >
-                          <Ionicons
-                            name="scan-outline"
-                            size={16}
-                            color={isJobActive ? "#15803d" : "#94a3b8"}
-                          />
+                        <View style={styles.verifyRow}>
+                          <TouchableOpacity
+                            style={[
+                              styles.actionBtn,
+                              styles.verifyBtn,
+                              !isJobActive && styles.disabledBtn,
+                            ]}
+                            onPress={() => handleOpenGrading(stop)}
+                            disabled={!isJobActive}
+                          >
+                            <Ionicons
+                              name="scan-outline"
+                              size={16}
+                              color={isJobActive ? "#15803d" : "#94a3b8"}
+                            />
                           <Text
                             style={[
                               styles.verifyBtnText,
                               !isJobActive && { color: "#94a3b8" },
                             ]}
+                            numberOfLines={1}
                           >
                             Verify Quality
                           </Text>
-                        </TouchableOpacity>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.bypassTestBtn}
+                            onPress={() => handleBypassGrading(stop)}
+                          >
+                            <Text style={styles.bypassTestBtnText}>Test</Text>
+                          </TouchableOpacity>
+                        </View>
                       ) : (
-                        /* 5. Final Confirmation Button */
-                        <TouchableOpacity
-                          style={[
-                            styles.actionBtn,
-                            styles.primaryActionBtn,
-                            !isJobActive && styles.disabledBtn,
-                          ]}
-                          onPress={() => handleAction(stop)}
-                          disabled={!isJobActive || actionLoading}
-                        >
-                          {actionLoading ? (
-                            <ActivityIndicator size="small" color="#fff" />
-                          ) : (
+                        /* 5. Final Confirmation Button (+ Revert for verified-but-not-completed pickup) */
+                        <View style={styles.confirmRow}>
+                          <TouchableOpacity
+                            style={[
+                              styles.actionBtn,
+                              styles.primaryActionBtn,
+                              !isJobActive && styles.disabledBtn,
+                            ]}
+                            onPress={() => handleAction(stop)}
+                            disabled={!isJobActive || actionLoading}
+                          >
+                            {actionLoading ? (
+                              <ActivityIndicator size="small" color="#fff" />
+                            ) : (
                             <Text
                               style={[
                                 styles.primaryActionBtnText,
                                 !isJobActive && { color: "#94a3b8" },
                               ]}
+                              numberOfLines={1}
                             >
                               Confirm {isPickup ? "Pickup" : "Drop"}
                             </Text>
-                          )}
-                        </TouchableOpacity>
+                            )}
+                          </TouchableOpacity>
+                          {isPickup &&
+                            !stop.is_completed &&
+                            verifiedOrders.has(String(stop.order_id)) && (
+                              <TouchableOpacity
+                                style={styles.bypassTestBtn}
+                                onPress={() => handleRevertVerify(stop)}
+                              >
+                                <Text style={styles.bypassTestBtnText}>
+                                  Revert
+                                </Text>
+                              </TouchableOpacity>
+                            )}
+                        </View>
                       )}
 
                       {/* Direct Reject Button */}
@@ -1294,31 +1381,64 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
 
-  actionWrapper: { flex: 1, flexDirection: "row", gap: 8 },
+  actionWrapper: { flex: 1, flexDirection: "row", gap: 8, minWidth: 0 },
   actionBtn: {
     flex: 1,
+    minWidth: 0,
     paddingVertical: 10,
+    paddingHorizontal: 8,
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
   },
   primaryActionBtn: { backgroundColor: "#0f172a" },
-  primaryActionBtnText: { color: "#fff", fontWeight: "700", fontSize: 13 },
+  primaryActionBtnText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 12,
+  },
   disabledBtn: {
     backgroundColor: "#f1f5f9",
     borderColor: "#e2e8f0",
     borderWidth: 1,
   },
 
+  verifyRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flex: 1,
+    minWidth: 0,
+  },
+  confirmRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flex: 1,
+    minWidth: 0,
+  },
   verifyBtn: {
     backgroundColor: "#dcfce7",
     borderWidth: 1,
     borderColor: "#bbf7d0",
   },
+  bypassTestBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    backgroundColor: "#f1f5f9",
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+  },
+  bypassTestBtnText: {
+    color: "#64748b",
+    fontSize: 11,
+    fontWeight: "600",
+  },
   verifyBtnText: {
     color: "#166534",
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "700",
     marginLeft: 4,
   },
@@ -1331,7 +1451,7 @@ const styles = StyleSheet.create({
   completedBtnText: {
     color: "#15803d",
     fontWeight: "700",
-    fontSize: 13,
+    fontSize: 12,
     marginLeft: 6,
   },
 

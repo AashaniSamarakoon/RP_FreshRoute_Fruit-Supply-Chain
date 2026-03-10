@@ -295,7 +295,7 @@ export default function FreshroutePricesForBuyer() {
                           /kg
                           <Text style={styles.logisticText}>
                             {" "}
-                            + Logistic Cost
+                            + Service Cost
                           </Text>
                         </Text>
                       </View>

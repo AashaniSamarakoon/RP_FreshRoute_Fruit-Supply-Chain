@@ -3,7 +3,7 @@
 // Prefer environment variable so we can change the target for dev vs Expo Go vs production.
 // In local development you may uncomment one of the hard‑coded addresses or set
 // EXPO_PUBLIC_BACKEND_URL in your .env file or shell before launching Expo.
-export const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || "http://192.168.56.1:4000";
+export const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || "http://192.168.1.14:4000";
 
 if (!BACKEND_URL) {
   console.warn(

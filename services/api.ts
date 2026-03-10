@@ -61,7 +61,7 @@ async function fetchWithAuth(input: RequestInfo, init: RequestInit = {}) {
     const errBody = await response.text().catch(() => null);
     const msg = errBody || `HTTP ${response.status}`;
     // Don't log errors for known missing endpoints that have fallbacks
-    const isKnownMissingEndpoint = 
+    const isKnownMissingEndpoint =
       (input.toString().includes('/api/orders/overview') && response.status === 404) ||
       (input.toString().includes('/api/sms-preferences') && response.status === 404);
     if (!isKnownMissingEndpoint) {
@@ -215,8 +215,8 @@ async function fetchComplaintDetailWithImages(
   });
   const complaint =
     complaintParts &&
-    typeof complaintParts.complaint === "object" &&
-    complaintParts.complaint !== null
+      typeof complaintParts.complaint === "object" &&
+      complaintParts.complaint !== null
       ? (complaintParts.complaint as Record<string, unknown>)
       : complaintParts;
   return { complaint, images };
@@ -264,6 +264,47 @@ const api = {
       body: JSON.stringify(body),
     }),
   del: (path: string) => fetchWithAuth(buildUrl(path), { method: "DELETE" }),
+  // helper collection for the new predictStock endpoints
+  predictStock: {
+    list: () => fetchWithAuth(buildUrl("/predictStock"), { method: "GET" }),
+    get: (id: string) => fetchWithAuth(buildUrl(`/predictStock/${id}`), { method: "GET" }),
+    update: (id: string, body: any) =>
+      fetchWithAuth(buildUrl(`/predictStock/${id}`), {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }),
+    delete: (id: string) =>
+      fetchWithAuth(buildUrl(`/predictStock/${id}`), { method: "DELETE" }),
+  },
+  // new endpoints matching the current backend naming for add/update/delete
+  addPredictStock: {
+    add: (body: any) =>
+      fetchWithAuth(buildUrl("/api/farmer/add-predict-stock"), {
+        method: "POST",
+        body,
+      }),
+    update: (id: string, body: any) =>
+      fetchWithAuth(buildUrl(`/api/farmer/add-predict-stock/${id}`), {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }),
+    delete: (id: string) =>
+      fetchWithAuth(buildUrl(`/api/farmer/add-predict-stock/${id}`), {
+        method: "DELETE",
+      }),
+  },
+  // buyer-side order mutators (used for placed orders)
+  buyerOrder: {
+    update: (orderId: string, body: any) =>
+      fetchWithAuth(buildUrl(`/api/buyer/orders/${orderId}`), {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }),
+    delete: (orderId: string) =>
+      fetchWithAuth(buildUrl(`/api/buyer/orders/${orderId}`), {
+        method: "DELETE",
+      }),
+  },
 };
 
 export default api;

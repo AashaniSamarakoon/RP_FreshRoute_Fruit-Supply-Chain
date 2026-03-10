@@ -3,18 +3,18 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Animated,
-  FlatList,
-  Image,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Animated,
+    FlatList,
+    Image,
+    Platform,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import RNPickerSelect, { PickerSelectProps } from "react-native-picker-select";
 import Header from "../../../components/Header";
@@ -148,10 +148,32 @@ export default function AddStock() {
       await originalHandleSubmit();
       setSuccessModalVisible(true);
     } catch (error) {
-      const msg =
-        error instanceof Error ? error.message : "Failed to submit stock";
-      setErrorMessage(msg);
-      setErrorModalVisible(true);
+      let msg = error instanceof Error ? error.message : "Failed to submit stock";
+
+      // backend sometimes returns a JSON string like
+      // {"message":"Some user friendly text"} which currently
+      // ends up rendered literally in the UI.  Try to parse it so
+      // the user sees just the message text.
+      try {
+        const parsed = JSON.parse(msg);
+        if (parsed && typeof parsed.message === "string") {
+          msg = parsed.message;
+        }
+      } catch {
+        // ignore parse failures, leave original message
+      }
+
+      // validation problems (eg. missing blockchain identity) should
+      // not use the native alert.  Instead show the same error modal used
+      // for other problems so the UX stays consistent.
+      if (msg.toLowerCase().includes("blockchain identity")) {
+        console.warn("Validation issue submitting stock:", msg);
+        setErrorMessage(msg);
+        setErrorModalVisible(true);
+      } else {
+        setErrorMessage(msg);
+        setErrorModalVisible(true);
+      }
     } finally {
       setIsSubmitting(false);
     }

@@ -19,6 +19,23 @@ interface ApiError {
  * @param error - The error object from API call
  * @returns User-friendly error message
  */
+/**
+ * If the backend sends a JSON string containing a `message` property
+ * (e.g. `{"message":"Something went wrong"}`) we want to extract
+ * that value rather than showing the raw object text in the UI.
+ */
+export const extractMessage = (raw: string): string => {
+  try {
+    const obj = JSON.parse(raw);
+    if (obj && typeof obj.message === "string") {
+      return obj.message;
+    }
+  } catch {
+    // ignore parsing errors
+  }
+  return raw;
+};
+
 export const handleApiError = (error: any): string => {
   const apiError = error as ApiError;
 
@@ -54,7 +71,7 @@ export const handleApiError = (error: any): string => {
     return "Network error. Please check your internet connection.";
   } else {
     // Something else happened
-    return apiError.message || "An unexpected error occurred.";
+    return extractMessage(apiError.message || "An unexpected error occurred.");
   }
 };
 

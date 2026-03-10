@@ -22,6 +22,8 @@ interface Props {
   harvest: Harvest;
   onPress: () => void;
   onImagePress: (urls: string[]) => void;
+  // optional long-press handler (UI only)
+  onLongPress?: () => void;
   // --- Props for Order Actions ---
   activeOrderStatus?: string; 
   processing?: boolean;
@@ -36,6 +38,7 @@ const HarvestCard: React.FC<Props> = ({
   harvest, 
   onPress, 
   onImagePress,
+  onLongPress,
   activeOrderStatus,
   processing = false,
   onStartPacking,
@@ -66,8 +69,14 @@ const HarvestCard: React.FC<Props> = ({
         </View>
       )}
       
-      {/* Top Section: Clickable to go to details */}
-      <TouchableOpacity style={styles.cardStretchContainer} activeOpacity={0.85} onPress={onPress}>
+      {/* Top Section: Clickable to go to details, supports long press if provided */}
+      <TouchableOpacity
+        style={styles.cardStretchContainer}
+        activeOpacity={0.85}
+        onPress={onPress}
+        onLongPress={onLongPress}
+        delayLongPress={300}
+      >
         <TouchableOpacity
           style={styles.imageWrapper}
           activeOpacity={0.8}

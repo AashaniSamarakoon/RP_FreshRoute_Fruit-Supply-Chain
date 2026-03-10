@@ -4,17 +4,17 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
-  ActivityIndicator,
-  FlatList,
-  Platform,
-  RefreshControl,
-  SafeAreaView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    FlatList,
+    Platform,
+    RefreshControl,
+    SafeAreaView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { supabase } from "../../../utils/supabaseClient";
 
@@ -139,7 +139,7 @@ export default function JobsScreen() {
     switch (status.toUpperCase()) {
       case "SCHEDULED":
         return { bg: "#fffaf0", text: "#dd6b20" };
-      case "IN_TRANSIT":
+      case "PICKED_UP":
         return { bg: "#ebf8ff", text: "#3182ce" };
       case "COMPLETED":
         return { bg: "#f0fdf4", text: "#15803d" };
