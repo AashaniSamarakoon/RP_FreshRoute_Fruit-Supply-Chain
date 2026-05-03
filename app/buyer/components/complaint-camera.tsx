@@ -28,6 +28,8 @@ export default function ComplaintCamera() {
   const params = useLocalSearchParams<{
     orderId?: string;
     reason?: string;
+    description?: string;
+    date?: string;
     fromAddComplaint?: string;
     pickup_lat?: string;
     pickup_lng?: string;
@@ -561,15 +563,6 @@ export default function ComplaintCamera() {
                     </View>
                   </TouchableOpacity>
                 </View>
-                <TouchableOpacity
-                  style={styles.cancelButton}
-                  onPress={() => {
-                    setShowLocationVerification(false);
-                    setLocationVerified(true);
-                  }}
-                >
-                  <Text style={styles.cancelButtonText}>Cancel (Testing)</Text>
-                </TouchableOpacity>
               </>
             ) : locationVerified ? (
               <>

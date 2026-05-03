@@ -45,7 +45,6 @@ const getStatusStyles = (status: string) => {
       return { bg: "#FFF7ED", text: "#F97316", label: "Pending" };
     case "MATCHED":
       return { bg: "#EEF2FF", text: "#6366F1", label: "Matched" };
-    case "AUTHORIZED_PAYMENT":
     case "PICKED_UP":
       return { bg: "#EFF6FF", text: "#3B82F6", label: "In Transit" };
     case "READY_FOR_PICKUP":

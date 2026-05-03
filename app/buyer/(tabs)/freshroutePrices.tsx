@@ -19,6 +19,12 @@ import ErrorModal from "../../../components/modals/ErrorModal";
 import SuccessModal from "../../../components/modals/SuccessModal";
 import { PillTabBar } from "../../../components/ui/PillTabBar";
 import { BuyerColors } from "../../../constants/theme";
+import { showNotification } from "../../../components/notifications/NotificationBanner";
+import {
+  DEFAULT_BUYER_PREFERENCES,
+  getBuyerPreferences,
+  shouldShowBuyerNotification,
+} from "../../../utils/buyerPreferences";
 
 const PRIMARY_GREEN = BuyerColors.primaryGreen || "#2E7D32";
 const LIGHT_GREEN = "#e8f4f0";
@@ -58,11 +64,24 @@ const FRUIT_IMAGES: Record<string, string> = {
   grape: "🍇",
 };
 
+const PRICE_SNAPSHOT_STORAGE_KEY = "buyer_freshroute_price_snapshot";
+
+const buildPriceSnapshot = (entries: FruitEntry[]) =>
+  entries
+    .flatMap((fruit) =>
+      fruit.grades.map(
+        (grade) => `${fruit.fruit_id}:${grade.grade}:${grade.price}`,
+      ),
+    )
+    .sort()
+    .join("|");
+
 export default function FreshroutePricesForBuyer() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [fruits, setFruits] = useState<FruitEntry[]>([]);
+  const [preferences, setPreferences] = useState(DEFAULT_BUYER_PREFERENCES);
   const [selectedDate, setSelectedDate] = useState<string>(
     new Date().toISOString().split("T")[0],
   );
@@ -81,6 +100,42 @@ export default function FreshroutePricesForBuyer() {
   useEffect(() => {
     loadPrices();
   }, [selectedDate]);
+
+  useEffect(() => {
+    let mounted = true;
+    getBuyerPreferences().then((prefs) => {
+      if (mounted) setPreferences(prefs);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const notifyPriceMovement = async (entries: FruitEntry[]) => {
+    const snapshot = buildPriceSnapshot(entries);
+    if (!snapshot) return;
+
+    const storageKey = `${PRICE_SNAPSHOT_STORAGE_KEY}:${selectedDate}`;
+    const previousSnapshot = await AsyncStorage.getItem(storageKey);
+    await AsyncStorage.setItem(storageKey, snapshot);
+
+    if (!previousSnapshot || previousSnapshot === snapshot) return;
+
+    const savedPreferences = await getBuyerPreferences();
+    const content = {
+      title: "FreshRoute prices updated",
+      message: "FreshRoute prices changed for your selected date.",
+      viewRoute: "/buyer/(tabs)/freshroutePrices",
+    };
+
+    if (shouldShowBuyerNotification(savedPreferences, content)) {
+      showNotification({
+        title: content.title,
+        message: content.message,
+        preset: "info",
+      });
+    }
+  };
 
   const loadPrices = async () => {
     setLoading(true);
@@ -166,6 +221,7 @@ export default function FreshroutePricesForBuyer() {
 
       setFruits(mapped);
       setSelectedFruitId(mapped[0]?.fruit_id ?? "");
+      await notifyPriceMovement(mapped);
     } catch (err) {
       let msg = err instanceof Error ? err.message : String(err);
       // if we see a role-related response, make it more user friendly
@@ -191,7 +247,9 @@ export default function FreshroutePricesForBuyer() {
       <SafeAreaView style={styles.container}>
         <Header
           title="FreshRoute Prices"
-          showNotification={true}
+          showNotification={
+            preferences.pushNotifications && preferences.marketPriceAlerts
+          }
           onNotificationPress={() => router.push("/buyer/(tabs)/profile")}
         />
 

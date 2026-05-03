@@ -223,7 +223,7 @@ export default function NotificationsScreen() {
                   size={60}
                   color="#cbd5e0"
                 />
-                <Text style={styles.emptyText}>You're all caught up!</Text>
+                <Text style={styles.emptyText}>You{"'"}re all caught up!</Text>
                 <Text style={styles.emptySubText}>
                   No active alerts for your vehicle.
                 </Text>

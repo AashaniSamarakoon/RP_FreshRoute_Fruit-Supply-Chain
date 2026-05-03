@@ -1,8 +1,10 @@
 import Header from "@/components/Header";
+import { showNotification } from "@/components/notifications/NotificationBanner";
 import DetailRow from "@/components/ui/DetailRow";
 import InfoCard from "@/components/ui/InfoCard";
 import { BuyerColors } from "@/constants/theme";
 import { Payment, SlipVerificationStatus } from "@/types";
+import { getBuyerPreferences } from "@/utils/buyerPreferences";
 import { formatCurrency, formatDateTime } from "@/utils/formatters";
 import { supabase } from "@/utils/supabaseClient";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -15,7 +17,7 @@ import {
   Phone,
   XCircle,
 } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -85,6 +87,9 @@ export default function PaymentStatusScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [imageModalVisible, setImageModalVisible] = useState(false);
+  const [autoRefreshPayments, setAutoRefreshPayments] = useState(true);
+  const [paymentAlertsEnabled, setPaymentAlertsEnabled] = useState(true);
+  const lastPaymentStatusRef = useRef<SlipVerificationStatus | null>(null);
 
   useEffect(() => {
     if (params.orderId) {
@@ -92,8 +97,23 @@ export default function PaymentStatusScreen() {
     }
   }, [params.orderId]);
 
-  // Auto-refresh every 10 seconds
   useEffect(() => {
+    let mounted = true;
+    getBuyerPreferences().then((prefs) => {
+      if (!mounted) return;
+      setAutoRefreshPayments(prefs.autoPaymentReminders);
+      setPaymentAlertsEnabled(
+        prefs.pushNotifications && prefs.paymentAlerts,
+      );
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // Auto-refresh is controlled from Buyer Profile > Preferences.
+  useEffect(() => {
+    if (!autoRefreshPayments) return;
     const interval = setInterval(() => {
       if (params.orderId && !loading) {
         fetchPaymentStatus(true); // Silent refresh
@@ -101,7 +121,7 @@ export default function PaymentStatusScreen() {
     }, 10000);
 
     return () => clearInterval(interval);
-  }, [params.orderId, loading]);
+  }, [autoRefreshPayments, params.orderId, loading]);
 
   const fetchPaymentStatus = async (silent = false) => {
     try {
@@ -129,7 +149,20 @@ export default function PaymentStatusScreen() {
         has_slip: !!data.payment_slip_url,
         has_ocr_data: !!data.slip_ocr_data,
       });
+
+      const nextStatus = data.slip_verification_status as SlipVerificationStatus;
+      const previousStatus = lastPaymentStatusRef.current;
+      lastPaymentStatusRef.current = nextStatus;
+
       setPayment(data);
+      if (silent && paymentAlertsEnabled && previousStatus && previousStatus !== nextStatus) {
+        const statusConfig = STATUS_CONFIGS[nextStatus];
+        showNotification({
+          title: "Payment status updated",
+          message: statusConfig.title,
+          preset: nextStatus === "REJECTED" ? "error" : "info",
+        });
+      }
     } catch (error) {
       console.error(
         "[PaymentStatus] Fatal error in fetchPaymentStatus:",

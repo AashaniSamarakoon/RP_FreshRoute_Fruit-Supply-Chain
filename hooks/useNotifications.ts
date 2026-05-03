@@ -1,4 +1,8 @@
 import { showNotification } from "@/components/notifications/NotificationBanner";
+import {
+    getBuyerPreferences,
+    shouldShowBuyerNotification,
+} from "@/utils/buyerPreferences";
 import { supabase } from "@/utils/supabaseClient";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { useRouter } from "expo-router";
@@ -43,7 +47,7 @@ export function useNotifications(role: Role): void {
                         schema: handler.schema ?? "public",
                         table: handler.table,
                     },
-                    (payload: { new: unknown; old: unknown }) => {
+                    async (payload: { new: unknown; old: unknown }) => {
                         const content = handler.resolve(role, {
                             eventType,
                             record: (payload.new ?? {}) as Record<string, unknown>,
@@ -51,6 +55,12 @@ export function useNotifications(role: Role): void {
                         });
 
                         if (!content) return;
+                        if (role === "buyer") {
+                            const preferences = await getBuyerPreferences();
+                            if (!shouldShowBuyerNotification(preferences, content)) {
+                                return;
+                            }
+                        }
 
                         showNotification({
                             title: content.title,
@@ -69,5 +79,5 @@ export function useNotifications(role: Role): void {
         return () => {
             channels.forEach((ch) => supabase.removeChannel(ch));
         };
-    }, [role]);
+    }, [buildActions, role]);
 }

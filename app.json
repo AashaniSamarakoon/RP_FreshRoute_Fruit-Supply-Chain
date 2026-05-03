@@ -25,6 +25,10 @@
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
         "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION"
       ]
     },
@@ -55,7 +59,6 @@
         }
       ],
       "expo-web-browser",
-      "expo-build-properties",
       [
         "expo-camera",
         {
@@ -67,8 +70,7 @@
         {
           "locationAlwaysAndWhenInUsePermission": "Allow FreshRoute to access your location to track delivery routes and provide navigation."
         }
-      ],
-      "expo-web-browser"
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
@@ -79,6 +81,12 @@
       "eas": {
         "projectId": "ce22722e-abf0-464f-a13b-df2c1a378476"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/ce22722e-abf0-464f-a13b-df2c1a378476"
     }
   }
 }

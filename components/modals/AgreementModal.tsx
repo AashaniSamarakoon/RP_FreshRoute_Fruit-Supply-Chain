@@ -94,7 +94,13 @@ export default function AgreementModal({
             <View style={styles.divider} />
 
             <Text style={styles.legalText}>
-              By clicking <Text style={styles.boldText}>"Agree & Accept"</Text>, you provide your digital signature committing to this supply agreement. Failure to fulfill this commitment may impact your platform trust rating.
+              By clicking{" "}
+              <Text style={styles.boldText}>
+                {'"'}Agree & Accept{'"'}
+              </Text>
+              , you provide your digital signature committing to this supply
+              agreement. Failure to fulfill this commitment may impact your
+              platform trust rating.
             </Text>
           </ScrollView>
 

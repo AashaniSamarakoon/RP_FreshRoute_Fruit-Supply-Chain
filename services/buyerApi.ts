@@ -1,16 +1,13 @@
 import api from "./api";
 
-// Replace with your actual API endpoint
-const API_URL = "https://api.example.com/buyer";
-
 export const getOrders = () => {
-  return api.get(`${API_URL}/orders`);
+  return api.get("/api/buyer/place-order");
 };
 
 export const submitOrder = (orderData: any) => {
-  return api.post(`${API_URL}/orders`, orderData);
+  return api.post("/api/buyer/place-order", orderData);
 };
 
 export const getDeliveries = () => {
-  return api.get(`${API_URL}/deliveries`);
+  return api.get("/api/buyer/deliveries");
 };

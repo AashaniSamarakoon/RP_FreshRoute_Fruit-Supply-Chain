@@ -885,7 +885,9 @@ const renderContent = () => {
             <Ionicons name="receipt-outline" size={36} color="#9CA3AF" />
           </View>
           <Text style={styles.emptyTitle}>No orders found</Text>
-          <Text style={styles.emptySubtitle}>You don't have any orders matching this status.</Text>
+          <Text style={styles.emptySubtitle}>
+            You don{"'"}t have any orders matching this status.
+          </Text>
         </View>
       }
     />

@@ -1,5 +1,6 @@
 import Header from "@/components/Header";
 import ErrorModal from "@/components/modals/ErrorModal";
+import { showNotification } from "@/components/notifications/NotificationBanner";
 import PaymentInfoModal from "@/components/modals/PaymentInfoModal";
 import SuccessModal from "@/components/modals/SuccessModal";
 import { BuyerColors } from "@/constants/theme";
@@ -11,11 +12,12 @@ import {
   PlacedOrder,
   TransporterInfo,
 } from "@/types";
+import { getBuyerPreferences } from "@/utils/buyerPreferences";
 import { formatCurrency, formatDate } from "@/utils/formatters";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
@@ -84,7 +86,6 @@ const getStatusStyles = (status: string) => {
       return { bg: "#FFF7ED", text: "#F97316", label: "Pending" };
     case "MATCHED":
       return { bg: "#EEF2FF", text: "#6366F1", label: "Matched" };
-    case "AUTHORIZED_PAYMENT":
     case "IN_TRANSIT":
       return { bg: "#EFF6FF", text: "#3B82F6", label: "In Transit" };
     case "PACKING":
@@ -162,12 +163,15 @@ export default function OrderDetailScreen() {
   const [buyerGradingsError, setBuyerGradingsError] = useState<string | null>(
     null,
   );
+  const [autoRefreshOrderUpdates, setAutoRefreshOrderUpdates] = useState(true);
   const [showGradingsPopup, setShowGradingsPopup] = useState(false);
   const [showReverifyConfirm, setShowReverifyConfirm] = useState(false);
   const [reverifyLoading, setReverifyLoading] = useState(false);
   const [reverifyResults, setReverifyResults] = useState<ReVerifyResult[] | null>(
     null,
   );
+  const lastOrderStatusRef = useRef<string | null>(null);
+  const buyerGradingsLoadedForRef = useRef<string | null>(null);
 
   // ── Price-lock key per order ──
   const priceLockKey = params.orderId
@@ -177,6 +181,16 @@ export default function OrderDetailScreen() {
   useEffect(() => {
     if (params.orderId) fetchOrderDetails();
   }, [params.orderId]);
+
+  useEffect(() => {
+    let mounted = true;
+    getBuyerPreferences().then((prefs) => {
+      if (mounted) setAutoRefreshOrderUpdates(prefs.orderUpdates);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // Collapse product details accordion once the order moves to IN_TRANSIT or beyond
   useEffect(() => {
@@ -216,11 +230,12 @@ export default function OrderDetailScreen() {
   }, [priceLockKey]);
 
   useEffect(() => {
+    if (!autoRefreshOrderUpdates) return;
     const interval = setInterval(() => {
       if (params.orderId && !loading) fetchOrderDetails(true);
     }, 30000);
     return () => clearInterval(interval);
-  }, [params.orderId, loading]);
+  }, [autoRefreshOrderUpdates, params.orderId, loading]);
 
   const fetchBuyerGradings = async (placedOrderId: string) => {
     if (!placedOrderId) return;
@@ -249,6 +264,7 @@ export default function OrderDetailScreen() {
         });
         setHarvestProofImages(uris);
       }
+      buyerGradingsLoadedForRef.current = placedOrderId;
     } catch (e) {
       setBuyerGradings([]);
       setBuyerGradingsError(
@@ -381,7 +397,18 @@ export default function OrderDetailScreen() {
         merged.totalPrice = merged.unitPrice * merged.quantity;
       }
 
+      const nextStatus = typeof merged.status === "string" ? merged.status : null;
+      const previousStatus = lastOrderStatusRef.current;
+      lastOrderStatusRef.current = nextStatus;
+
       setOrder(merged || null);
+      if (silent && autoRefreshOrderUpdates && previousStatus && nextStatus && previousStatus !== nextStatus) {
+        showNotification({
+          title: "Order status updated",
+          message: `Your order is now ${nextStatus.replace(/_/g, " ").toLowerCase()}.`,
+          preset: ["DELIVERED", "COMPLETED"].includes(nextStatus) ? "done" : "info",
+        });
+      }
 
       // attempt to load blockchain journey if harvest_id is available
       if (merged.harvest_id) {
@@ -458,9 +485,13 @@ export default function OrderDetailScreen() {
 
       // Delivered/completed: fetch stored grading images + history for buyer
       const status = (merged?.status ?? "").toString();
+      const placedOrderId = String(params.orderId);
       if (["DELIVERED", "COMPLETED"].includes(status)) {
-        fetchBuyerGradings(String(params.orderId));
+        if (!silent || buyerGradingsLoadedForRef.current !== placedOrderId) {
+          fetchBuyerGradings(placedOrderId);
+        }
       } else {
+        buyerGradingsLoadedForRef.current = null;
         setBuyerGradings([]);
         setBuyerGradingsError(null);
         setReverifyResults(null);

@@ -59,7 +59,7 @@ export default function PreapprovalConsentModal({
 
           <Text style={styles.title}>Authorize Auto-Payment</Text>
           <Text style={styles.subtitle}>
-            We'll automatically charge your card on delivery day — no action
+            We{"'"}ll automatically charge your card on delivery day - no action
             needed from you.
           </Text>
 

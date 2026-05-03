@@ -2,6 +2,8 @@ import { BACKEND_URL } from "@/config";
 import { supabase } from "@/utils/supabaseClient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+const DEBUG_API = process.env.EXPO_PUBLIC_DEBUG_API === "1";
+
 // wrapper that automatically appends auth header if token is available
 // when using Supabase for sign‑in we no longer read the raw token from
 // storage; instead we ask the SDK for the current session so that we
@@ -16,9 +18,7 @@ async function fetchWithAuth(input: RequestInfo, init: RequestInit = {}) {
   // code that might still read it.  We optionally mirror the value here.
   const token =
     session?.access_token || (await AsyncStorage.getItem("token")) || "";
-  if (token) {
-    console.log("[api] using token", token.slice(0, 10), "…");
-  } else {
+  if (!token && DEBUG_API) {
     console.warn("[api] no auth token available");
   }
 
@@ -29,18 +29,18 @@ async function fetchWithAuth(input: RequestInfo, init: RequestInit = {}) {
       ...(init.headers as object),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     } as Record<string, string>;
-    console.log("[api] POST formdata to", input);
+    if (DEBUG_API) console.log("[api] POST formdata to", input);
   } else {
     headers = {
       "Content-Type": "application/json",
       ...(init.headers as object),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
-    console.log("[api] request", input, init.method, init.body);
+    if (DEBUG_API) console.log("[api] request", input, init.method);
   }
 
   // debug: show headers (mask token) when verbose logging enabled
-  if (process.env.NODE_ENV !== 'production') {
+  if (DEBUG_API) {
     const loggedHeaders = { ...headers } as any;
     if (loggedHeaders.Authorization) {
       loggedHeaders.Authorization = loggedHeaders.Authorization.replace(/Bearer\s+(.{4}).+/, 'Bearer $1…');
@@ -83,7 +83,7 @@ function buildUrl(path: string) {
     );
   }
   const url = `${BACKEND_URL}${path}`;
-  console.log("[api] building url", url);
+  if (DEBUG_API) console.log("[api] building url", url);
   return url;
 }
 

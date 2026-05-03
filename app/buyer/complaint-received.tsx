@@ -46,7 +46,7 @@ export default function ComplaintReceived() {
   }, [router]);
 
   const handleViewComplaints = () => {
-    // Leave empty – implement complaints list page later
+    router.replace("/buyer/(tabs)/complaints" as any);
   };
 
   const handleViewOrders = () => {

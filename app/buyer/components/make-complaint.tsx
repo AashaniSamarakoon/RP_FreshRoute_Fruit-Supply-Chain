@@ -54,7 +54,7 @@ export default function MakeComplaint() {
     }
 
     router.push({
-      pathname: "/buyer/complaint-camera" as any,
+      pathname: "/buyer/components/complaint-camera" as any,
       params: {
         orderId,
         reason,

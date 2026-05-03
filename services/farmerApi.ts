@@ -1,31 +1,14 @@
 import api from "./api";
 
-// Mock data for when API is not available
-const mockOrderStats = {
-  completedCount: 15,
-  pendingCount: 3,
-  lastCompletedDate: "Jan 05, 2026",
-  nextOrderDate: "Jan 12, 2026",
-};
-
-const mockSMSPreferences = {
-  preferences: {
-    sms_alerts_enabled: true,
-  },
-};
-
 // Farmer API endpoints
 export const getSMSPreferences = () => {
-  // Return mock data instead of calling API to avoid 404 errors
-  return Promise.resolve(mockSMSPreferences);
+  return api.get("/api/farmer/sms-preferences");
 };
 
 export const updateSMSPreferences = (preferences: {
   sms_alerts_enabled?: boolean;
 }) => {
-  // Mock the update to avoid 404 errors - just resolve without calling API
-  console.log("[SMS] Mock update SMS preferences:", preferences);
-  return Promise.resolve({ success: true });
+  return api.put("/api/farmer/sms-preferences", preferences);
 };
 
 // Dashboard API endpoints
@@ -35,8 +18,7 @@ export const getFarmerDashboard = () => {
 
 // Orders API endpoints
 export const getOrdersOverview = () => {
-  // Return mock data instead of calling API to avoid 404 errors
-  return Promise.resolve(mockOrderStats);
+  return api.get("/api/farmer/orders/overview");
 };
 
 // Fruits API endpoints
@@ -46,9 +28,9 @@ export const getAvailableFruits = () => {
 
 // Complaints API endpoints
 export const getFarmerComplaints = () => {
-  return api.get("/api/complaints");
+  return api.get("/api/farmer/complaints");
 };
 
 export const getComplaintDetails = (id: string) => {
-  return api.get(`/api/complaints/${id}`);
+  return api.get(`/api/farmer/complaints/${id}`);
 };
