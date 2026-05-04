@@ -127,6 +127,7 @@ export default function OrderDetailScreen() {
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   // preapproval state removed; we now always hold via PayHere payment
+  const [payhereSubmitting, setPayhereSubmitting] = useState(false);
   const [isPriceLocked, setIsPriceLocked] = useState(false);
   const [lockedUnitPrice, setLockedUnitPrice] = useState<number | null>(null);
   const [predictedPrice, setPredictedPrice] = useState<number>(0);
@@ -172,11 +173,18 @@ export default function OrderDetailScreen() {
   );
   const lastOrderStatusRef = useRef<string | null>(null);
   const buyerGradingsLoadedForRef = useRef<string | null>(null);
+  const isMountedRef = useRef(true);
 
   // ── Price-lock key per order ──
   const priceLockKey = params.orderId
     ? `PAYMENT_PRICE_LOCK_${params.orderId}`
     : null;
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (params.orderId) fetchOrderDetails();
@@ -575,7 +583,8 @@ export default function OrderDetailScreen() {
 
   /** Called when user taps Pay Now inside the info modal */
   const handlePayNow = async () => {
-    if (!order || !priceLockKey) return;
+    if (!order || !priceLockKey || payhereSubmitting) return;
+    setPayhereSubmitting(true);
 
     // compute deposit: half the total, but never more than Rs. 250 000
     let depositAmount: number | null = null;
@@ -588,51 +597,68 @@ export default function OrderDetailScreen() {
     // lock the deposit locally for UI badge (fall back to unit price if nothing else)
     const lockValue =
       lockedUnitPrice ?? depositAmount ?? order.unitPrice ?? null;
-    if (lockValue != null) {
-      const lock = {
-        lockedPrice: lockValue,
-        lockedDate: new Date().toISOString().slice(0, 10),
-      };
-      await AsyncStorage.setItem(priceLockKey, JSON.stringify(lock));
-      setLockedUnitPrice(lockValue);
-      setIsPriceLocked(true);
-    }
-    setPaymentModalVisible(false);
+    try {
+      if (lockValue != null) {
+        const lock = {
+          lockedPrice: lockValue,
+          lockedDate: new Date().toISOString().slice(0, 10),
+        };
+        await AsyncStorage.setItem(priceLockKey, JSON.stringify(lock));
+        if (!isMountedRef.current) return;
+        setLockedUnitPrice(lockValue);
+        setIsPriceLocked(true);
+      }
+      setPaymentModalVisible(false);
 
-    // launch PayHere preapproval/deposit flow
-    await startPayHerePreapproval(
-      {
-        orderId: order.id,
-        fruitType: order.fruit_type,
-        variant: order.variant ?? null,
-        quantity: order.quantity,
-        depositAmount,
-        deliveryDate: order.required_date ?? null,
-        deliveryLocation: order.delivery_location ?? null,
-      },
-      (paymentId) => {
-        setDepositPaid(depositAmount);
-        setPayherePaymentId(paymentId);
-        // mark order temporarily authorized
-        setOrder((o) => (o ? { ...o, status: "AUTHORIZED_PAYMENT" } : o));
-        setSuccessModal({
-          title: "Deposit Paid",
-          message: depositAmount
-            ? `A 50% deposit of Rs. ${depositAmount.toLocaleString()} has been paid successfully. The remaining balance will be automatically processed on delivery based on the final market price.`
-            : "Your deposit has been paid successfully.",
-          onClose: () => fetchOrderDetails(),
-        });
-      },
-      (error) => {
-        setErrorModal({
-          title: "Deposit Failed",
-          message: `Something went wrong: ${error}\n\nPlease try again or contact support.`,
-        });
-      },
-      () => {
-        // dismissed
-      },
-    );
+      // launch PayHere preapproval/deposit flow
+      await startPayHerePreapproval(
+        {
+          orderId: order.id,
+          fruitType: order.fruit_type,
+          variant: order.variant ?? null,
+          quantity: order.quantity,
+          depositAmount,
+          deliveryDate: order.required_date ?? null,
+          deliveryLocation: order.delivery_location ?? null,
+        },
+        (paymentId) => {
+          if (!isMountedRef.current) return;
+          setPayhereSubmitting(false);
+          setDepositPaid(depositAmount);
+          setPayherePaymentId(paymentId);
+          // mark order temporarily authorized
+          setOrder((o) => (o ? { ...o, status: "AUTHORIZED_PAYMENT" } : o));
+          setSuccessModal({
+            title: "Deposit Paid",
+            message: depositAmount
+              ? `A 50% deposit of Rs. ${depositAmount.toLocaleString()} has been paid successfully. The remaining balance will be automatically processed on delivery based on the final market price.`
+              : "Your deposit has been paid successfully.",
+            onClose: () => fetchOrderDetails(),
+          });
+        },
+        (error) => {
+          if (!isMountedRef.current) return;
+          setPayhereSubmitting(false);
+          setErrorModal({
+            title: "Deposit Failed",
+            message: `Something went wrong: ${error}\n\nPlease try again or contact support.`,
+          });
+        },
+        () => {
+          if (isMountedRef.current) setPayhereSubmitting(false);
+        },
+      );
+    } catch (error) {
+      if (!isMountedRef.current) return;
+      setPayhereSubmitting(false);
+      setErrorModal({
+        title: "Payment Could Not Start",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Unable to start PayHere payment. Please try again.",
+      });
+    }
   };
 
   const getPrimaryAction = () => {
@@ -1357,6 +1383,7 @@ export default function OrderDetailScreen() {
             order.required_date ? formatDate(order.required_date) : undefined
           }
           isPriceLocked={isPriceLocked}
+          isSubmitting={payhereSubmitting}
           onPayNow={handlePayNow}
         />
       )}

@@ -1,4 +1,5 @@
 import api from "@/services/api";
+import { registerForPushNotificationsAsync } from "@/services/pushNotifications";
 import { supabase } from "@/utils/supabaseClient";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -66,12 +67,15 @@ export default function Signup() {
       // ensure Supabase client has a session; attempt to log in
       // using the just‑created credentials.
       try {
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data: signInData, error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
         if (error)
           console.warn("supabase sign-in after signup failed", error.message);
+        if (signInData.user) {
+          await registerForPushNotificationsAsync(signInData.user.id);
+        }
       } catch (e) {
         console.warn("error signing in after signup", e);
       }

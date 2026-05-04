@@ -1,4 +1,5 @@
 import { supabase } from "@/utils/supabaseClient";
+import { registerForPushNotificationsAsync } from "@/services/pushNotifications";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Link, useRouter } from "expo-router";
@@ -53,6 +54,7 @@ export default function Login() {
       if (user) {
         await AsyncStorage.setItem("user", JSON.stringify(user));
         console.log("[Login] User data stored in AsyncStorage", user);
+        await registerForPushNotificationsAsync(user.id);
       }
 
       // Ensure admin user has role in metadata so backend JWT sees it

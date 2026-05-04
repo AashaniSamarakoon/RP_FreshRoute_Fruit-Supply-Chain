@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "scripts": {
     "prestart": "node ./scripts/update-backend-url.js",
+    "postinstall": "node ./scripts/patch-payhere-sdk.js",
     "start": "expo start",
     "preandroid": "node ./scripts/update-backend-url.js",
     "android": "expo run:android",
@@ -39,6 +40,7 @@
     "expo-clipboard": "~8.0.8",
     "expo-constants": "~18.0.10",
     "expo-dev-client": "~6.0.20",
+    "expo-device": "~8.0.10",
     "expo-file-system": "~19.0.21",
     "expo-font": "~14.0.9",
     "expo-haptics": "~15.0.7",
@@ -47,6 +49,7 @@
     "expo-linking": "~8.0.9",
     "expo-localization": "^17.0.8",
     "expo-location": "~19.0.8",
+    "expo-notifications": "~0.32.17",
     "expo-router": "~6.0.15",
     "expo-splash-screen": "~31.0.11",
     "expo-status-bar": "~3.0.8",

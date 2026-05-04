@@ -1,5 +1,6 @@
 // app/index.tsx
 import api from "@/services/api";
+import { registerForPushNotificationsAsync } from "@/services/pushNotifications";
 import { supabase } from "@/utils/supabaseClient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -72,6 +73,7 @@ export default function Index() {
           if (session.access_token) {
             await AsyncStorage.setItem("token", session.access_token);
           }
+          await registerForPushNotificationsAsync(user.id);
 
           const role = ((user.user_metadata?.role as string) || "buyer").toLowerCase() as Role;
 

@@ -20,6 +20,7 @@ interface PaymentInfoModalProps {
   currentUnitPrice: number | null;
   requiredDate?: string;
   isPriceLocked: boolean;
+  isSubmitting?: boolean;
   onPayNow: () => void;
 }
 
@@ -33,6 +34,7 @@ export default function PaymentInfoModal({
   currentUnitPrice,
   requiredDate,
   isPriceLocked,
+  isSubmitting = false,
   onPayNow,
 }: PaymentInfoModalProps) {
   const formatPrice = (price: number | null) =>
@@ -197,9 +199,19 @@ export default function PaymentInfoModal({
             <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
               <Text style={styles.cancelBtnText}>Cancel</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.payBtn} onPress={onPayNow}>
-              <Ionicons name="card-outline" size={18} color="#fff" />
-              <Text style={styles.payBtnText}>Pay Deposit</Text>
+            <TouchableOpacity
+              style={[styles.payBtn, isSubmitting && styles.payBtnDisabled]}
+              onPress={onPayNow}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="card-outline" size={18} color="#fff" />
+              )}
+              <Text style={styles.payBtnText}>
+                {isSubmitting ? "Opening PayHere..." : "Pay Deposit"}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -414,6 +426,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 8,
     elevation: 4,
+  },
+  payBtnDisabled: {
+    opacity: 0.7,
   },
   payBtnText: {
     fontSize: 15,

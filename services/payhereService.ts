@@ -2,7 +2,7 @@ import { BACKEND_URL } from "@/config";
 import api from "@/services/api";
 import { supabase } from "@/utils/supabaseClient";
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const PayHere = require("@payhere/payhere-mobilesdk-reactnative").default;
 
 /** Merchant ID lives in the frontend env; merchant secret lives only on the backend. */
@@ -10,6 +10,42 @@ const MERCHANT_ID = process.env.EXPO_PUBLIC_PAYHERE_MERCHANT_ID!;
 
 /** Set to false for production. */
 export const PAYHERE_IS_SANDBOX = true;
+
+const asPayHereString = (value: unknown): string => {
+    if (typeof value === "string") return value;
+    if (value == null) return "";
+    if (value instanceof Error) return value.message;
+    try {
+        return JSON.stringify(value);
+    } catch {
+        return String(value);
+    }
+};
+
+const startPayHereSafely = (
+    paymentObject: Record<string, unknown>,
+    onSuccess: (paymentId: string) => void,
+    onError: (error: string) => void,
+    onDismiss: () => void,
+) => {
+    let settled = false;
+    const settle = (callback: () => void) => {
+        if (settled) return;
+        settled = true;
+        callback();
+    };
+
+    try {
+        PayHere.startPayment(
+            paymentObject,
+            (paymentId: unknown) => settle(() => onSuccess(asPayHereString(paymentId))),
+            (error: unknown) => settle(() => onError(asPayHereString(error) || "Unknown PayHere error")),
+            () => settle(onDismiss),
+        );
+    } catch (error) {
+        settle(() => onError(asPayHereString(error) || "Unable to start PayHere payment"));
+    }
+};
 
 export interface PayHereOrderParams {
     orderId: string;
@@ -88,7 +124,7 @@ export async function startPayHerePayment(
         custom_2: "",
     };
 
-    PayHere.startPayment(paymentObject, onSuccess, onError, onDismiss);
+    startPayHereSafely(paymentObject, onSuccess, onError, onDismiss);
 }
 
 // ─── Preapproval (Pay Later / Tokenization) ───────────────────────────────────
@@ -183,5 +219,5 @@ export async function startPayHerePreapproval(
         custom_2: "",
     };
 
-    PayHere.startPayment(paymentObject, onSuccess, onError, onDismiss);
+    startPayHereSafely(paymentObject, onSuccess, onError, onDismiss);
 }
