@@ -33,6 +33,7 @@ export default function LocationStep() {
   const [searchQuery, setSearchQuery] = useState("");
   const [moving, setMoving] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [hasLocationPermission, setHasLocationPermission] = useState(false);
 
   // role comes from dynamic segment
   const role = (params.role as string) || "farmer"; // fallback
@@ -48,11 +49,13 @@ export default function LocationStep() {
       setSearching(true);
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
+        setHasLocationPermission(false);
         // Don't show alert, user can still select location manually
         console.log("Location permission denied, user can select manually");
         setSearching(false);
         return;
       }
+      setHasLocationPermission(true);
 
       let location = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
@@ -154,7 +157,7 @@ export default function LocationStep() {
         initialRegion={region}
         onRegionChange={() => setMoving(true)}
         onRegionChangeComplete={handleRegionChangeComplete}
-        showsUserLocation={true}
+        showsUserLocation={hasLocationPermission}
         showsMyLocationButton={false} // We are using a custom button for better UI
       />
 

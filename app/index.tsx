@@ -73,7 +73,12 @@ export default function Index() {
           if (session.access_token) {
             await AsyncStorage.setItem("token", session.access_token);
           }
-          await registerForPushNotificationsAsync(user.id);
+          registerForPushNotificationsAsync(user.id).catch((error) => {
+            console.warn(
+              "[Index] Push registration failed, continuing startup:",
+              error,
+            );
+          });
 
           const role = ((user.user_metadata?.role as string) || "buyer").toLowerCase() as Role;
 

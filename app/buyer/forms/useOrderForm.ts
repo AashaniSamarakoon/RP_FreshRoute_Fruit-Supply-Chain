@@ -274,7 +274,30 @@ export const useOrderForm = () => {
     }));
   }, [state.formData.fruit, rows]);
 
+  const formatLogValue = (value: unknown) => {
+    if (value instanceof Date) return value.toISOString();
+    if (
+      value == null ||
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
+    ) {
+      return value;
+    }
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return "[unserializable]";
+    }
+  };
+
   const updateField = (field: keyof OrderFormData, value: any) => {
+    if (__DEV__) {
+      console.log("[useOrderForm] updateField", {
+        field,
+        value: formatLogValue(value),
+      });
+    }
     setState((prev) => ({
       ...prev,
       formData: { ...prev.formData, [field]: value },
@@ -402,6 +425,13 @@ export const useOrderForm = () => {
   };
 
   const handleDateChange = (event: any, selectedDate?: Date) => {
+    if (__DEV__) {
+      console.log("[useOrderForm] handleDateChange", {
+        eventType: event?.type,
+        selectedDate: selectedDate?.toISOString?.() ?? null,
+        currentDate: state.dateValue?.toISOString?.() ?? null,
+      });
+    }
     if (Platform.OS === "android") setDatePickerVisible(false);
 
     const current = selectedDate || state.dateValue || new Date();

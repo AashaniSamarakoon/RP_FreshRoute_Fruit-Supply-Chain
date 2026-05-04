@@ -56,44 +56,52 @@ const savePushToken = async (payload: PushTokenPayload) => {
 };
 
 export async function registerForPushNotificationsAsync(userId: string) {
-  if (!Device.isDevice) {
-    console.log("[PushNotifications] Push notifications require a physical device");
+  try {
+    if (!Device.isDevice) {
+      console.log("[PushNotifications] Push notifications require a physical device");
+      return null;
+    }
+
+    const existing = await Notifications.getPermissionsAsync();
+    let finalStatus = existing.status;
+
+    if (existing.status !== "granted") {
+      const requested = await Notifications.requestPermissionsAsync();
+      finalStatus = requested.status;
+    }
+
+    if (finalStatus !== "granted") {
+      console.log("[PushNotifications] Push notification permission not granted");
+      return null;
+    }
+
+    const projectId = getProjectId();
+    if (!projectId) {
+      console.warn("[PushNotifications] Missing EAS projectId; cannot request Expo push token");
+      return null;
+    }
+
+    await ensureAndroidChannel();
+
+    const token = (
+      await Notifications.getExpoPushTokenAsync({
+        projectId,
+      })
+    ).data;
+
+    await savePushToken({
+      user_id: userId,
+      expo_push_token: token,
+      platform: Platform.OS,
+      updated_at: new Date().toISOString(),
+    });
+
+    return token;
+  } catch (error) {
+    console.warn(
+      "[PushNotifications] Registration skipped; login will continue",
+      error,
+    );
     return null;
   }
-
-  const existing = await Notifications.getPermissionsAsync();
-  let finalStatus = existing.status;
-
-  if (existing.status !== "granted") {
-    const requested = await Notifications.requestPermissionsAsync();
-    finalStatus = requested.status;
-  }
-
-  if (finalStatus !== "granted") {
-    console.log("[PushNotifications] Push notification permission not granted");
-    return null;
-  }
-
-  const projectId = getProjectId();
-  if (!projectId) {
-    console.warn("[PushNotifications] Missing EAS projectId; cannot request Expo push token");
-    return null;
-  }
-
-  await ensureAndroidChannel();
-
-  const token = (
-    await Notifications.getExpoPushTokenAsync({
-      projectId,
-    })
-  ).data;
-
-  await savePushToken({
-    user_id: userId,
-    expo_push_token: token,
-    platform: Platform.OS,
-    updated_at: new Date().toISOString(),
-  });
-
-  return token;
 }

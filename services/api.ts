@@ -2,6 +2,8 @@ import { BACKEND_URL } from "@/config";
 import { supabase } from "@/utils/supabaseClient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+const DEBUG_API = process.env.EXPO_PUBLIC_DEBUG_API === "true";
+
 class ApiError extends Error {
   status: number;
   url: string;

@@ -1,5 +1,5 @@
 import api from "@/services/api";
-import { registerForPushNotificationsAsync } from "@/services/pushNotifications";
+import { logDebugError, logDebugEvent } from "@/utils/debugLogger";
 import { supabase } from "@/utils/supabaseClient";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -30,6 +30,14 @@ export default function Signup() {
   const [role, setRole] = useState<Role>("FARMER");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  const getSafeSignupLogDetails = () => ({
+    role,
+    hasName: Boolean(name.trim()),
+    emailDomain: email.includes("@") ? email.split("@").pop() : "missing",
+    phoneLength: phone.trim().length,
+  });
+
   // Inside app/signup.tsx -> handleSignup
   const handleSignup = async () => {
     if (!name || !email || !password || !phone || !confirmPassword) {
@@ -40,6 +48,7 @@ export default function Signup() {
     }
 
     setLoading(true);
+    await logDebugEvent("SignupFlow", "signup_pressed", getSafeSignupLogDetails());
 
     try {
       // Split name for your backend controller
@@ -54,44 +63,76 @@ export default function Signup() {
         password,
         role: role.toLowerCase(),
       });
+      await logDebugEvent("SignupFlow", "backend_signup_success", {
+        ...getSafeSignupLogDetails(),
+        hasToken: typeof data?.token === "string" && data.token.length > 0,
+        hasUser: Boolean(data?.user),
+        isOnboarded: Boolean(data?.isOnboarded),
+      });
 
       // backend responded; store token and optional user record
-      await AsyncStorage.setItem("token", data.token);
+      if (typeof data?.token === "string" && data.token.length > 0) {
+        await AsyncStorage.setItem("token", data.token);
+        await logDebugEvent("SignupFlow", "token_saved");
+      } else {
+        await logDebugEvent("SignupFlow", "token_missing_from_response");
+      }
 
       // backend may return the user record as well; store it so later
       // onboarding steps that depend on `user.id` don't break.
       if (data.user) {
         await AsyncStorage.setItem("user", JSON.stringify(data.user));
+        await logDebugEvent("SignupFlow", "user_saved", {
+          userId: data.user.id,
+          role: data.user.role,
+        });
       }
 
       // ensure Supabase client has a session; attempt to log in
       // using the just‑created credentials.
       try {
+        await logDebugEvent("SignupFlow", "supabase_signin_start");
         const { data: signInData, error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
-        if (error)
+        if (error) {
           console.warn("supabase sign-in after signup failed", error.message);
-        if (signInData.user) {
-          await registerForPushNotificationsAsync(signInData.user.id);
+          await logDebugEvent("SignupFlow", "supabase_signin_failed", {
+            message: error.message,
+          });
+        } else {
+          await logDebugEvent("SignupFlow", "supabase_signin_success", {
+            userId: signInData.user?.id,
+          });
         }
       } catch (e) {
         console.warn("error signing in after signup", e);
+        await logDebugError("SignupFlow", "supabase_signin_exception", e);
       }
 
       const onboarded = data.isOnboarded || false;
       // route depending on role and onboarding state
       if (role === "FARMER") {
         if (onboarded) router.replace("/farmer" as any);
-        else router.replace("/onboarding/farmer/farm-info" as any);
+        else {
+          await logDebugEvent("SignupFlow", "navigate_farmer_location");
+          router.replace("/onboarding/farmer/location" as any);
+        }
       } else if (role === "BUYER") {
         if (onboarded) router.replace("/buyer" as any);
-        else router.replace("/onboarding/buyer/business" as any);
+        else {
+          await logDebugEvent("SignupFlow", "navigate_buyer_location");
+          router.replace("/onboarding/buyer/location" as any);
+        }
       } else {
+        await logDebugEvent("SignupFlow", "navigate_transporter_home");
         router.replace(`/${role.toLowerCase()}` as any);
       }
     } catch (err: any) {
+      await logDebugError("SignupFlow", "signup_failed", err, {
+        ...getSafeSignupLogDetails(),
+      });
       Alert.alert("Signup Error", err?.message || String(err));
     } finally {
       setLoading(false);

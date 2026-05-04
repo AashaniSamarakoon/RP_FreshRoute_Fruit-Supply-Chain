@@ -53,7 +53,13 @@ interface PlacedOrder {
   };
 }
 
-type TabKey = "all" | "pending" | "payment_due" | "processing" | "in_delivery"| "completed";
+type TabKey =
+  | "all"
+  | "pending"
+  | "payment_due"
+  | "processing"
+  | "in_delivery"
+  | "completed";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "all", label: "All" },
@@ -69,13 +75,8 @@ const TAB_STATUS_MAP: Record<TabKey, string[]> = {
   pending: ["OPEN", "PENDING_FARMER", "PENDING_BUYER", "MATCHED"],
   payment_due: ["AWAITING_PAYMENT"],
   processing: ["AUTHORIZED_PAYMENT", "PACKING", "READY_FOR_PICKUP"],
-  in_delivery: [
-    "PICKED_UP",
-    "IN_TRANSIT",
-    "DELIVERED",
-  ],
+  in_delivery: ["PICKED_UP", "IN_TRANSIT"],
   completed: ["DELIVERED", "COMPLETED"],
-
 };
 
 // Simplified fruit meta for a cleaner look
@@ -183,6 +184,12 @@ const STATUS_META: Record<
     bg: "#F3F4F6",
     icon: "close-circle-outline",
   },
+  EXPIRED: {
+    label: "Expired",
+    color: "#6B7280",
+    bg: "#F3F4F6",
+    icon: "time-outline",
+  },
 };
 
 const MATCHING_PHASE = ["OPEN", "MATCHED", "PENDING_BUYER", "PENDING_FARMER"];
@@ -190,8 +197,12 @@ const MATCHING_PHASE = ["OPEN", "MATCHED", "PENDING_BUYER", "PENDING_FARMER"];
 export default function BuyerOrders() {
   const router = useRouter();
   const [orders, setOrders] = useState<PlacedOrder[]>([]);
-  const [proposalCounts, setProposalCounts] = useState<Record<string, number>>({});
-  const [proposalPrices, setProposalPrices] = useState<Record<string, { min: number; max: number }>>({});
+  const [proposalCounts, setProposalCounts] = useState<Record<string, number>>(
+    {},
+  );
+  const [proposalPrices, setProposalPrices] = useState<
+    Record<string, { min: number; max: number }>
+  >({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>("all");
@@ -201,7 +212,10 @@ export default function BuyerOrders() {
   // editing modal state for buyer orders
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editOrder, setEditOrder] = useState<PlacedOrder | null>(null);
-  const [editFields, setEditFields] = useState<{ quantity?: string; grade?: string }>({});
+  const [editFields, setEditFields] = useState<{
+    quantity?: string;
+    grade?: string;
+  }>({});
 
   // update / cancel helpers
   const updateOrder = async (id: string, updates: Partial<PlacedOrder>) => {
@@ -216,18 +230,29 @@ export default function BuyerOrders() {
     }
   };
 
-  const cancelOrder = async (id: string) => {
+  const cancelOrder = async (
+    id: string,
+    mode: "cancel" | "delete" = "cancel",
+  ) => {
     try {
       await api.del(`/api/buyer/place-order/${id}`);
       setOrders((prev) => prev.filter((o) => o.id !== id));
-      showSuccess("Cancelled", "Order has been cancelled");
+      if (mode === "delete") {
+        showSuccess("Deleted", "Order has been removed");
+      } else {
+        showSuccess("Cancelled", "Order has been cancelled");
+      }
     } catch (err: any) {
-      showError("Error", err?.message || "Failed to cancel order");
+      const fallbackMessage =
+        mode === "delete" ? "Failed to delete order" : "Failed to cancel order";
+      showError("Error", err?.message || fallbackMessage);
     }
   };
 
   const fetchProposalCounts = async (orderList: PlacedOrder[]) => {
-    const matchingOrders = orderList.filter((o) => MATCHING_PHASE.includes(o.status));
+    const matchingOrders = orderList.filter((o) =>
+      MATCHING_PHASE.includes(o.status),
+    );
     if (matchingOrders.length === 0) return;
     try {
       const results = await Promise.allSettled(
@@ -249,14 +274,20 @@ export default function BuyerOrders() {
       results.forEach((result, i) => {
         if (result.status === "fulfilled") {
           const data: any = result.value;
-          const proposals: any[] = data?.proposals ?? data?.matches ?? (Array.isArray(data) ? data : []);
+          const proposals: any[] =
+            data?.proposals ??
+            data?.matches ??
+            (Array.isArray(data) ? data : []);
           if (proposals.length > 0) {
             counts[matchingOrders[i].id] = proposals.length;
             const pkgPrices = proposals
               .map((p: any) => Number(p.stock?.price_per_kg ?? p.price_per_kg))
               .filter((v) => !isNaN(v) && v > 0);
             if (pkgPrices.length > 0) {
-              prices[matchingOrders[i].id] = { min: Math.min(...pkgPrices), max: Math.max(...pkgPrices) };
+              prices[matchingOrders[i].id] = {
+                min: Math.min(...pkgPrices),
+                max: Math.max(...pkgPrices),
+              };
             }
           }
         }
@@ -279,10 +310,15 @@ export default function BuyerOrders() {
         if (typeof tx === "string") {
           try {
             const parsed = JSON.parse(tx);
-            if (Array.isArray(parsed) && parsed.length > 0) tx = String(parsed[0]);
+            if (Array.isArray(parsed) && parsed.length > 0)
+              tx = String(parsed[0]);
           } catch {}
         }
-        return { ...o, totalPrice: raw != null ? String(raw) : null, blockchain_tx_id: tx };
+        return {
+          ...o,
+          totalPrice: raw != null ? String(raw) : null,
+          blockchain_tx_id: tx,
+        };
       });
       setOrders(list);
       fetchProposalCounts(list);
@@ -298,7 +334,9 @@ export default function BuyerOrders() {
     const openOrders = orderList.filter((o) => o.status === "OPEN");
     if (openOrders.length === 0) return;
     await Promise.allSettled(
-      openOrders.map((o) => api.post(`/api/buyer/matching/trigger/${o.id}`, {})),
+      openOrders.map((o) =>
+        api.post(`/api/buyer/matching/trigger/${o.id}`, {}),
+      ),
     );
   };
 
@@ -313,10 +351,15 @@ export default function BuyerOrders() {
         if (typeof tx === "string") {
           try {
             const parsed = JSON.parse(tx);
-            if (Array.isArray(parsed) && parsed.length > 0) tx = String(parsed[0]);
+            if (Array.isArray(parsed) && parsed.length > 0)
+              tx = String(parsed[0]);
           } catch {}
         }
-        return { ...o, totalPrice: raw != null ? String(raw) : null, blockchain_tx_id: tx };
+        return {
+          ...o,
+          totalPrice: raw != null ? String(raw) : null,
+          blockchain_tx_id: tx,
+        };
       });
       await triggerMatchingForOpenOrders(list);
       // Re-fetch after triggering to get updated statuses
@@ -391,37 +434,62 @@ export default function BuyerOrders() {
   };
 
   const handleOrderLongPress = (item: PlacedOrder) => {
-    // only allow modifications when order is OPEN
-    if (item.status !== "OPEN") {
-      showError("Not allowed", "Only orders with status 'OPEN' can be edited or cancelled.");
+    const canEdit = item.status === "OPEN";
+    const canDelete = item.status === "OPEN" || item.status === "EXPIRED";
+
+    if (!canEdit && !canDelete) {
+      showError(
+        "Not allowed",
+        "Only OPEN orders can be edited. OPEN or EXPIRED orders can be deleted.",
+      );
       return;
     }
 
-    Alert.alert("Actions", "What would you like to do?", [
-      {
+    const actions: {
+      text: string;
+      onPress?: () => void;
+      style?: "default" | "cancel" | "destructive";
+    }[] = [];
+
+    if (canEdit) {
+      actions.push({
         text: "Edit",
         onPress: () => {
           setEditOrder(item);
           setEditFields({ quantity: String(item.quantity), grade: item.grade });
           setEditModalVisible(true);
         },
-      },
-      {
-        text: "Cancel Order",
+      });
+    }
+
+    if (canDelete) {
+      const isExpired = item.status === "EXPIRED";
+      actions.push({
+        text: isExpired ? "Delete Order" : "Cancel Order",
         style: "destructive",
         onPress: () => {
           Alert.alert(
             "Confirm",
-            "Are you sure you want to cancel this order?",
+            isExpired
+              ? "Are you sure you want to delete this expired order?"
+              : "Are you sure you want to cancel this order?",
             [
               { text: "No", style: "cancel" },
-              { text: "Yes", style: "destructive", onPress: () => cancelOrder(item.id) },
+              {
+                text: "Yes",
+                style: "destructive",
+                onPress: () =>
+                  cancelOrder(item.id, isExpired ? "delete" : "cancel"),
+              },
             ],
           );
         },
-      },
-      { text: "Close", style: "cancel" },
-    ]);
+      });
+    }
+
+    actions.push({ text: "Close", style: "cancel" });
+
+    Alert.alert("Actions", "What would you like to do?", actions);
   };
 
   const renderCard = ({ item }: { item: PlacedOrder }) => {
@@ -435,7 +503,8 @@ export default function BuyerOrders() {
 
     const proposalCount = proposalCounts[item.id] ?? 0;
     const paymentDue = ["AWAITING_PAYMENT"].includes(item.status);
-    const badgeCount = proposalCount > 0 ? proposalCount : (paymentDue ? "!" : null);
+    const badgeCount =
+      proposalCount > 0 ? proposalCount : paymentDue ? "!" : null;
     const isMatchingPhase = MATCHING_PHASE.includes(item.status);
     const priceRange = proposalPrices[item.id];
 
@@ -487,14 +556,18 @@ export default function BuyerOrders() {
                     <Text style={styles.priceLabel}>Proposals From</Text>
                     <Text style={styles.priceValue}>
                       Rs. {priceRange.min.toLocaleString()}
-                      {priceRange.max !== priceRange.min ? `–${priceRange.max.toLocaleString()}` : ""}
+                      {priceRange.max !== priceRange.min
+                        ? `–${priceRange.max.toLocaleString()}`
+                        : ""}
                     </Text>
                     <Text style={styles.pricePerKgLabel}>/kg</Text>
                   </>
                 ) : (
                   <>
                     <Text style={styles.priceLabel}>Price</Text>
-                    <Text style={styles.priceAwaitingText}>Awaiting proposals</Text>
+                    <Text style={styles.priceAwaitingText}>
+                      Awaiting proposals
+                    </Text>
                   </>
                 )
               ) : (
@@ -592,7 +665,11 @@ export default function BuyerOrders() {
               activeOpacity={0.85}
             >
               <View style={styles.ctaBannerContent}>
-                <Ionicons name="document-text-outline" size={16} color="#059669" />
+                <Ionicons
+                  name="document-text-outline"
+                  size={16}
+                  color="#059669"
+                />
                 <Text style={[styles.ctaText, { color: "#047857" }]}>
                   View details
                 </Text>
@@ -613,12 +690,12 @@ export default function BuyerOrders() {
         onNotificationPress={() => {}}
       />
 
-<PillTabBar
+      <PillTabBar
         tabs={TABS.map((t) => ({
           key: t.key,
           label: t.label,
           count: tabCount[t.key],
-        })).filter(t => t.key === "all" || t.count > 0)} // <--- ONLY RENDER IF count > 0 or "all"
+        })).filter((t) => t.key === "all" || t.count > 0)} // <--- ONLY RENDER IF count > 0 or "all"
         activeKey={activeTab}
         onPress={setActiveTab}
       />
@@ -678,7 +755,9 @@ export default function BuyerOrders() {
             <TextInput
               style={styles.modalInput}
               value={editFields.quantity}
-              onChangeText={(t) => setEditFields((f) => ({ ...f, quantity: t }))}
+              onChangeText={(t) =>
+                setEditFields((f) => ({ ...f, quantity: t }))
+              }
               placeholder="Quantity"
               keyboardType="numeric"
             />
@@ -700,8 +779,11 @@ export default function BuyerOrders() {
                 onPress={() => {
                   if (editOrder) {
                     updateOrder(editOrder.id, {
-                      quantity: Number(editFields.quantity) || editOrder.quantity,
-                      grade: (editFields.grade as "A" | "B" | "C") || editOrder.grade,
+                      quantity:
+                        Number(editFields.quantity) || editOrder.quantity,
+                      grade:
+                        (editFields.grade as "A" | "B" | "C") ||
+                        editOrder.grade,
                     });
                   }
                   setEditModalVisible(false);
@@ -970,33 +1052,33 @@ const styles = StyleSheet.create({
   // modal editing styles
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
   },
   modalContent: {
-    width: '85%',
-    backgroundColor: '#fff',
+    width: "85%",
+    backgroundColor: "#fff",
     borderRadius: 12,
     padding: 20,
     elevation: 5,
   },
   modalTitle: {
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: "700",
     marginBottom: 12,
   },
   modalInput: {
     borderWidth: 1,
-    borderColor: '#D1D5DB',
+    borderColor: "#D1D5DB",
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
     marginBottom: 12,
   },
   modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
+    flexDirection: "row",
+    justifyContent: "flex-end",
     gap: 12,
   },
   modalButton: {

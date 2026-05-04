@@ -54,7 +54,12 @@ export default function Login() {
       if (user) {
         await AsyncStorage.setItem("user", JSON.stringify(user));
         console.log("[Login] User data stored in AsyncStorage", user);
-        await registerForPushNotificationsAsync(user.id);
+        registerForPushNotificationsAsync(user.id).catch((error) => {
+          console.warn(
+            "[Login] Push registration failed, continuing login:",
+            error,
+          );
+        });
       }
 
       // Ensure admin user has role in metadata so backend JWT sees it

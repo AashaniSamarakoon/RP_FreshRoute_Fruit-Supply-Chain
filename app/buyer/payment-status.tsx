@@ -102,9 +102,7 @@ export default function PaymentStatusScreen() {
     getBuyerPreferences().then((prefs) => {
       if (!mounted) return;
       setAutoRefreshPayments(prefs.autoPaymentReminders);
-      setPaymentAlertsEnabled(
-        prefs.pushNotifications && prefs.paymentAlerts,
-      );
+      setPaymentAlertsEnabled(prefs.pushNotifications && prefs.paymentAlerts);
     });
     return () => {
       mounted = false;
@@ -150,16 +148,26 @@ export default function PaymentStatusScreen() {
         has_ocr_data: !!data.slip_ocr_data,
       });
 
-      const nextStatus = data.slip_verification_status as SlipVerificationStatus;
+      const nextStatus =
+        data.slip_verification_status as SlipVerificationStatus;
       const previousStatus = lastPaymentStatusRef.current;
       lastPaymentStatusRef.current = nextStatus;
 
       setPayment(data);
-      if (silent && paymentAlertsEnabled && previousStatus && previousStatus !== nextStatus) {
+      if (
+        silent &&
+        paymentAlertsEnabled &&
+        previousStatus &&
+        previousStatus !== nextStatus
+      ) {
         const statusConfig = STATUS_CONFIGS[nextStatus];
+        const fallbackMessage =
+          typeof nextStatus === "string" && nextStatus.length > 0
+            ? `Payment status is now ${nextStatus.replace(/_/g, " ").toLowerCase()}.`
+            : "Payment status updated.";
         showNotification({
           title: "Payment status updated",
-          message: statusConfig.title,
+          message: statusConfig?.title ?? fallbackMessage,
           preset: nextStatus === "REJECTED" ? "error" : "info",
         });
       }
@@ -215,7 +223,17 @@ export default function PaymentStatusScreen() {
     );
   }
 
-  const statusConfig = STATUS_CONFIGS[payment.slip_verification_status];
+  const statusConfig = STATUS_CONFIGS[payment.slip_verification_status] ?? {
+    icon: Clock,
+    iconColor: "#64748B",
+    bgColor: "#F1F5F9",
+    title: "Payment Status Updated",
+    message:
+      typeof payment.slip_verification_status === "string" &&
+      payment.slip_verification_status.length > 0
+        ? `Status: ${payment.slip_verification_status.replace(/_/g, " ")}`
+        : "Status: Unknown",
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -272,7 +290,11 @@ export default function PaymentStatusScreen() {
           <DetailRow label="Method" value="Bank Slip" />
           <DetailRow
             label="Status"
-            value={payment.slip_verification_status.replace(/_/g, " ")}
+            value={
+              typeof payment.slip_verification_status === "string"
+                ? payment.slip_verification_status.replace(/_/g, " ")
+                : "Unknown"
+            }
           />
           {payment.slip_uploaded_at && (
             <DetailRow

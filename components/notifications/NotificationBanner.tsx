@@ -7,12 +7,7 @@
  */
 
 import { Ionicons } from "@expo/vector-icons";
-import React, {
-    useCallback,
-    useEffect,
-    useRef,
-    useState,
-} from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
   Platform,
@@ -44,7 +39,23 @@ type ShowFn = (content: BannerContent) => void;
 let _show: ShowFn | null = null;
 
 export function showNotification(content: BannerContent): void {
-  _show?.(content);
+  if (!_show || !content || typeof content !== "object") return;
+  const actions = Array.isArray(content.actions)
+    ? content.actions.filter(
+        (action) =>
+          action &&
+          typeof action.label === "string" &&
+          typeof action.onPress === "function",
+      )
+    : undefined;
+  _show({
+    title: typeof content.title === "string" ? content.title : "Notification",
+    message: typeof content.message === "string" ? content.message : "",
+    preset: content.preset,
+    actions,
+    onPress:
+      typeof content.onPress === "function" ? content.onPress : undefined,
+  });
 }
 
 // ─── NotificationBannerHost ───────────────────────────────────────────────────
@@ -54,7 +65,8 @@ const SLIDE_OUT_Y = -220;
 export function NotificationBannerHost(): React.ReactElement | null {
   const [content, setContent] = useState<BannerContent | null>(null);
   const insets = useSafeAreaInsets();
-  const topOffset = insets.top > 0 ? insets.top : Platform.OS === "ios" ? 50 : 28;
+  const topOffset =
+    insets.top > 0 ? insets.top : Platform.OS === "ios" ? 50 : 28;
 
   const translateY = useRef(new Animated.Value(SLIDE_OUT_Y)).current;
   const opacity = useRef(new Animated.Value(0)).current;
@@ -212,11 +224,11 @@ const styles = StyleSheet.create({
     zIndex: 9999,
   },
   card: {
-    backgroundColor: "#FFFFFF", 
+    backgroundColor: "#FFFFFF",
     flexDirection: "row",
-    alignItems: "flex-start", 
+    alignItems: "flex-start",
     borderRadius: 16,
-    padding: 16, 
+    padding: 16,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.08,
@@ -238,7 +250,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#111827",
     letterSpacing: 0.2,
-    marginBottom: 4, 
+    marginBottom: 4,
   },
   message: {
     fontSize: 13,
@@ -250,16 +262,16 @@ const styles = StyleSheet.create({
   actionsRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 20, 
-    marginTop: 12, 
+    gap: 20,
+    marginTop: 12,
   },
   actionText: {
-    color: "#111827", 
+    color: "#111827",
     fontSize: 13,
     fontWeight: "700",
   },
   closeBtn: {
     marginLeft: 16,
-    marginTop: -2, 
+    marginTop: -2,
   },
 });

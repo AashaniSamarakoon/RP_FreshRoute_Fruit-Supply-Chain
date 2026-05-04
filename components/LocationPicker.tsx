@@ -66,6 +66,7 @@ export default function LocationPicker({
   const [moving, setMoving] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searching, setSearching] = useState(false);
+  const [hasLocationPermission, setHasLocationPermission] = useState(false);
 
   useEffect(() => {
     console.log("[LocationPicker] mount/update initial props", {
@@ -103,11 +104,13 @@ export default function LocationPicker({
       setSearching(true);
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
+        setHasLocationPermission(false);
         // Don't show alert, just keep default location - user can still select manually
         console.log("[LocationPicker] Location permission denied, using default/manual selection");
         setSearching(false);
         return;
       }
+      setHasLocationPermission(true);
 
       let location = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
@@ -197,7 +200,7 @@ export default function LocationPicker({
         initialRegion={region}
         onRegionChange={() => setMoving(true)}
         onRegionChangeComplete={handleRegionChangeComplete}
-        showsUserLocation={true}
+        showsUserLocation={hasLocationPermission}
         showsMyLocationButton={false}
       />
 

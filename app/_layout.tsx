@@ -4,6 +4,7 @@ import {
     ThemeProvider,
 } from "@react-navigation/native";
 import { Stack } from "expo-router";
+import { useEffect } from "react";
 import { StatusBar } from "react-native";
 import "react-native-reanimated";
 
@@ -11,6 +12,7 @@ import { ModalProvider } from "@/components/modals/ModalProvider";
 import { NotificationBannerHost } from "@/components/notifications/NotificationBanner";
 import { TranslationProvider } from "@/context/TranslationContext";
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import { logDebugError } from "@/utils/debugLogger";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 export const unstable_settings = {
@@ -19,6 +21,36 @@ export const unstable_settings = {
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+
+  useEffect(() => {
+    const errorUtils = (
+      globalThis as typeof globalThis & {
+        ErrorUtils?: {
+          getGlobalHandler?: () => (
+            error: Error,
+            isFatal?: boolean,
+          ) => void;
+          setGlobalHandler?: (
+            handler: (error: Error, isFatal?: boolean) => void,
+          ) => void;
+        };
+      }
+    ).ErrorUtils;
+
+    const previousHandler = errorUtils?.getGlobalHandler?.();
+    errorUtils?.setGlobalHandler?.((error, isFatal) => {
+      void logDebugError("GlobalError", "unhandled_js_error", error, {
+        isFatal,
+      });
+      previousHandler?.(error, isFatal);
+    });
+
+    return () => {
+      if (previousHandler) {
+        errorUtils?.setGlobalHandler?.(previousHandler);
+      }
+    };
+  }, []);
 
   // NOTE: All initial routing (session check, onboarding guard) lives in
   // app/index.tsx — the single source of truth. Do NOT add redirects here;

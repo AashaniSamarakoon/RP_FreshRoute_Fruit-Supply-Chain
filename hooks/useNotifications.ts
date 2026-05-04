@@ -1,7 +1,7 @@
 import { showNotification } from "@/components/notifications/NotificationBanner";
 import {
-    getBuyerPreferences,
-    shouldShowBuyerNotification,
+  getBuyerPreferences,
+  shouldShowBuyerNotification,
 } from "@/utils/buyerPreferences";
 import { supabase } from "@/utils/supabaseClient";
 import { RealtimeChannel } from "@supabase/supabase-js";
@@ -23,61 +23,73 @@ import type { Role } from "@/services/notifications/types";
  * @param role - The authenticated user's role ("farmer" | "buyer")
  */
 export function useNotifications(role: Role): void {
-    const router = useRouter();
+  const router = useRouter();
 
-    const buildActions = useCallback(
-        (viewRoute?: string, viewLabel?: string) => {
-            if (!viewRoute) return undefined;
-            return [{ label: viewLabel ?? "View", onPress: () => router.push(viewRoute as any) }];
+  const buildActions = useCallback(
+    (viewRoute?: string, viewLabel?: string) => {
+      if (!viewRoute) return undefined;
+      return [
+        {
+          label: viewLabel ?? "View",
+          onPress: () => router.push(viewRoute as any),
         },
-        [router],
-    );
+      ];
+    },
+    [router],
+  );
 
-    useEffect(() => {
-        const handlers = notificationRegistry.getAll();
+  useEffect(() => {
+    const handlers = notificationRegistry.getAll();
 
-        const channels: RealtimeChannel[] = handlers.map((handler) => {
-            let channel: RealtimeChannel = supabase.channel(handler.channelName);
+    const channels: RealtimeChannel[] = handlers.map((handler) => {
+      let channel: RealtimeChannel = supabase.channel(handler.channelName);
 
-            for (const eventType of handler.events) {
-                channel = channel.on(
-                    "postgres_changes",
-                    {
-                        event: eventType,
-                        schema: handler.schema ?? "public",
-                        table: handler.table,
-                    },
-                    async (payload: { new: unknown; old: unknown }) => {
-                        const content = handler.resolve(role, {
-                            eventType,
-                            record: (payload.new ?? {}) as Record<string, unknown>,
-                            oldRecord: (payload.old ?? {}) as Record<string, unknown>,
-                        });
+      for (const eventType of handler.events) {
+        channel = channel.on(
+          "postgres_changes",
+          {
+            event: eventType,
+            schema: handler.schema ?? "public",
+            table: handler.table,
+          },
+          async (payload: { new: unknown; old: unknown }) => {
+            try {
+              const content = handler.resolve(role, {
+                eventType,
+                record: (payload.new ?? {}) as Record<string, unknown>,
+                oldRecord: (payload.old ?? {}) as Record<string, unknown>,
+              });
 
-                        if (!content) return;
-                        if (role === "buyer") {
-                            const preferences = await getBuyerPreferences();
-                            if (!shouldShowBuyerNotification(preferences, content)) {
-                                return;
-                            }
-                        }
+              if (!content) return;
+              if (role === "buyer") {
+                const preferences = await getBuyerPreferences();
+                if (!shouldShowBuyerNotification(preferences, content)) {
+                  return;
+                }
+              }
 
-                        showNotification({
-                            title: content.title,
-                            message: content.message,
-                            preset: content.preset,
-                            actions: buildActions(content.viewRoute, content.viewLabel),
-                        });
-                    },
-                ) as RealtimeChannel;
+              showNotification({
+                title: content.title,
+                message: content.message,
+                preset: content.preset,
+                actions: buildActions(content.viewRoute, content.viewLabel),
+              });
+            } catch (error) {
+              console.error(
+                "[Notifications] Failed to handle realtime event",
+                error,
+              );
             }
+          },
+        ) as RealtimeChannel;
+      }
 
-            channel.subscribe();
-            return channel;
-        });
+      channel.subscribe();
+      return channel;
+    });
 
-        return () => {
-            channels.forEach((ch) => supabase.removeChannel(ch));
-        };
-    }, [buildActions, role]);
+    return () => {
+      channels.forEach((ch) => supabase.removeChannel(ch));
+    };
+  }, [buildActions, role]);
 }
