@@ -6,19 +6,19 @@ import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Animated,
-  Image,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Animated,
+    Image,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import {
-  openGoogleMapsToLocation,
-  verifyLocation,
+    openGoogleMapsToLocation,
+    verifyLocation,
 } from "../../../utils/locationVerification";
 
 const TOTAL_IMAGES = 5;
@@ -28,6 +28,8 @@ export default function ComplaintCamera() {
   const params = useLocalSearchParams<{
     orderId?: string;
     reason?: string;
+    description?: string;
+    date?: string;
     fromAddComplaint?: string;
     pickup_lat?: string;
     pickup_lng?: string;

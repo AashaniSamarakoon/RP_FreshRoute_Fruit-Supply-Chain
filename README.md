@@ -151,6 +151,7 @@ Before setting up the project, ensure you have the following installed:
    ```env
    EXPO_PUBLIC_SUPABASE_URL=your_supabase_project_url
    EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+   EXPO_PUBLIC_BACKEND_URL=http://your-local-backend-ip:4000
    ```
 
    Update `config.js` with your backend URL:

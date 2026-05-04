@@ -5,14 +5,14 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Image,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 interface VerificationResult {
@@ -329,8 +329,8 @@ export default function VerificationResults() {
               }
               // Navigate back to job details so the order shows as rejected
               router.replace({
-                pathname: `/transporter/job/${jobId}`,
-                params: { rejected: orderId },
+                pathname: "/transporter/job/[id]",
+                params: { id: String(jobId), rejected: orderId },
               });
             } catch (err: any) {
               Alert.alert(

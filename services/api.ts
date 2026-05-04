@@ -2,6 +2,20 @@ import { BACKEND_URL } from "@/config";
 import { supabase } from "@/utils/supabaseClient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+class ApiError extends Error {
+  status: number;
+  url: string;
+  body?: string | null;
+
+  constructor(params: { status: number; url: string; body?: string | null }) {
+    super(params.body || `HTTP ${params.status}`);
+    this.name = "ApiError";
+    this.status = params.status;
+    this.url = params.url;
+    this.body = params.body;
+  }
+}
+
 // wrapper that automatically appends auth header if token is available
 // when using Supabase for sign‑in we no longer read the raw token from
 // storage; instead we ask the SDK for the current session so that we
@@ -63,7 +77,11 @@ async function fetchWithAuth(input: RequestInfo, init: RequestInit = {}) {
     // Don't log errors for known missing endpoints that have fallbacks
     const isKnownMissingEndpoint = 
       (input.toString().includes('/api/orders/overview') && response.status === 404) ||
-      (input.toString().includes('/api/sms-preferences') && response.status === 404);
+      (input.toString().includes('/api/sms-preferences') && response.status === 404) ||
+      // Pro endpoints may be mounted under /pro/* (without /api prefix) on some backends.
+      ((input.toString().includes('/api/pro/status') || input.toString().includes('/pro/status')) && response.status === 404) ||
+      ((input.toString().includes('/api/pro/subscribe/init') || input.toString().includes('/pro/subscribe/init')) && response.status === 404) ||
+      ((input.toString().includes('/api/pro/personal-market-forecast') || input.toString().includes('/pro/personal-market-forecast')) && response.status === 404);
     if (!isKnownMissingEndpoint) {
       console.error("[api] server error", {
         url: input,
@@ -71,7 +89,7 @@ async function fetchWithAuth(input: RequestInfo, init: RequestInit = {}) {
         body: errBody,
       });
     }
-    throw new Error(msg);
+    throw new ApiError({ status: response.status, url: String(input), body: msg });
   }
   return response.json();
 }
@@ -81,6 +99,11 @@ function buildUrl(path: string) {
     throw new Error(
       "BACKEND_URL is not defined. please set EXPO_PUBLIC_BACKEND_URL or update config.ts",
     );
+  }
+  // If the caller provides an absolute URL, use it as-is.
+  if (/^https?:\/\//i.test(path)) {
+    console.log("[api] building url", path);
+    return path;
   }
   const url = `${BACKEND_URL}${path}`;
   console.log("[api] building url", url);

@@ -1,15 +1,96 @@
 import { BACKEND_URL } from "@/config";
 import api from "@/services/api";
 import { supabase } from "@/utils/supabaseClient";
-
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const PayHere = require("@payhere/payhere-mobilesdk-reactnative").default;
+import Constants from "expo-constants";
 
 /** Merchant ID lives in the frontend env; merchant secret lives only on the backend. */
-const MERCHANT_ID = process.env.EXPO_PUBLIC_PAYHERE_MERCHANT_ID!;
+const MERCHANT_ID = process.env.EXPO_PUBLIC_PAYHERE_MERCHANT_ID;
 
 /** Set to false for production. */
 export const PAYHERE_IS_SANDBOX = true;
+
+// Try different import methods for PayHere
+let PayHere: any = null;
+try {
+    PayHere = require("@payhere/payhere-mobilesdk-reactnative").default;
+} catch (e) {
+    console.warn("PayHere require failed, trying import");
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        PayHere = require("@payhere/payhere-mobilesdk-reactnative");
+    } catch (e2) {
+        console.error("PayHere import failed:", e2);
+    }
+}
+
+let hasLoggedPayHereInitIssue = false;
+
+export function isRunningInExpoGo(): boolean {
+    const env = (Constants as any)?.executionEnvironment;
+    // In Expo SDKs, executionEnvironment === 'storeClient' indicates Expo Go.
+    return env === "storeClient";
+}
+
+export function isPayHereSdkAvailable(): boolean {
+    if (isRunningInExpoGo()) return false;
+    return !!(PayHere && typeof PayHere.startPayment === "function");
+}
+
+function startPaymentSafely(
+    paymentObject: PayHerePaymentObject,
+    onSuccess: (paymentId: string) => void,
+    onError: (error: string) => void,
+    onDismiss: () => void,
+): void {
+    // PayHere native module is not available in Expo Go; it requires a dev build.
+    // Also, the SDK can sometimes throw if its native module isn't linked.
+    if (isRunningInExpoGo()) {
+        onError("PayHere payments are not supported in Expo Go. Please use an EAS Dev Build/Dev Client or a production build.");
+        return;
+    }
+
+    const canStart = isPayHereSdkAvailable();
+    if (!canStart) {
+        const ownership = (Constants as any)?.appOwnership;
+        const inExpoGo = ownership === "expo";
+
+        if (!hasLoggedPayHereInitIssue) {
+            hasLoggedPayHereInitIssue = true;
+            console.log(
+                `[PayHere] SDK not available (appOwnership=${String(ownership)}). ` +
+                `This usually means you're running in Expo Go or the native module isn't linked.`,
+            );
+        }
+
+        onError(
+            inExpoGo
+                ? "PayHere payments require a Dev Build/Dev Client and proper native linking."
+                : "PayHere SDK not available on this build.",
+        );
+        return;
+    }
+
+    try {
+        PayHere.startPayment(paymentObject, onSuccess, onError, onDismiss);
+    } catch (e: any) {
+        // This commonly happens when the JS wrapper exists but the underlying native module is null.
+        onError(
+            e?.message ||
+                "Failed to start PayHere payment. Ensure you are using a Dev Build and the native module is linked.",
+        );
+    }
+}
+
+export type PayHerePaymentObject = Record<string, any>;
+
+export function startPayHerePaymentObject(
+    paymentObject: PayHerePaymentObject,
+    onSuccess: (paymentId: string) => void,
+    onError: (error: string) => void,
+    onDismiss: () => void,
+): void {
+    startPaymentSafely(paymentObject, onSuccess, onError, onDismiss);
+}
 
 export interface PayHereOrderParams {
     orderId: string;
@@ -66,7 +147,7 @@ export async function startPayHerePayment(
     const paymentObject = {
         sandbox: PAYHERE_IS_SANDBOX,
         authorize: true,       // Hold on Card — card is NOT charged now; backend captures on delivery
-        merchant_id: MERCHANT_ID,
+        merchant_id: MERCHANT_ID || "",
         merchant_secret: "",   // intentionally blank — server-generated hash is used
         notify_url: `${BACKEND_URL}/api/payhere/notify`,
         order_id: params.orderId,
@@ -88,7 +169,7 @@ export async function startPayHerePayment(
         custom_2: "",
     };
 
-    PayHere.startPayment(paymentObject, onSuccess, onError, onDismiss);
+    startPaymentSafely(paymentObject, onSuccess, onError, onDismiss);
 }
 
 // ─── Preapproval (Pay Later / Tokenization) ───────────────────────────────────
@@ -161,7 +242,7 @@ export async function startPayHerePreapproval(
     const paymentObject = {
         sandbox: PAYHERE_IS_SANDBOX,
         preapprove: true,           // enables card tokenization mode
-        merchant_id: MERCHANT_ID,
+        merchant_id: MERCHANT_ID || "",
         merchant_secret: "",        // intentionally blank — server-generated hash is used
         notify_url: `${BACKEND_URL}/api/payhere/notify`,
         order_id: params.orderId,
@@ -183,5 +264,5 @@ export async function startPayHerePreapproval(
         custom_2: "",
     };
 
-    PayHere.startPayment(paymentObject, onSuccess, onError, onDismiss);
+    startPaymentSafely(paymentObject, onSuccess, onError, onDismiss);
 }

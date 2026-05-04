@@ -68,7 +68,7 @@ export default function FeatureGrid() {
         route: "/farmer/screens/daily-prices",
       },
     ],
-    [locale, t]
+    [locale, router, t]
   );
 
   const handlePress = (item: GridItem) => {

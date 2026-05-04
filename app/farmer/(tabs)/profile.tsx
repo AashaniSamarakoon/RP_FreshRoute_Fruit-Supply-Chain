@@ -7,19 +7,19 @@ import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  Alert,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TouchableOpacity,
-  View,
+    Alert,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Switch,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { useTranslationContext } from "../../../context/TranslationContext";
 import {
-  GrowingFruits,
-  ProfileHeader,
+    GrowingFruits,
+    ProfileHeader,
 } from "../components";
 
 const PRIMARY_GREEN = "#2f855a";
@@ -212,15 +212,15 @@ export default function ProfileScreen() {
       if (response) {
         // Map API response to order overview format
         const newOrderStats = {
-          completedCount: response.completedCount || response.completed || 0,
-          pendingCount: response.pendingCount || response.pending || 0,
-          lastCompletedDate: response.lastCompletedDate || response.lastCompleted || "No orders yet",
-          nextOrderDate: response.nextOrderDate || response.nextOrder || "Not scheduled",
+          completedCount: response.completedCount || 0,
+          pendingCount: response.pendingCount || 0,
+          lastCompletedDate: response.lastCompletedDate || "No orders yet",
+          nextOrderDate: response.nextOrderDate || "Not scheduled",
         };
         setOrderStats(newOrderStats);
 
         // Update nextOrderDate state for the calendar
-        const nextOrder = response.nextOrderDate || response.nextOrder;
+        const nextOrder = response.nextOrderDate;
         if (nextOrder && nextOrder !== "Not scheduled" && nextOrder !== "N/A") {
           try {
             // Try to parse as date, fallback to current date if parsing fails
