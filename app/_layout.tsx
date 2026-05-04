@@ -48,6 +48,7 @@ export default function RootLayout() {
             <Stack.Screen name="onboarding-two" options={{ headerShown: false }} />
             <Stack.Screen name="login" options={{ headerShown: false }} />
             <Stack.Screen name="signup" options={{ headerShown: false }} />
+            <Stack.Screen name="subscription" options={{ headerShown: false }} />
             <Stack.Screen name="farmer" options={{ headerShown: false }} />
             <Stack.Screen name="buyer" options={{ headerShown: false }} />
             <Stack.Screen name="transporter" options={{ headerShown: false }} />

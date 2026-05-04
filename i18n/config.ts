@@ -34,6 +34,8 @@ const translations = {
       cards: {
         forecastTitle: "7-Day Forecast",
         forecastSubtitle: "Future price trends",
+        personalForecastTitle: "Personal Market Forecast (Pro)",
+        personalForecastSubtitle: "Your crops + live prices",
         liveMarketTitle: "Live Market Prices",
         liveMarketSubtitle: "Current actual prices",
         accuracyTitle: "Accuracy Insights",
@@ -237,6 +239,8 @@ const translations = {
       cards: {
         forecastTitle: "දින 7ක අනුමාන",
         forecastSubtitle: "ඉදිරි මිල ප්‍රවණතා",
+        personalForecastTitle: "පුද්ගලික වෙළඳ අනුමානය (Pro)",
+        personalForecastSubtitle: "ඔබේ බෝග + සජීව මිල",
         liveMarketTitle: "සජීව වෙළඳ මිල",
         liveMarketSubtitle: "වත්මන් සැබෑ මිල",
         accuracyTitle: "නිරවද්‍යතා අවබෝධ",

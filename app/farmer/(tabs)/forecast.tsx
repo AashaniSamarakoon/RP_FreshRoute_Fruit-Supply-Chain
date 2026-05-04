@@ -1,16 +1,18 @@
 import api from "@/services/api";
+import { parseApiError, proApi } from "@/services/proApi";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { useTranslation } from "../../../hooks/farmer/useTranslation";
 
@@ -43,6 +45,7 @@ export default function ForecastScreen() {
   const [forecastData, setForecastData] = useState<FruitForecast[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<string>("");
+  const [proNavLoading, setProNavLoading] = useState(false);
 
   useEffect(() => {
     loadForecasts();
@@ -70,7 +73,9 @@ export default function ForecastScreen() {
       const results = await Promise.all(
         fruitsToFetch.map(async (fruit) => {
           try {
-            const path = `/api/forecast/7day?fruit=${encodeURIComponent(fruit.name)}&target=${encodeURIComponent(target)}`;
+            const path = `/api/forecast/7day?fruit=${encodeURIComponent(
+              fruit.name,
+            )}&target=${encodeURIComponent(target)}`;
             console.log("[FORECAST] Fetching", path);
             let data: any;
             try {
@@ -103,6 +108,35 @@ export default function ForecastScreen() {
       setForecastData([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const goToPersonalMarketForecast = async () => {
+    setProNavLoading(true);
+    try {
+      const status = await proApi.getStatus();
+      if (status.isPro) {
+        router.push("/farmer/screens/personal-market-forecast" as any);
+        return;
+      }
+      router.push(
+        "/subscription?redirect=%2Ffarmer%2Fscreens%2Fpersonal-market-forecast" as any,
+      );
+    } catch (e: any) {
+      const parsed = parseApiError(e);
+      if (parsed.endpointMissing) {
+        Alert.alert(
+          "Pro temporarily unavailable",
+          "Your server does not expose the Pro endpoints yet. Please check the backend deployment or set EXPO_PUBLIC_PRO_BACKEND_URL to the server that has Pro enabled.",
+        );
+      } else {
+        Alert.alert(
+          "Error",
+          parsed.json?.message || e?.message || "Could not check Pro status. Please try again.",
+        );
+      }
+    } finally {
+      setProNavLoading(false);
     }
   };
 
@@ -152,6 +186,40 @@ export default function ForecastScreen() {
           ))}
         </View>
 
+        {/* Personal Market Forecast button */}
+        <View style={styles.proCtaWrap}>
+          <TouchableOpacity
+            style={[styles.proCta, proNavLoading && { opacity: 0.7 }]}
+            onPress={goToPersonalMarketForecast}
+            disabled={proNavLoading}
+            activeOpacity={0.85}
+          >
+            <View style={styles.proCtaLeft}>
+              <View style={styles.proIconCircle}>
+                <Ionicons name="sparkles" size={18} color={PRIMARY_GREEN} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <View style={styles.proTitleRow}>
+                  <Text style={styles.proTitle}>Personal Market Forecast</Text>
+                  <View style={styles.proBadge}>
+                    <Ionicons name="star" size={12} color="#fff" />
+                    <Text style={styles.proBadgeText}>PRO</Text>
+                  </View>
+                </View>
+                <Text style={styles.proSubtitle}>
+                  Live prices + personalized hints for your crops
+                </Text>
+              </View>
+            </View>
+
+            {proNavLoading ? (
+              <ActivityIndicator size="small" color={PRIMARY_GREEN} />
+            ) : (
+              <Ionicons name="chevron-forward" size={20} color="#6B7280" />
+            )}
+          </TouchableOpacity>
+        </View>
+
         {/* Content */}
         {loading ? (
           <View style={styles.loadingContainer}>
@@ -162,10 +230,7 @@ export default function ForecastScreen() {
           <View style={styles.emptyContainer}>
             <Ionicons name="file-tray-outline" size={64} color="#ccc" />
             <Text style={styles.emptyText}>No forecast data available</Text>
-            <TouchableOpacity
-              style={styles.retryButton}
-              onPress={loadForecasts}
-            >
+            <TouchableOpacity style={styles.retryButton} onPress={loadForecasts}>
               <Text style={styles.retryText}>Retry</Text>
             </TouchableOpacity>
           </View>
@@ -198,7 +263,11 @@ export default function ForecastScreen() {
                       )
                     }
                   >
-                    <Ionicons name="chevron-forward" size={20} color="#999" />
+                    <Ionicons
+                      name="chevron-forward"
+                      size={20}
+                      color="#999"
+                    />
                   </TouchableOpacity>
                 </View>
 
@@ -316,32 +385,99 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#000",
   },
-  tabContainer: {
+  fruitTabsContainer: {
     flexDirection: "row",
     marginHorizontal: 16,
     marginTop: 16,
-    marginBottom: 12,
-    backgroundColor: LIGHT_GRAY,
-    borderRadius: 8,
-    padding: 4,
-  },
-  tab: {
-    flex: 1,
+    marginBottom: 20,
+    gap: 12,
     paddingVertical: 8,
+  },
+  proCtaWrap: {
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
+  proCta: {
+    flexDirection: "row",
     alignItems: "center",
-    borderRadius: 6,
+    justifyContent: "space-between",
+    gap: 12,
+    backgroundColor: LIGHT_GRAY,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
   },
-  tabActive: {
+  proCtaLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    flex: 1,
+  },
+  proIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
   },
-  tabText: {
+  proTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  proTitle: {
     fontSize: 14,
-    fontWeight: "500",
-    color: "#666",
+    fontWeight: "800",
+    color: "#111827",
   },
-  tabTextActive: {
-    color: "#000",
+  proBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: PRIMARY_GREEN,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  proBadgeText: {
+    color: "#fff",
+    fontWeight: "900",
+    fontSize: 10,
+    letterSpacing: 0.3,
+  },
+  proSubtitle: {
+    marginTop: 2,
+    fontSize: 12,
     fontWeight: "600",
+    color: "#6B7280",
+  },
+  fruitTab: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: "#e8e8e8",
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fruitTabActive: {
+    backgroundColor: PRIMARY_GREEN,
+  },
+  fruitTabText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#555",
+    textAlign: "center",
+  },
+  fruitTabTextActive: {
+    color: "#fff",
+    fontWeight: "700",
   },
   scrollView: {
     flex: 1,
@@ -350,10 +486,10 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingVertical: 60,
+    padding: 20,
   },
   loadingText: {
-    marginTop: 12,
+    marginTop: 10,
     fontSize: 14,
     color: "#666",
   },
@@ -361,25 +497,23 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingVertical: 60,
+    padding: 20,
   },
   emptyText: {
-    marginTop: 12,
+    marginTop: 10,
     fontSize: 14,
     color: "#666",
-    textAlign: "center",
   },
   retryButton: {
-    marginTop: 16,
-    paddingHorizontal: 24,
-    paddingVertical: 10,
+    marginTop: 12,
     backgroundColor: PRIMARY_GREEN,
-    borderRadius: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 20,
   },
   retryText: {
     color: "#fff",
-    fontWeight: "600",
-    fontSize: 14,
+    fontWeight: "700",
   },
   fruitCard: {
     marginHorizontal: 16,
@@ -393,24 +527,24 @@ const styles = StyleSheet.create({
   fruitHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 14,
-    gap: 12,
+    gap: 10,
+    marginBottom: 10,
   },
   fruitIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     backgroundColor: LIGHT_GRAY,
     justifyContent: "center",
     alignItems: "center",
   },
   fruitEmoji: {
-    fontSize: 18,
+    fontSize: 20,
   },
   fruitLabel: {
-    fontSize: 8,
-    color: "#999",
-    marginBottom: 0,
+    fontSize: 11,
+    color: "#888",
+    marginBottom: 2,
   },
   fruitName: {
     fontSize: 15,
@@ -465,39 +599,9 @@ const styles = StyleSheet.create({
     color: "#666",
   },
   lastUpdated: {
-    fontSize: 10,
+    textAlign: "center",
+    fontSize: 12,
     color: "#999",
-    textAlign: "center",
-    marginTop: 4,
-  },
-  fruitTabsContainer: {
-    flexDirection: "row",
-    marginHorizontal: 16,
-    marginTop: 16,
-    marginBottom: 20,
-    gap: 12,
-    paddingVertical: 8,
-  },
-  fruitTab: {
-    flex: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: "#e8e8e8",
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  fruitTabActive: {
-    backgroundColor: PRIMARY_GREEN,
-  },
-  fruitTabText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#555",
-    textAlign: "center",
-  },
-  fruitTabTextActive: {
-    color: "#fff",
-    fontWeight: "700",
+    marginTop: 10,
   },
 });
