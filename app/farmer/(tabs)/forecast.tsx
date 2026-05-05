@@ -1,5 +1,6 @@
 import api from "@/services/api";
 import { parseApiError, proApi } from "@/services/proApi";
+import { logger } from "@/utils/logger";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
@@ -51,17 +52,17 @@ export default function ForecastScreen() {
     loadForecasts();
   }, []);
 
-  const loadForecasts = async () => {
-    console.log("[FORECAST] Loading forecast data...");
-    setLoading(true);
-    try {
-      const token = await AsyncStorage.getItem("token");
-      if (!token) {
-        console.log("[FORECAST] No token found");
-        setForecastData([]);
-        setLoading(false);
-        return;
-      }
+   const loadForecasts = async () => {
+     logger.log("[FORECAST] Loading forecast data...");
+     setLoading(true);
+     try {
+       const token = await AsyncStorage.getItem("token");
+       if (!token) {
+         logger.log("[FORECAST] No token found");
+         setForecastData([]);
+         setLoading(false);
+         return;
+       }
 
       const fruitsToFetch = [
         { name: "Mango", emoji: "🥭" },
@@ -73,17 +74,17 @@ export default function ForecastScreen() {
       const results = await Promise.all(
         fruitsToFetch.map(async (fruit) => {
           try {
-            const path = `/api/forecast/7day?fruit=${encodeURIComponent(
-              fruit.name,
-            )}&target=${encodeURIComponent(target)}`;
-            console.log("[FORECAST] Fetching", path);
-            let data: any;
-            try {
-              data = await api.get(path);
-            } catch (err) {
-              console.log("[FORECAST] Error for", fruit.name, err);
-              return { ...fruit, days: [] } as FruitForecast;
-            }
+             const path = `/api/forecast/7day?fruit=${encodeURIComponent(
+               fruit.name,
+             )}&target=${encodeURIComponent(target)}`;
+             logger.log("[FORECAST] Fetching", path);
+             let data: any;
+             try {
+               data = await api.get(path);
+             } catch (err) {
+               logger.log("[FORECAST] Error for", fruit.name, err);
+               return { ...fruit, days: [] } as FruitForecast;
+             }
 
             const days: ForecastDay[] = (data.days || []).map((d: any) => ({
               day: d.day || "",
@@ -94,22 +95,22 @@ export default function ForecastScreen() {
             }));
 
             return { ...fruit, days } as FruitForecast;
-          } catch (err) {
-            console.error("[FORECAST] Failed for", fruit.name, err);
-            return { ...fruit, days: [] } as FruitForecast;
-          }
+           } catch (err) {
+             logger.error("[FORECAST] Failed for", fruit.name, err);
+             return { ...fruit, days: [] } as FruitForecast;
+           }
         }),
       );
 
       setForecastData(results);
       setLastUpdated(new Date().toISOString());
-    } catch (err) {
-      console.error("[FORECAST] Unexpected error", err);
-      setForecastData([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+     } catch (err) {
+       logger.error("[FORECAST] Unexpected error", err);
+       setForecastData([]);
+     } finally {
+       setLoading(false);
+     }
+   };
 
   const goToPersonalMarketForecast = async () => {
     setProNavLoading(true);

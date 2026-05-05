@@ -2,6 +2,7 @@ import Header from "@/components/Header";
 import DigitalPassportModal from "@/components/modals/DigitalPassportModal";
 import { BuyerColors } from "@/constants/theme";
 import api from "@/services/api";
+import { logger } from "@/utils/logger";
 import {
   DEFAULT_BUYER_PREFERENCES,
   getBuyerPreferences,
@@ -284,24 +285,24 @@ export default function BuyerProfile() {
         .eq("id", userId);
       if (userError) throw userError;
 
-      const { error: metadataError } = await supabase.auth.updateUser({
-        data: {
-          first_name: payload.first_name,
-          last_name: payload.last_name,
-          full_name: `${payload.first_name} ${payload.last_name}`.trim(),
-          phone: payload.phone,
-        },
-      });
-      if (metadataError) console.warn("Auth metadata update failed", metadataError);
+       const { error: metadataError } = await supabase.auth.updateUser({
+         data: {
+           first_name: payload.first_name,
+           last_name: payload.last_name,
+           full_name: `${payload.first_name} ${payload.last_name}`.trim(),
+           phone: payload.phone,
+         },
+       });
+       if (metadataError) logger.warn("Auth metadata update failed", metadataError);
 
-      const { error: buyerError } = await supabase
-        .from("buyers")
-        .update({
-          company_name: profileDraft.companyName.trim(),
-          tax_tin_number: profileDraft.taxTin.trim(),
-        })
-        .eq("user_id", userId);
-      if (buyerError) console.warn("Buyer business update failed", buyerError);
+       const { error: buyerError } = await supabase
+         .from("buyers")
+         .update({
+           company_name: profileDraft.companyName.trim(),
+           tax_tin_number: profileDraft.taxTin.trim(),
+         })
+         .eq("user_id", userId);
+       if (buyerError) logger.warn("Buyer business update failed", buyerError);
 
       setProfile(profileDraft);
       Alert.alert("Profile updated", "Your account details have been saved.");
@@ -365,7 +366,7 @@ export default function BuyerProfile() {
             longitude: normalized.longitude ?? null,
           })
           .eq("user_id", userId);
-        if (error) console.warn("Default address sync failed", error);
+         if (error) logger.warn("Default address sync failed", error);
       }
     }
 
@@ -387,7 +388,7 @@ export default function BuyerProfile() {
           longitude: selected.longitude ?? null,
         })
         .eq("user_id", userId);
-      if (error) console.warn("Default address sync failed", error);
+         if (error) logger.warn("Default address sync failed", error);
     }
   };
 
@@ -464,36 +465,36 @@ export default function BuyerProfile() {
       } else {
         throw new Error("ID not found");
       }
-    } catch (error) {
-      console.warn("Certificate fetch failed, showing placeholder", error);
-      setPassportData({
-        serialNumber: "FR-8892-4B2A-9011",
-        issuer: "FreshRoute Root CA",
-        subject: displayName || "Verified Buyer",
-        validFrom: new Date().toLocaleDateString("en-US", {
-          month: "short",
-          day: "2-digit",
-          year: "numeric",
-        }),
-        validTo: new Date(new Date().setFullYear(new Date().getFullYear() + 1))
-          .toLocaleDateString("en-US", {
-            month: "short",
-            day: "2-digit",
-            year: "numeric",
-          }),
-        fingerprint: "A2:4F:99:B1:0C:E3",
-      });
-    } finally {
-      setLoadingCert(false);
-    }
+     } catch (error) {
+       logger.warn("Certificate fetch failed, showing placeholder", error);
+       setPassportData({
+         serialNumber: "FR-8892-4B2A-9011",
+         issuer: "FreshRoute Root CA",
+         subject: displayName || "Verified Buyer",
+         validFrom: new Date().toLocaleDateString("en-US", {
+           month: "short",
+           day: "2-digit",
+           year: "numeric",
+         }),
+         validTo: new Date(new Date().setFullYear(new Date().getFullYear() + 1))
+           .toLocaleDateString("en-US", {
+             month: "short",
+             day: "2-digit",
+             year: "numeric",
+           }),
+         fingerprint: "A2:4F:99:B1:0C:E3",
+       });
+     } finally {
+       setLoadingCert(false);
+     }
   };
 
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut();
-    } catch (error) {
-      console.warn("Supabase signOut failed", error);
-    }
+     } catch (error) {
+       logger.warn("Supabase signOut failed", error);
+     }
     await AsyncStorage.multiRemove([
       "token",
       "user",

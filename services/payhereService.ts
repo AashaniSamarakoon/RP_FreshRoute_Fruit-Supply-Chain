@@ -1,5 +1,6 @@
 import { BACKEND_URL } from "@/config";
 import api from "@/services/api";
+import { logger } from "@/utils/logger";
 import { supabase } from "@/utils/supabaseClient";
 import Constants from "expo-constants";
 
@@ -14,12 +15,12 @@ let PayHere: any = null;
 try {
     PayHere = require("@payhere/payhere-mobilesdk-reactnative").default;
 } catch (e) {
-    console.warn("PayHere require failed, trying import");
+    logger.warn("PayHere require failed, trying import");
     try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         PayHere = require("@payhere/payhere-mobilesdk-reactnative");
     } catch (e2) {
-        console.error("PayHere import failed:", e2);
+        logger.error("PayHere import failed:", e2);
     }
 }
 
@@ -54,13 +55,13 @@ function startPaymentSafely(
         const ownership = (Constants as any)?.appOwnership;
         const inExpoGo = ownership === "expo";
 
-        if (!hasLoggedPayHereInitIssue) {
-            hasLoggedPayHereInitIssue = true;
-            console.log(
-                `[PayHere] SDK not available (appOwnership=${String(ownership)}). ` +
-                `This usually means you're running in Expo Go or the native module isn't linked.`,
-            );
-        }
+     if (!hasLoggedPayHereInitIssue) {
+         hasLoggedPayHereInitIssue = true;
+         logger.log(
+             `[PayHere] SDK not available (appOwnership=${String(ownership)}). ` +
+                 `This usually means you're running in Expo Go or the native module isn't linked.`,
+         );
+     }
 
         onError(
             inExpoGo
@@ -70,11 +71,82 @@ function startPaymentSafely(
         return;
     }
 
+    const orderId = String(paymentObject?.order_id ?? "");
+
+    const normalizePaymentId = (payload: unknown): string => {
+        if (typeof payload === "string") return payload;
+        if (payload && typeof payload === "object") {
+            const value = payload as Record<string, unknown>;
+            const possibleId =
+                value.payment_id ??
+                value.paymentId ??
+                value.payhere_payment_id ??
+                value.transaction_id ??
+                value.id;
+
+            if (typeof possibleId === "string" || typeof possibleId === "number") {
+                return String(possibleId);
+            }
+        }
+
+        return payload == null ? "" : String(payload);
+    };
+
+    const normalizeError = (payload: unknown): string => {
+        if (typeof payload === "string") return payload;
+        if (payload instanceof Error) return payload.message;
+        if (payload && typeof payload === "object") {
+            const value = payload as Record<string, unknown>;
+            const message = value.message ?? value.error ?? value.status_message;
+            if (typeof message === "string") return message;
+
+            try {
+                return JSON.stringify(value);
+            } catch {
+                return String(value);
+            }
+        }
+
+        return payload == null ? "PayHere payment failed." : String(payload);
+    };
+
+    const handleSuccess = (payload: unknown) => {
+        const paymentId = normalizePaymentId(payload);
+        logger.log("[PayHere] Native success callback", {
+            orderId,
+            paymentId,
+            payload,
+        });
+        onSuccess(paymentId);
+    };
+
+    const handleError = (payload: unknown) => {
+        const error = normalizeError(payload);
+        logger.warn("[PayHere] Native error callback", {
+            orderId,
+            error,
+            payload,
+        });
+        onError(error);
+    };
+
+    const handleDismiss = () => {
+        logger.log("[PayHere] Native dismiss callback", { orderId });
+        onDismiss();
+    };
+
     try {
-        PayHere.startPayment(paymentObject, onSuccess, onError, onDismiss);
+        logger.log("[PayHere] Starting native payment", {
+            orderId,
+            amount: paymentObject?.amount,
+            sandbox: paymentObject?.sandbox,
+            authorize: paymentObject?.authorize,
+            preapprove: paymentObject?.preapprove,
+        });
+        PayHere.startPayment(paymentObject, handleSuccess, handleError, handleDismiss);
     } catch (e: any) {
         // This commonly happens when the JS wrapper exists but the underlying native module is null.
-        onError(
+        handleError(
             e?.message ||
                 "Failed to start PayHere payment. Ensure you are using a Dev Build and the native module is linked.",
         );
@@ -141,8 +213,8 @@ export async function startPayHerePayment(
         amount,
         currency,
     });
-    // use serverAmount when building payment object to guarantee match
-    console.log(`[PayHere] authorize=true sandbox=${PAYHERE_IS_SANDBOX} merchantId=${MERCHANT_ID} clientAmount=${amount} serverAmount=${serverAmount}`);
+     // use serverAmount when building payment object to guarantee match
+     logger.log(`[PayHere] authorize=true sandbox=${PAYHERE_IS_SANDBOX} merchantId=${MERCHANT_ID} clientAmount=${amount} serverAmount=${serverAmount}`);
 
     const paymentObject = {
         sandbox: PAYHERE_IS_SANDBOX,
@@ -231,13 +303,13 @@ export async function startPayHerePreapproval(
     const currency = "LKR";
     const items = `${params.fruitType}${params.variant ? ` (${params.variant})` : ""} - ${params.quantity}kg (Deposit)`;
 
-    const { hash } = await api.post("/api/payhere/hash", {
-        orderId: params.orderId,
-        amount,
-        currency,
-    });
+     const { hash } = await api.post("/api/payhere/hash", {
+         orderId: params.orderId,
+         amount,
+         currency,
+     });
 
-    console.log(`[PayHere Preapproval] sandbox=${PAYHERE_IS_SANDBOX} merchantId=${MERCHANT_ID} orderId=${params.orderId} amount=${amount}`);
+     logger.log(`[PayHere Preapproval] sandbox=${PAYHERE_IS_SANDBOX} merchantId=${MERCHANT_ID} orderId=${params.orderId} amount=${amount}`);
 
     const paymentObject = {
         sandbox: PAYHERE_IS_SANDBOX,

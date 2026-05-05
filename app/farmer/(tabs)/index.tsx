@@ -2,6 +2,7 @@ import api from "@/services/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
+import { logger } from "@/utils/logger";
 import { ActivityIndicator, Alert, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useTranslationContext } from "../../../context/TranslationContext";
 import { FeatureGrid, FruitDemandCards, Header } from "../components";
@@ -48,71 +49,71 @@ export default function FarmerDashboard() {
   const [searchText, setSearchText] = useState("");
 
   useEffect(() => {
-    const load = async () => {
-      console.log("[DASHBOARD] Loading dashboard...");
-      try {
-        const userJson = await AsyncStorage.getItem("user");
-        console.log("[DASHBOARD] User from storage:", userJson);
-        if (userJson) {
-          setUser(JSON.parse(userJson));
-        }
+     const load = async () => {
+       logger.log("[DASHBOARD] Loading dashboard...");
+       try {
+         const userJson = await AsyncStorage.getItem("user");
+        //  logger.log("[DASHBOARD] User from storage:", userJson);
+         if (userJson) {
+           setUser(JSON.parse(userJson));
+         }
 
-        const token = await AsyncStorage.getItem("token");
-        console.log(
-          "[DASHBOARD] Token from storage:",
-          token?.substring(0, 20) + "...",
-        );
-        if (!token) {
-          console.log("[DASHBOARD] No token found, skipping API call");
-          return;
-        }
+         const token = await AsyncStorage.getItem("token");
+         logger.log(
+           "[DASHBOARD] Token from storage:",
+           token?.substring(0, 20) + "...",
+         );
+         if (!token) {
+           logger.log("[DASHBOARD] No token found, skipping API call");
+           return;
+         }
 
-        console.log("[DASHBOARD] Calling dashboard API");
-        let body: any;
-        try {
-          body = await api.get(`/api/farmer/dashboard`);
-          console.log("[DASHBOARD] Response body:", body);
-        } catch (err: any) {
-          console.log("[DASHBOARD] Error response:", err.message);
-          return Alert.alert(
-            t("common.error"),
-            err.message || t("farmer.errors.failed"),
-          );
-        }
-        console.log("[DASHBOARD] Data loaded successfully");
-        setData(body);
-      } catch (err) {
-        console.error("[DASHBOARD] Error:", err);
-        const errorMsg = err instanceof Error ? err.message : String(err);
-        Alert.alert(
-          t("common.error"),
-          t("farmer.errors.generic") + ": " + errorMsg,
-        );
-      }
-    };
+         logger.log("[DASHBOARD] Calling dashboard API");
+         let body: any;
+         try {
+           body = await api.get(`/api/farmer/dashboard`);
+           logger.log("[DASHBOARD] Response body:", body);
+         } catch (err: any) {
+           logger.log("[DASHBOARD] Error response:", err.message);
+           return Alert.alert(
+             t("common.error"),
+             err.message || t("farmer.errors.failed"),
+           );
+         }
+         logger.log("[DASHBOARD] Data loaded successfully");
+         setData(body);
+       } catch (err) {
+         logger.error("[DASHBOARD] Error:", err);
+         const errorMsg = err instanceof Error ? err.message : String(err);
+         Alert.alert(
+           t("common.error"),
+           t("farmer.errors.generic") + ": " + errorMsg,
+         );
+       }
+     };
     load();
   }, []);
 
   useEffect(() => {
-    const fetchGreeting = async () => {
-      try {
-        const response = await api.get("/api/farmer/home");
-        if (response?.greeting) {
-          // Extract first name only from greeting
-          const parts = response.greeting.split(", ");
-          if (parts.length > 1) {
-            const fullName = parts[1];
-            const firstName = fullName.split(" ")[0];
-            const greetingWithFirstName = `${parts[0]}, ${firstName}`;
-            setGreeting(greetingWithFirstName);
-          } else {
-            setGreeting(response.greeting);
-          }
-        }
-      } catch (error) {
-        console.error("[FarmerDashboard] Failed to fetch greeting:", error);
-      }
-    };
+   const fetchGreeting = async () => {
+     try {
+       const response = await api.get("/api/farmer/home");
+       if (response?.greeting) {
+         // Extract first name only from greeting
+         const parts = response.greeting.split(", ");
+         if (parts.length > 1) {
+           const fullName = parts[1];
+           const firstName = fullName.split(" ")[0];
+           const greetingWithFirstName = `${parts[0]}, ${firstName}`;
+           setGreeting(greetingWithFirstName);
+         } else {
+           setGreeting(response.greeting);
+         }
+       }
+     } catch (error) {
+       logger.error("[FarmerDashboard] Failed to fetch greeting:", error);
+     }
+   };
     fetchGreeting();
   }, []);
 
@@ -216,12 +217,12 @@ export default function FarmerDashboard() {
         grades,
         dayLabel,
       });
-    } catch (error) {
-      console.error("Search error:", error);
-      setSearchResult(null);
-    } finally {
-      setSearchLoading(false);
-    }
+     } catch (error) {
+       logger.error("Search error:", error);
+       setSearchResult(null);
+     } finally {
+       setSearchLoading(false);
+     }
   };
 
   return (

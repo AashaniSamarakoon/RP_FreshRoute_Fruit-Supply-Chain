@@ -7,6 +7,7 @@ import { Payment, SlipVerificationStatus } from "@/types";
 import { getBuyerPreferences } from "@/utils/buyerPreferences";
 import { formatCurrency, formatDateTime } from "@/utils/formatters";
 import { supabase } from "@/utils/supabaseClient";
+import { logger } from "@/utils/logger";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   AlertCircle,
@@ -121,66 +122,66 @@ export default function PaymentStatusScreen() {
     return () => clearInterval(interval);
   }, [autoRefreshPayments, params.orderId, loading]);
 
-  const fetchPaymentStatus = async (silent = false) => {
-    try {
-      if (!silent) setLoading(true);
-      console.log(
-        "[PaymentStatus] Fetching payment status for orderId:",
-        params.orderId,
-        silent ? "(silent)" : "",
-      );
+   const fetchPaymentStatus = async (silent = false) => {
+     try {
+       if (!silent) setLoading(true);
+       logger.log(
+         "[PaymentStatus] Fetching payment status for orderId:",
+         params.orderId,
+         silent ? "(silent)" : "",
+       );
 
-      const { data, error } = await supabase
-        .from("payments")
-        .select("*")
-        .eq("order_id", params.orderId)
-        .single();
+       const { data, error } = await supabase
+         .from("payments")
+         .select("*")
+         .eq("order_id", params.orderId)
+         .single();
 
-      if (error) {
-        console.error("[PaymentStatus] Error fetching payment:", error);
-        throw error;
-      }
-      console.log("[PaymentStatus] Payment data received:", {
-        status: data.status,
-        verification_status: data.slip_verification_status,
-        amount: data.amount,
-        has_slip: !!data.payment_slip_url,
-        has_ocr_data: !!data.slip_ocr_data,
-      });
+       if (error) {
+         logger.error("[PaymentStatus] Error fetching payment:", error);
+         throw error;
+       }
+       logger.log("[PaymentStatus] Payment data received:", {
+         status: data.status,
+         verification_status: data.slip_verification_status,
+         amount: data.amount,
+         has_slip: !!data.payment_slip_url,
+         has_ocr_data: !!data.slip_ocr_data,
+       });
 
-      const nextStatus =
-        data.slip_verification_status as SlipVerificationStatus;
-      const previousStatus = lastPaymentStatusRef.current;
-      lastPaymentStatusRef.current = nextStatus;
+       const nextStatus =
+         data.slip_verification_status as SlipVerificationStatus;
+       const previousStatus = lastPaymentStatusRef.current;
+       lastPaymentStatusRef.current = nextStatus;
 
-      setPayment(data);
-      if (
-        silent &&
-        paymentAlertsEnabled &&
-        previousStatus &&
-        previousStatus !== nextStatus
-      ) {
-        const statusConfig = STATUS_CONFIGS[nextStatus];
-        const fallbackMessage =
-          typeof nextStatus === "string" && nextStatus.length > 0
-            ? `Payment status is now ${nextStatus.replace(/_/g, " ").toLowerCase()}.`
-            : "Payment status updated.";
-        showNotification({
-          title: "Payment status updated",
-          message: statusConfig?.title ?? fallbackMessage,
-          preset: nextStatus === "REJECTED" ? "error" : "info",
-        });
-      }
-    } catch (error) {
-      console.error(
-        "[PaymentStatus] Fatal error in fetchPaymentStatus:",
-        error,
-      );
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+       setPayment(data);
+       if (
+         silent &&
+         paymentAlertsEnabled &&
+         previousStatus &&
+         previousStatus !== nextStatus
+       ) {
+         const statusConfig = STATUS_CONFIGS[nextStatus];
+         const fallbackMessage =
+           typeof nextStatus === "string" && nextStatus.length > 0
+             ? `Payment status is now ${nextStatus.replace(/_/g, " ").toLowerCase()}.`
+             : "Payment status updated.";
+         showNotification({
+           title: "Payment status updated",
+           message: statusConfig?.title ?? fallbackMessage,
+           preset: nextStatus === "REJECTED" ? "error" : "info",
+         });
+       }
+     } catch (error) {
+       logger.error(
+         "[PaymentStatus] Fatal error in fetchPaymentStatus:",
+         error,
+       );
+     } finally {
+       setLoading(false);
+       setRefreshing(false);
+     }
+   };
 
   const onRefresh = () => {
     setRefreshing(true);

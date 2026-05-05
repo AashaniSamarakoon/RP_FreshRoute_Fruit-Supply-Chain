@@ -80,6 +80,8 @@ const getStatusStyles = (status: string) => {
       return { bg: "#FEF2F2", text: "#EF4444", label: "Awaiting Payment" };
     case "AUTHORIZED_PAYMENT":
       return { bg: "#FEF2F2", text: "#F59E0B", label: "Authorized" };
+    case "EXPIRED":
+      return { bg: "#F3F4F6", text: "#6B7280", label: "Expired" };
     case "OPEN":
     case "PENDING_BUYER":
     case "PENDING_FARMER":
@@ -582,6 +584,54 @@ export default function OrderDetailScreen() {
   };
 
   /** Called when user taps Pay Now inside the info modal */
+  const persistPayHereSuccess = async (
+    paymentId: string,
+    paidDeposit: number | null,
+  ) => {
+    if (!order) return;
+
+    const payload = {
+      status: "AUTHORIZED_PAYMENT",
+      payment_status: "AUTHORIZED",
+      payhere_payment_id: paymentId,
+      deposit_amount: paidDeposit,
+      deposit_paid: paidDeposit,
+      paid_at: new Date().toISOString(),
+    };
+
+    console.log("[OrderDetail] Persisting PayHere success", {
+      orderId: order.id,
+      paymentId,
+      paidDeposit,
+      primaryEndpoint: `/api/buyer/place-order/${order.id}`,
+    });
+
+    try {
+      await api.put(`/api/buyer/place-order/${order.id}`, payload);
+      console.log("[OrderDetail] PayHere success persisted via place-order", {
+        orderId: order.id,
+        paymentId,
+      });
+      return;
+    } catch (primaryError) {
+      console.warn(
+        "[OrderDetail] Failed to persist payment through place-order endpoint; trying buyer order endpoint",
+        primaryError,
+      );
+    }
+
+    console.log("[OrderDetail] Persisting PayHere success via fallback", {
+      orderId: order.id,
+      paymentId,
+      fallbackEndpoint: `/api/buyer/orders/${order.id}`,
+    });
+    await api.put(`/api/buyer/orders/${order.id}`, payload);
+    console.log("[OrderDetail] PayHere success persisted via buyer orders", {
+      orderId: order.id,
+      paymentId,
+    });
+  };
+
   const handlePayNow = async () => {
     if (!order || !priceLockKey || payhereSubmitting) return;
     setPayhereSubmitting(true);
@@ -621,20 +671,50 @@ export default function OrderDetailScreen() {
           deliveryDate: order.required_date ?? null,
           deliveryLocation: order.delivery_location ?? null,
         },
-        (paymentId) => {
-          if (!isMountedRef.current) return;
-          setPayhereSubmitting(false);
-          setDepositPaid(depositAmount);
-          setPayherePaymentId(paymentId);
-          // mark order temporarily authorized
-          setOrder((o) => (o ? { ...o, status: "AUTHORIZED_PAYMENT" } : o));
-          setSuccessModal({
-            title: "Deposit Paid",
-            message: depositAmount
-              ? `A 50% deposit of Rs. ${depositAmount.toLocaleString()} has been paid successfully. The remaining balance will be automatically processed on delivery based on the final market price.`
-              : "Your deposit has been paid successfully.",
-            onClose: () => fetchOrderDetails(),
+        async (paymentId) => {
+          console.log("[OrderDetail] PayHere success callback received", {
+            orderId: order.id,
+            paymentId,
+            depositAmount,
           });
+          try {
+            await persistPayHereSuccess(paymentId, depositAmount);
+            if (!isMountedRef.current) return;
+            setDepositPaid(depositAmount);
+            setPayherePaymentId(paymentId);
+            setOrder((o) =>
+              o
+                ? {
+                    ...o,
+                    status: "AUTHORIZED_PAYMENT",
+                    payment_status: "AUTHORIZED",
+                    payhere_payment_id: paymentId,
+                  }
+                : o,
+            );
+            setSuccessModal({
+              title: "Deposit Paid",
+              message: depositAmount
+                ? `A 50% deposit of Rs. ${depositAmount.toLocaleString()} has been paid successfully. The remaining balance will be automatically processed on delivery based on the final market price.`
+                : "Your deposit has been paid successfully.",
+              onClose: () => fetchOrderDetails(),
+            });
+          } catch (error) {
+            console.warn(
+              "[OrderDetail] PayHere succeeded but order status update failed",
+              { paymentId, error },
+            );
+            if (!isMountedRef.current) return;
+            setErrorModal({
+              title: "Payment Saved By PayHere",
+              message:
+                "PayHere returned a successful payment, but FreshRoute could not update the order status. Please refresh or contact support with payment reference " +
+                paymentId +
+                ".",
+            });
+          } finally {
+            if (isMountedRef.current) setPayhereSubmitting(false);
+          }
         },
         (error) => {
           if (!isMountedRef.current) return;

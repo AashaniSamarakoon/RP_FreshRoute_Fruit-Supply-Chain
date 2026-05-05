@@ -1,4 +1,5 @@
 import api from "@/services/api";
+import { logger } from "@/utils/logger";
 import { parseApiError, proApi } from "@/services/proApi";
 import { supabase } from "@/utils/supabaseClient";
 import { Ionicons } from "@expo/vector-icons";
@@ -152,22 +153,22 @@ function filterAndOrderCropsByPrimary(
 }
 
 async function loadMarketPriceForecast7d(fruitName: string): Promise<ForecastPoint[]> {
-  const path = `/api/forecast/7day?fruit=${encodeURIComponent(
-    fruitName,
-  )}&target=price`;
-  console.log("[loadMarketPriceForecast7d] fetching:", path);
-  const json: any = await api.get(path);
-  console.log("[loadMarketPriceForecast7d] response:", JSON.stringify(json).slice(0, 400));
-  const days = Array.isArray(json?.days) ? json.days : [];
-  const parsed = days
-    .map((d: any, idx: number) => ({
-      day: String(d.day ?? d.label ?? `D${idx + 1}`),
-      value: Number(d.value ?? d.price ?? d.y ?? 0),
-    }))
-    .filter((p: ForecastPoint) => Number.isFinite(p.value));
-  console.log("[loadMarketPriceForecast7d] parsed", parsed.length, "valid points from", days.length, "raw");
-  return parsed;
-}
+   const path = `/api/forecast/7day?fruit=${encodeURIComponent(
+     fruitName,
+   )}&target=price`;
+   logger.log("[loadMarketPriceForecast7d] fetching:", path);
+   const json: any = await api.get(path);
+   logger.log("[loadMarketPriceForecast7d] response:", JSON.stringify(json).slice(0, 400));
+   const days = Array.isArray(json?.days) ? json.days : [];
+   const parsed = days
+     .map((d: any, idx: number) => ({
+       day: String(d.day ?? d.label ?? `D${idx + 1}`),
+       value: Number(d.value ?? d.price ?? d.y ?? 0),
+     }))
+     .filter((p: ForecastPoint) => Number.isFinite(p.value));
+   logger.log("[loadMarketPriceForecast7d] parsed", parsed.length, "valid points from", days.length, "raw");
+   return parsed;
+ }
 
 function buildFallbackHints(crop: CropForecast): string[] {
   const best = computeBestPoint(crop.series);
@@ -254,36 +255,36 @@ function findLivePriceForCrop(
 }
 
 function toForecastPoints(raw: any): ForecastPoint[] {
-  if (!raw) return [];
-  console.log("[toForecastPoints] raw input:", JSON.stringify(raw).slice(0, 200));
+   if (!raw) return [];
+   logger.log("[toForecastPoints] raw input:", JSON.stringify(raw).slice(0, 200));
 
-  // Common shapes:
-  // - [{ day, value }]
-  // - [{ x, y }]
-  // - { points: [...] }
-  // - { days: [...] }
-  const points: any[] = Array.isArray(raw)
-    ? raw
-    : Array.isArray(raw.points)
-      ? raw.points
-      : Array.isArray(raw.days)
-        ? raw.days
-        : Array.isArray(raw.data)
-          ? raw.data
-          : [];
-  console.log("[toForecastPoints] extracted", points.length, "points");
+   // Common shapes:
+   // - [{ day, value }]
+   // - [{ x, y }]
+   // - { points: [...] }
+   // - { days: [...] }
+   const points: any[] = Array.isArray(raw)
+     ? raw
+     : Array.isArray(raw.points)
+       ? raw.points
+       : Array.isArray(raw.days)
+         ? raw.days
+         : Array.isArray(raw.data)
+           ? raw.data
+           : [];
+   logger.log("[toForecastPoints] extracted", points.length, "points");
 
-  return points
-    .map((p: any, idx: number) => {
-      const day = String(p.day ?? p.x ?? p.label ?? `D${idx + 1}`);
-      const value = Number(p.value ?? p.y ?? p.price ?? p.v ?? 0);
-      if (idx === 0 || idx === points.length - 1) {
-        console.log(`[toForecastPoints] point[${idx}]:`, { day, value });
-      }
-      return { day, value };
-    })
-    .filter((p: ForecastPoint) => Number.isFinite(p.value));
-}
+   return points
+     .map((p: any, idx: number) => {
+       const day = String(p.day ?? p.x ?? p.label ?? `D${idx + 1}`);
+       const value = Number(p.value ?? p.y ?? p.price ?? p.v ?? 0);
+       if (idx === 0 || idx === points.length - 1) {
+         logger.log(`[toForecastPoints] point[${idx}]:`, { day, value });
+       }
+       return { day, value };
+     })
+     .filter((p: ForecastPoint) => Number.isFinite(p.value));
+ }
 
 function pickSeries(rawCrop: any): ForecastPoint[] {
   // Prefer combined series if present, else forecast/price series.
@@ -354,70 +355,70 @@ function applyPrimaryCropNames(
 }
 
 function normalizeCrops(resp: any): CropForecast[] {
-  console.log("[normalizeCrops] input resp keys:", Object.keys(resp || {}).slice(0, 10));
-  const raw =
-    resp?.crops ??
-    resp?.items ??
-    resp?.data ??
-    resp?.results ??
-    resp?.forecasts ??
-    resp?.forecast ??
-    resp;
+   logger.log("[normalizeCrops] input resp keys:", Object.keys(resp || {}).slice(0, 10));
+   const raw =
+     resp?.crops ??
+     resp?.items ??
+     resp?.data ??
+     resp?.results ??
+     resp?.forecasts ??
+     resp?.forecast ??
+     resp;
 
-  const crops: any[] = Array.isArray(raw)
-    ? raw
-    : raw && typeof raw === "object"
-      ? Object.values(raw)
-      : [];
+   const crops: any[] = Array.isArray(raw)
+     ? raw
+     : raw && typeof raw === "object"
+       ? Object.values(raw)
+       : [];
 
-  console.log("[normalizeCrops] extracted", crops.length, "crop objects");
-  if (crops.length > 0) {
-    console.log("[normalizeCrops] first crop keys:", Object.keys(crops[0] || {}).slice(0, 15));
-  }
+   logger.log("[normalizeCrops] extracted", crops.length, "crop objects");
+   if (crops.length > 0) {
+     logger.log("[normalizeCrops] first crop keys:", Object.keys(crops[0] || {}).slice(0, 15));
+   }
 
-  return crops.map((c: any, idx: number) => {
-    const id = String(
-      c.id ?? c.fruitId ?? c.fruit_id ?? c.cropId ?? c.crop ?? c.name ?? `fruit-${idx}`,
-    );
-    const name = String(
-      c.name ?? c.fruit_name ?? c.fruit ?? c.cropName ?? c.crop ?? id,
-    );
+   return crops.map((c: any, idx: number) => {
+     const id = String(
+       c.id ?? c.fruitId ?? c.fruit_id ?? c.cropId ?? c.crop ?? c.name ?? `fruit-${idx}`,
+     );
+     const name = String(
+       c.name ?? c.fruit_name ?? c.fruit ?? c.cropName ?? c.crop ?? id,
+     );
 
-    const series = pickSeries(c);
+     const series = pickSeries(c);
 
-    // Attempt to read today's live price.
-    const liveToday = Number(
-      c.liveToday ??
-        c.live_today ??
-        c.live_price ??
-        c.livePrice ??
-        c.todayLive ??
-        c.today_live ??
-        c.today_price ??
-        NaN,
-    );
+     // Attempt to read today's live price.
+     const liveToday = Number(
+       c.liveToday ??
+         c.live_today ??
+         c.live_price ??
+         c.livePrice ??
+         c.todayLive ??
+         c.today_live ??
+         c.today_price ??
+         NaN,
+     );
 
-    const unit =
-      (c.unit || c.priceUnit || c.currencyUnit || c.u || "/kg") as string;
+     const unit =
+       (c.unit || c.priceUnit || c.currencyUnit || c.u || "/kg") as string;
 
-    const hintsRaw = c.hints ?? c.advice ?? c.insights ?? [];
-    const hints = Array.isArray(hintsRaw)
-      ? hintsRaw.map((h) => String(h))
-      : typeof hintsRaw === "string"
-        ? [hintsRaw]
-        : [];
+     const hintsRaw = c.hints ?? c.advice ?? c.insights ?? [];
+     const hints = Array.isArray(hintsRaw)
+       ? hintsRaw.map((h) => String(h))
+       : typeof hintsRaw === "string"
+         ? [hintsRaw]
+         : [];
 
-    return {
-      id,
-      name,
-      series,
-      marketSeries: undefined,
-      liveToday: Number.isFinite(liveToday) ? liveToday : undefined,
-      unit,
-      hints,
-    };
-  });
-}
+     return {
+       id,
+       name,
+       series,
+       marketSeries: undefined,
+       liveToday: Number.isFinite(liveToday) ? liveToday : undefined,
+       unit,
+       hints,
+     };
+   });
+ }
 
 export default function PersonalMarketForecastScreen() {
   const router = useRouter();
@@ -457,17 +458,17 @@ export default function PersonalMarketForecastScreen() {
         return;
       }
 
-      const resp = await proApi.getPersonalMarketForecast({
-        days: 14,
-        target: "price",
-      });
-      console.log("[PersonalMarketForecast] Pro API response:", JSON.stringify(resp).slice(0, 800));
-      const primary = await ensurePrimary();
-      const parsed = normalizeCrops(resp);
-      console.log("[PersonalMarketForecast] parsed crops:", parsed.length, "items");
-      parsed.forEach((c, i) => {
-        console.log(`[PersonalMarketForecast] crop[${i}]: name="${c.name}", series=${c.series.length} points, live=${c.liveToday}`);
-      });
+       const resp = await proApi.getPersonalMarketForecast({
+         days: 14,
+         target: "price",
+       });
+       logger.log("[PersonalMarketForecast] Pro API response:", JSON.stringify(resp).slice(0, 800));
+       const primary = await ensurePrimary();
+       const parsed = normalizeCrops(resp);
+       logger.log("[PersonalMarketForecast] parsed crops:", parsed.length, "items");
+       parsed.forEach((c, i) => {
+         logger.log(`[PersonalMarketForecast] crop[${i}]: name="${c.name}", series=${c.series.length} points, live=${c.liveToday}`);
+       });
       const named = applyPrimaryCropNames(parsed, primary);
       const filtered = filterAndOrderCropsByPrimary(named, primary);
 

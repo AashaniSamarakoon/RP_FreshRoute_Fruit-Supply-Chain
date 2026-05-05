@@ -1,6 +1,7 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Audio } from "expo-av";
+import { logger } from "@/utils/logger";
 import { CameraType, CameraView, useCameraPermissions } from "expo-camera";
 import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -258,9 +259,9 @@ export default function ComplaintCamera() {
           shouldDuckAndroid: true,
         });
       }
-    } catch (error) {
-      console.log("Audio mode update error:", error);
-    }
+     } catch (error) {
+       logger.log("Audio mode update error:", error);
+     }
   };
 
   const toggleFlashlight = () => {

@@ -1,4 +1,5 @@
 import api from "@/services/api";
+import { logger } from "@/utils/logger";
 import React, { useEffect, useState } from "react";
 import {
     ActivityIndicator,
@@ -35,29 +36,29 @@ const weekdayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 // fetch forecast from backend; returns prediction data for the next 7 days
 async function fetchPrediction(fruit: string): Promise<PredictionData[]> {
-  if (!fruit) return [];
-  const path = `/api/forecast/7day?fruit=${encodeURIComponent(fruit)}`;
-  console.log("fetching", path);
-  try {
-    const resp = await api.get(path);
-    console.log("[PricePredictionChart] Raw API response:", resp);
-    const arr = resp.days || resp.forecast || [];
-    console.log("[PricePredictionChart] Array to process:", arr);
-    return arr.slice(0, 7).map((item: any) => {
-      let dayName = item.day;
-      if (dayName && dayName.length > 3) {
-        dayName = dayName.slice(0, 3);
-      }
-      return {
-        day: dayName,
-        predictedPrice: parseFloat(item.value) || 0,
-      };
-    });
-  } catch (err) {
-    console.warn("[PricePredictionChart] fetch error", err, "path", path);
-    return [];
-  }
-}
+   if (!fruit) return [];
+   const path = `/api/forecast/7day?fruit=${encodeURIComponent(fruit)}`;
+   logger.log("fetching", path);
+   try {
+     const resp = await api.get(path);
+    //  logger.log("[PricePredictionChart] Raw API response:", resp);
+     const arr = resp.days || resp.forecast || [];
+    //  logger.log("[PricePredictionChart] Array to process:", arr);
+     return arr.slice(0, 7).map((item: any) => {
+       let dayName = item.day;
+       if (dayName && dayName.length > 3) {
+         dayName = dayName.slice(0, 3);
+       }
+       return {
+         day: dayName,
+         predictedPrice: parseFloat(item.value) || 0,
+       };
+     });
+   } catch (err) {
+     logger.warn("[PricePredictionChart] fetch error", err, "path", path);
+     return [];
+   }
+ }
 
 const fruitOptions = [
   { id: "mango", label: "Mango" },
@@ -70,21 +71,21 @@ export default function PricePredictionChart({}: PricePredictionChartProps): Rea
   const [currentData, setCurrentData] = useState<PredictionData[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // fetch predictions whenever fruit filter changes
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    fetchPrediction(selectedFruit).then((data) => {
-      if (!cancelled) {
-        console.log("[PricePredictionChart] Setting currentData:", data);
-        setCurrentData(data);
-        setLoading(false);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedFruit]);
+   // fetch predictions whenever fruit filter changes
+   useEffect(() => {
+     let cancelled = false;
+     setLoading(true);
+     fetchPrediction(selectedFruit).then((data) => {
+       if (!cancelled) {
+        //  logger.log("[PricePredictionChart] Setting currentData:", data);
+         setCurrentData(data);
+         setLoading(false);
+       }
+     });
+     return () => {
+       cancelled = true;
+     };
+   }, [selectedFruit]);
 
   const chartWidth = screenWidth - 60;
   // Increased height slightly to accommodate 7 rows without crowding

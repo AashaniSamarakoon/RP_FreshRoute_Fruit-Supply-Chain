@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { logger } from '@/utils/logger';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
@@ -54,93 +55,93 @@ export default function EditProfileScreen() {
     loadAvailableFruits();
   }, []);
 
-  const loadProfileData = async () => {
-    try {
-      setLoading(true);
-      console.log('Loading profile data...');
+   const loadProfileData = async () => {
+     try {
+       setLoading(true);
+       logger.log('Loading profile data...');
 
-      // Check authentication first
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError) {
-        console.error('Session error:', sessionError);
-        Alert.alert('Authentication Error', 'Please log in again.');
-        return;
-      }
-      if (!session?.user?.id) {
-        console.log('No authenticated user found');
-        Alert.alert('Authentication Required', 'Please log in to view your profile.');
-        return;
-      }
-      console.log('User authenticated, fetching profile from database...');
+       // Check authentication first
+       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+       if (sessionError) {
+         logger.error('Session error:', sessionError);
+         Alert.alert('Authentication Error', 'Please log in again.');
+         return;
+       }
+       if (!session?.user?.id) {
+         logger.log('No authenticated user found');
+         Alert.alert('Authentication Required', 'Please log in to view your profile.');
+         return;
+       }
+       logger.log('User authenticated, fetching profile from database...');
 
-      // Fetch profile data directly from Supabase farmers table
-      // Based on onboarding data, the table likely has different column names
-      const { data: profileData, error: profileError } = await supabase
-        .from('farmers')
-        .select('user_id, farm_name, primary_crops')
-        .eq('user_id', session.user.id)
-        .single();
+       // Fetch profile data directly from Supabase farmers table
+       // Based on onboarding data, the table likely has different column names
+       const { data: profileData, error: profileError } = await supabase
+         .from('farmers')
+         .select('user_id, farm_name, primary_crops')
+         .eq('user_id', session.user.id)
+         .single();
 
-      console.log('Profile query result:', { profileData, profileError });
+       logger.log('Profile query result:', { profileData, profileError });
 
-      if (profileError) {
-        console.error('Failed to fetch profile:', profileError);
-        Alert.alert('Error', 'Failed to load profile data. Please try again.');
-        return;
-      }
+       if (profileError) {
+         logger.error('Failed to fetch profile:', profileError);
+         Alert.alert('Error', 'Failed to load profile data. Please try again.');
+         return;
+       }
 
-      if (profileData) {
-        const selectedFruits = Array.isArray(profileData.primary_crops) ? profileData.primary_crops : [];
-        console.log('Setting selected_fruits to:', selectedFruits, 'from primary_crops:', profileData.primary_crops);
-        setProfileData({
-          id: profileData.user_id,
-          first_name: profileData.farm_name || '', // Use farm_name as first_name
-          last_name: '', // No last_name in farmers table
-          email: session.user.email || '', // Get email from auth session
-          phone: session.user.phone || '', // Get phone from auth session
-          selected_fruits: selectedFruits,
-        });
-        console.log('Profile data set successfully');
-      } else {
-        console.log('No profile data found in database');
-        Alert.alert('Profile Not Found', 'Please complete your farmer onboarding first.');
-      }
-    } catch (err: any) {
-      console.error('Failed to load profile data:', err);
-      Alert.alert('Error', 'Failed to load profile data. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
+       if (profileData) {
+         const selectedFruits = Array.isArray(profileData.primary_crops) ? profileData.primary_crops : [];
+         logger.log('Setting selected_fruits to:', selectedFruits, 'from primary_crops:', profileData.primary_crops);
+         setProfileData({
+           id: profileData.user_id,
+           first_name: profileData.farm_name || '', // Use farm_name as first_name
+           last_name: '', // No last_name in farmers table
+           email: session.user.email || '', // Get email from auth session
+           phone: session.user.phone || '', // Get phone from auth session
+           selected_fruits: selectedFruits,
+         });
+         logger.log('Profile data set successfully');
+       } else {
+         logger.log('No profile data found in database');
+         Alert.alert('Profile Not Found', 'Please complete your farmer onboarding first.');
+       }
+     } catch (err: any) {
+       logger.error('Failed to load profile data:', err);
+       Alert.alert('Error', 'Failed to load profile data. Please try again.');
+     } finally {
+       setLoading(false);
+     }
+   };
 
-  const loadAvailableFruits = async () => {
-    try {
-      console.log('Loading available fruits...');
+   const loadAvailableFruits = async () => {
+     try {
+       logger.log('Loading available fruits...');
 
-      // For now, use the hardcoded fruits. In the future, this could come from an API or database
-      // const { data: fruitsData, error } = await supabase.from('fruits').select('*');
-      // if (error) console.error('Failed to load fruits:', error);
+       // For now, use the hardcoded fruits. In the future, this could come from an API or database
+       // const { data: fruitsData, error } = await supabase.from('fruits').select('*');
+       // if (error) logger.error('Failed to load fruits:', error);
 
-      // Temporary: keep the existing fruit categories
-      setAvailableFruits(FRUIT_CATEGORIES);
-      console.log('Fruits loaded successfully:', FRUIT_CATEGORIES.length, 'fruits');
-    } catch (err: any) {
-      console.error('Failed to load available fruits:', err);
-      // Keep the default fruits as fallback
-    }
-  };
+       // Temporary: keep the existing fruit categories
+       setAvailableFruits(FRUIT_CATEGORIES);
+       logger.log('Fruits loaded successfully:', FRUIT_CATEGORIES.length, 'fruits');
+     } catch (err: any) {
+       logger.error('Failed to load available fruits:', err);
+       // Keep the default fruits as fallback
+     }
+   };
 
-  const toggleFruit = (fruitId: string) => {
-    console.log('toggleFruit called with:', fruitId, 'current selected_fruits:', profileData.selected_fruits);
-    setProfileData((prev) => {
-      const currentSelected = prev.selected_fruits || [];
-      console.log('prev.selected_fruits:', prev.selected_fruits, 'currentSelected:', currentSelected);
-      const selected = currentSelected.includes(fruitId)
-        ? currentSelected.filter((id) => id !== fruitId)
-        : [...currentSelected, fruitId];
-      return { ...prev, selected_fruits: selected };
-    });
-  };
+   const toggleFruit = (fruitId: string) => {
+     logger.log('toggleFruit called with:', fruitId, 'current selected_fruits:', profileData.selected_fruits);
+     setProfileData((prev) => {
+       const currentSelected = prev.selected_fruits || [];
+       logger.log('prev.selected_fruits:', prev.selected_fruits, 'currentSelected:', currentSelected);
+       const selected = currentSelected.includes(fruitId)
+         ? currentSelected.filter((id) => id !== fruitId)
+         : [...currentSelected, fruitId];
+       return { ...prev, selected_fruits: selected };
+     });
+   };
 
   const saveProfile = async () => {
     if (!profileData.first_name) {

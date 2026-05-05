@@ -21,6 +21,7 @@ import {
   View,
 } from "react-native";
 import { useTranslationContext } from "../../../context/TranslationContext";
+import { logger } from "@/utils/logger";
 import {
     GrowingFruits,
     ProfileHeader,
@@ -102,17 +103,17 @@ export default function ProfileScreen() {
         setProfileData(JSON.parse(profileJson));
       }
 
-      // Fetch farmer profile from database
-      try {
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) {
-          console.error('Session error:', sessionError);
-          return;
-        }
-        if (!session?.user?.id) {
-          console.log('No authenticated user found');
-          return;
-        }
+         // Fetch farmer profile from database
+       try {
+         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+         if (sessionError) {
+           logger.error('Session error:', sessionError);
+           return;
+         }
+         if (!session?.user?.id) {
+           logger.log('No authenticated user found');
+           return;
+         }
 
         // Fetch profile data directly from Supabase farmers table and users table
           const { data: profileData, error: profileError } = await supabase
@@ -121,29 +122,29 @@ export default function ProfileScreen() {
           .eq('user_id', session.user.id)
           .single();
 
-        // Also fetch user data including avatar
-        const { data: userData, error: userError } = await supabase
-          .from('users')
-          .select('id, email, first_name, last_name, avatar_url')
-          .eq('id', session.user.id)
-          .single();
+         // Also fetch user data including avatar
+         const { data: userData, error: userError } = await supabase
+           .from('users')
+           .select('id, email, first_name, last_name, avatar_url')
+           .eq('id', session.user.id)
+           .single();
 
-        console.log('Database query result:', { 
-          profileData, 
-          profileError, 
-          userData, 
-          userError, 
-          userId: session.user.id 
-        });
-        if (session.user.id) {
-          setUserId(session.user.id);
-        }
+         logger.log('Database query result:', { 
+           profileData, 
+           profileError, 
+           userData, 
+           userError, 
+           userId: session.user.id 
+         });
+         if (session.user.id) {
+           setUserId(session.user.id);
+         }
 
-        if (profileError || userError) {
-          console.error('Failed to fetch profile from database:', { profileError, userError });
-        } else if (profileData && userData) {
-          console.log('Profile data loaded from database:', profileData);
-          console.log('User data loaded from database:', userData);
+         if (profileError || userError) {
+           logger.error('Failed to fetch profile from database:', { profileError, userError });
+         } else if (profileData && userData) {
+           logger.log('Profile data loaded from database:', profileData);
+           logger.log('User data loaded from database:', userData);
 
           // Use avatar from users table
           const avatarUrl = userData.avatar_url || null;
@@ -164,46 +165,46 @@ export default function ProfileScreen() {
             farmerName = emailPrefix.charAt(0).toUpperCase() + emailPrefix.slice(1);
           }
 
-          console.log('Name sources:', {
-            fullName: fullName,
-            farmName: profileData.farm_name,
-            email: userData.email,
-            finalName: farmerName
-          });
+           logger.log('Name sources:', {
+             fullName: fullName,
+             farmName: profileData.farm_name,
+             email: userData.email,
+             finalName: farmerName
+           });
 
-          // Parse primary_crops if it's a string
-          let selectedFruits = [];
-          if (profileData.primary_crops) {
-            if (Array.isArray(profileData.primary_crops)) {
-              selectedFruits = profileData.primary_crops;
-            } else if (typeof profileData.primary_crops === 'string') {
-              try {
-                selectedFruits = JSON.parse(profileData.primary_crops);
-              } catch {
-                selectedFruits = [];
-              }
-            }
-          }
+           // Parse primary_crops if it's a string
+           let selectedFruits = [];
+           if (profileData.primary_crops) {
+             if (Array.isArray(profileData.primary_crops)) {
+               selectedFruits = profileData.primary_crops;
+             } else if (typeof profileData.primary_crops === 'string') {
+               try {
+                 selectedFruits = JSON.parse(profileData.primary_crops);
+               } catch {
+                 selectedFruits = [];
+               }
+             }
+           }
 
-          // Map database fields to expected format
-          const currentDate = new Date();
-          const memberSinceDate = user?.memberSince ||
-                                  `Member since ${currentDate.getFullYear()}`;
+           // Map database fields to expected format
+           const currentDate = new Date();
+           const memberSinceDate = user?.memberSince ||
+                                   `Member since ${currentDate.getFullYear()}`;
 
-          const mappedProfileData = {
-            farmerName: farmerName,
-            memberSince: memberSinceDate,
-            avatarUri: avatarUrl,
-            selectedFruits: selectedFruits,
-          };
-          console.log('Mapped profile data:', mappedProfileData);
-          setProfileData(mappedProfileData);
-          console.log('Profile data set to state:', mappedProfileData);
-          await AsyncStorage.setItem("profile_data", JSON.stringify(mappedProfileData));
-        }
-      } catch (dbErr) {
-        console.error("[Profile] Failed to fetch from database:", dbErr);
-      }
+           const mappedProfileData = {
+             farmerName: farmerName,
+             memberSince: memberSinceDate,
+             avatarUri: avatarUrl,
+             selectedFruits: selectedFruits,
+           };
+           logger.log('Mapped profile data:', mappedProfileData);
+           setProfileData(mappedProfileData);
+           logger.log('Profile data set to state:', mappedProfileData);
+           await AsyncStorage.setItem("profile_data", JSON.stringify(mappedProfileData));
+         }
+       } catch (dbErr) {
+         logger.error("[Profile] Failed to fetch from database:", dbErr);
+       }
 
       // Fetch order statistics
       await fetchOrderStats();
@@ -213,54 +214,54 @@ export default function ProfileScreen() {
 
       // Load SMS preferences
       await loadSMSPreferences();
-    } catch (err) {
-      console.error(err);
-    }
+     } catch (err) {
+       logger.error(err);
+     }
   }, []);
 
-  const fetchOrderStats = async () => {
-    try {
-      // Use orders overview API
-      const response: any = await getOrdersOverview();
-      console.log("Orders overview response:", response);
+   const fetchOrderStats = async () => {
+     try {
+       // Use orders overview API
+       const response: any = await getOrdersOverview();
+       logger.log("Orders overview response:", response);
 
-      if (response) {
-        // Map API response to order overview format
-        const newOrderStats = {
-          completedCount: response.completedCount || 0,
-          pendingCount: response.pendingCount || 0,
-          lastCompletedDate: response.lastCompletedDate || "No orders yet",
-          nextOrderDate: response.nextOrderDate || "Not scheduled",
-        };
-        setOrderStats(newOrderStats);
+       if (response) {
+         // Map API response to order overview format
+         const newOrderStats = {
+           completedCount: response.completedCount || 0,
+           pendingCount: response.pendingCount || 0,
+           lastCompletedDate: response.lastCompletedDate || "No orders yet",
+           nextOrderDate: response.nextOrderDate || "Not scheduled",
+         };
+         setOrderStats(newOrderStats);
 
-        // Update nextOrderDate state for the calendar
-        const nextOrder = response.nextOrderDate;
-        if (nextOrder && nextOrder !== "Not scheduled" && nextOrder !== "N/A") {
-          try {
-            // Try to parse as date, fallback to current date if parsing fails
-            const parsedDate = new Date(nextOrder);
-            if (!isNaN(parsedDate.getTime())) {
-              setNextOrderDate(parsedDate);
-            } else {
-              setNextOrderDate(new Date()); // fallback
-            }
-          } catch {
-            setNextOrderDate(new Date()); // fallback
-          }
-        }
-      } else {
-        // Fallback to demo data
-        setOrderStats(demoOrderStats);
-        setNextOrderDate(new Date(demoOrderStats.nextOrderDate));
-      }
-    } catch (err) {
-      // API not available, use demo data for now
-      console.log("Orders overview API not available, using demo data");
-      setOrderStats(demoOrderStats);
-      setNextOrderDate(new Date(demoOrderStats.nextOrderDate));
-    }
-  };
+         // Update nextOrderDate state for the calendar
+         const nextOrder = response.nextOrderDate;
+         if (nextOrder && nextOrder !== "Not scheduled" && nextOrder !== "N/A") {
+           try {
+             // Try to parse as date, fallback to current date if parsing fails
+             const parsedDate = new Date(nextOrder);
+             if (!isNaN(parsedDate.getTime())) {
+               setNextOrderDate(parsedDate);
+             } else {
+               setNextOrderDate(new Date()); // fallback
+             }
+           } catch {
+             setNextOrderDate(new Date()); // fallback
+           }
+         }
+       } else {
+         // Fallback to demo data
+         setOrderStats(demoOrderStats);
+         setNextOrderDate(new Date(demoOrderStats.nextOrderDate));
+       }
+     } catch (err) {
+       // API not available, use demo data for now
+       logger.log("Orders overview API not available, using demo data");
+       setOrderStats(demoOrderStats);
+       setNextOrderDate(new Date(demoOrderStats.nextOrderDate));
+     }
+   };
 
   useEffect(() => {
     loadUser();
@@ -273,36 +274,36 @@ export default function ProfileScreen() {
     }, [loadUser]),
   );
 
-  const logout = async () => {
-    try {
-      await supabase.auth.signOut();
-    } catch (e) {
-      console.warn("Supabase signOut failed", e);
-    }
-    await AsyncStorage.multiRemove([
-      "token",
-      "user",
-      "onboarded",
-      "onboarding_farmer",
-    ]);
-    router.replace("/login");
-  };
+   const logout = async () => {
+     try {
+       await supabase.auth.signOut();
+     } catch (e) {
+       logger.warn("Supabase signOut failed", e);
+     }
+     await AsyncStorage.multiRemove([
+       "token",
+       "user",
+       "onboarded",
+       "onboarding_farmer",
+     ]);
+     router.replace("/login");
+   };
 
   const handleViewCertificate = async () => {
     if (!userId) return;
     setLoadingCert(true);
     setCertModalVisible(true);
-    try {
-      const data = await api.get(`/api/trust/test-identity/${userId}`);
-      if (data.success) {
-        setPassportData(data.digitalPassport);
-      } else {
-        throw new Error(data.message || "ID not found");
-      }
-    } catch (e: any) {
-      console.warn("Certificate fetch failed", e);
-      // treat missing identity as validation error and show a better message
-      setPassportData(null);
+       try {
+         const data = await api.get(`/api/trust/test-identity/${userId}`);
+         if (data.success) {
+           setPassportData(data.digitalPassport);
+         } else {
+           throw new Error(data.message || "ID not found");
+         }
+       } catch (e: any) {
+         logger.warn("Certificate fetch failed", e);
+         // treat missing identity as validation error and show a better message
+         setPassportData(null);
 
       // try to extract a simple text from any JSON wrapper
       let msg = e instanceof Error ? e.message : String(e);
@@ -333,23 +334,23 @@ export default function ProfileScreen() {
     await AsyncStorage.setItem("farmer_settings", JSON.stringify(newSettings));
   };
 
-  const updateSMSSetting = async (value: boolean) => {
-    console.log("[SMS] updateSMSSetting called with value:", value);
+   const updateSMSSetting = async (value: boolean) => {
+     logger.log("[SMS] updateSMSSetting called with value:", value);
 
-    // Update local state immediately for better UX
-    setSmsAlertsEnabled(value);
-    console.log("[SMS] setting local state to:", value);
+     // Update local state immediately for better UX
+     setSmsAlertsEnabled(value);
+     logger.log("[SMS] setting local state to:", value);
 
-    try {
-      // Update SMS setting via API
-      await updateSMSPreferences({ sms_alerts_enabled: value });
-      console.log('[SMS] Successfully updated SMS setting via API');
-    } catch (err) {
-      console.error("[SMS] Error updating SMS setting via API:", err);
-      // Revert on error
-      setSmsAlertsEnabled(!value);
-    }
-  };
+     try {
+       // Update SMS setting via API
+       await updateSMSPreferences({ sms_alerts_enabled: value });
+       logger.log('[SMS] Successfully updated SMS setting via API');
+     } catch (err) {
+       logger.error("[SMS] Error updating SMS setting via API:", err);
+       // Revert on error
+       setSmsAlertsEnabled(!value);
+     }
+   };
 
   const onDateChange = (event: any, selectedDate?: Date) => {
     setShowDatePicker(false);
@@ -360,37 +361,37 @@ export default function ProfileScreen() {
   };
 
   const loadSettings = async () => {
-    try {
-      const settingsJson = await AsyncStorage.getItem("farmer_settings");
-      if (settingsJson) {
-        setSettings(JSON.parse(settingsJson));
-      }
-    } catch (err) {
-      console.error("Error loading settings:", err);
-    }
+       try {
+         const settingsJson = await AsyncStorage.getItem("farmer_settings");
+         if (settingsJson) {
+           setSettings(JSON.parse(settingsJson));
+         }
+       } catch (err) {
+         logger.error("Error loading settings:", err);
+       }
   };
 
-  const loadSMSPreferences = async () => {
-    try {
-      console.log("[SMS] loadSMSPreferences called");
+   const loadSMSPreferences = async () => {
+     try {
+       logger.log("[SMS] loadSMSPreferences called");
 
-      // Fetch SMS setting via API
-      const response = await getSMSPreferences();
-      if (response?.preferences) {
-        const smsEnabled = response.preferences.sms_alerts_enabled ?? true;
-        console.log("[SMS] Setting SMS alerts enabled from API:", smsEnabled);
-        setSmsAlertsEnabled(smsEnabled);
-      } else {
-        // Set default if no preferences returned
-        console.log("[SMS] No preferences from API, setting default");
-        setSmsAlertsEnabled(true);
-      }
-    } catch (err) {
-      console.log("[SMS] SMS preferences API not available, using default");
-      // Set default on error
-      setSmsAlertsEnabled(true);
-    }
-  };
+       // Fetch SMS setting via API
+       const response = await getSMSPreferences();
+       if (response?.preferences) {
+         const smsEnabled = response.preferences.sms_alerts_enabled ?? true;
+         logger.log("[SMS] Setting SMS alerts enabled from API:", smsEnabled);
+         setSmsAlertsEnabled(smsEnabled);
+       } else {
+         // Set default if no preferences returned
+         logger.log("[SMS] No preferences from API, setting default");
+         setSmsAlertsEnabled(true);
+       }
+     } catch (err) {
+       logger.log("[SMS] SMS preferences API not available, using default");
+       // Set default on error
+       setSmsAlertsEnabled(true);
+     }
+   };
 
   const pickImage = async () => {
     Alert.alert(
@@ -440,127 +441,127 @@ export default function ProfileScreen() {
     }
   };
 
-  const uploadImage = async (asset: ImagePicker.ImagePickerAsset) => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user?.id) {
-        Alert.alert("Error", "User not authenticated");
-        return;
-      }
+   const uploadImage = async (asset: ImagePicker.ImagePickerAsset) => {
+     try {
+       const { data: { session } } = await supabase.auth.getSession();
+       if (!session?.user?.id) {
+         Alert.alert("Error", "User not authenticated");
+         return;
+       }
 
-      // Check if bucket exists (skip if check fails to avoid blocking uploads)
-      try {
-        const { data: buckets, error: bucketError } = await supabase.storage.listBuckets();
-        if (bucketError) {
-          console.warn('Bucket check warning:', bucketError.message);
-          // Continue with upload attempt - bucket might still work
-        } else {
-          const bucketExists = buckets?.some(bucket => bucket.name === 'Farmer');
-          if (!bucketExists) {
-            console.warn('Farmer bucket not found in list, but continuing with upload attempt');
-          }
-        }
-      } catch (checkError) {
-        console.warn('Bucket check failed, continuing with upload:', checkError);
-        // Continue with upload attempt
-      }
+       // Check if bucket exists (skip if check fails to avoid blocking uploads)
+       try {
+         const { data: buckets, error: bucketError } = await supabase.storage.listBuckets();
+         if (bucketError) {
+           logger.warn('Bucket check warning:', bucketError.message);
+           // Continue with upload attempt - bucket might still work
+         } else {
+           const bucketExists = buckets?.some(bucket => bucket.name === 'Farmer');
+           if (!bucketExists) {
+             logger.warn('Farmer bucket not found in list, but continuing with upload attempt');
+           }
+         }
+       } catch (checkError) {
+         logger.warn('Bucket check failed, continuing with upload:', checkError);
+         // Continue with upload attempt
+       }
 
-      // Create unique filename
-      let fileName = `avatar_${session.user.id}_${Date.now()}.jpg`;
-      let filePath = `profile/${fileName}`;
+       // Create unique filename
+       let fileName = `avatar_${session.user.id}_${Date.now()}.jpg`;
+       let filePath = `profile/${fileName}`;
 
-      // Convert to blob
-      const response = await fetch(asset.uri);
-      const blob = await response.blob();
+       // Convert to blob
+       const response = await fetch(asset.uri);
+       const blob = await response.blob();
 
-      // Upload to Supabase storage
-      console.log('Attempting upload to Farmer/profile/', filePath);
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('Farmer')
-        .upload(filePath, blob, {
-          contentType: 'image/jpeg',
-          upsert: true
-        });
+       // Upload to Supabase storage
+       logger.log('Attempting upload to Farmer/profile/', filePath);
+       const { data: uploadData, error: uploadError } = await supabase.storage
+         .from('Farmer')
+         .upload(filePath, blob, {
+           contentType: 'image/jpeg',
+           upsert: true
+         });
 
-      if (uploadError) {
-        console.error('Upload error details:', {
-          message: uploadError.message,
-          statusCode: uploadError.statusCode
-        });
+       if (uploadError) {
+         logger.error('Upload error details:', {
+           message: uploadError.message,
+           statusCode: uploadError.statusCode
+         });
 
-        // Handle "already exists" by retrying with new filename
-        if (uploadError.message?.includes('already exists') || uploadError.message?.includes('Duplicate')) {
-          const newFileName = `avatar_${session.user.id}_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
-          const newFilePath = `profile/${newFileName}`;
-          console.log('Retrying upload with new filename:', newFilePath);
+         // Handle "already exists" by retrying with new filename
+         if (uploadError.message?.includes('already exists') || uploadError.message?.includes('Duplicate')) {
+           const newFileName = `avatar_${session.user.id}_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
+           const newFilePath = `profile/${newFileName}`;
+           logger.log('Retrying upload with new filename:', newFilePath);
 
-          const retryResult = await supabase.storage
-            .from('Farmer')
-            .upload(newFilePath, blob, {
-              contentType: 'image/jpeg',
-              upsert: false
-            });
+           const retryResult = await supabase.storage
+             .from('Farmer')
+             .upload(newFilePath, blob, {
+               contentType: 'image/jpeg',
+               upsert: false
+             });
 
-          if (retryResult.error) {
-            console.error('Retry upload failed:', retryResult.error);
-            Alert.alert("Upload Failed", "Failed to upload image. Please try again.");
-            return;
-          }
+           if (retryResult.error) {
+             logger.error('Retry upload failed:', retryResult.error);
+             Alert.alert("Upload Failed", "Failed to upload image. Please try again.");
+             return;
+           }
 
-          // Use the new file path for URL generation
-          filePath = newFilePath;
-        } else {
-          // Other errors - show specific message
-          let errorMessage = "Failed to upload image";
-          if (uploadError.message?.includes('Network request failed')) {
-            errorMessage = "Network error. Please check your internet connection and try again.";
-          } else if (uploadError.message?.includes('permission') || uploadError.message?.includes('unauthorized') || uploadError.message?.includes('403')) {
-            errorMessage = "Permission denied. Please ensure the Farmer bucket allows authenticated uploads.";
-          } else if (uploadError.message?.includes('size') || uploadError.message?.includes('too large') || uploadError.message?.includes('413')) {
-            errorMessage = "Image file is too large. Please choose a smaller image.";
-          } else if (uploadError.message?.includes('bucket') || uploadError.message?.includes('not found') || uploadError.message?.includes('404')) {
-            errorMessage = "Storage bucket 'Farmer' not found. Please create it in Supabase Storage.";
-          }
+           // Use the new file path for URL generation
+           filePath = newFilePath;
+         } else {
+           // Other errors - show specific message
+           let errorMessage = "Failed to upload image";
+           if (uploadError.message?.includes('Network request failed')) {
+             errorMessage = "Network error. Please check your internet connection and try again.";
+           } else if (uploadError.message?.includes('permission') || uploadError.message?.includes('unauthorized') || uploadError.message?.includes('403')) {
+             errorMessage = "Permission denied. Please ensure the Farmer bucket allows authenticated uploads.";
+           } else if (uploadError.message?.includes('size') || uploadError.message?.includes('too large') || uploadError.message?.includes('413')) {
+             errorMessage = "Image file is too large. Please choose a smaller image.";
+           } else if (uploadError.message?.includes('bucket') || uploadError.message?.includes('not found') || uploadError.message?.includes('404')) {
+             errorMessage = "Storage bucket 'Farmer' not found. Please create it in Supabase Storage.";
+           }
 
-          Alert.alert("Upload Failed", errorMessage);
-          return;
-        }
-      }
+           Alert.alert("Upload Failed", errorMessage);
+           return;
+         }
+       }
 
-      // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('Farmer')
-        .getPublicUrl(filePath);
+       // Get public URL
+       const { data: { publicUrl } } = supabase.storage
+         .from('Farmer')
+         .getPublicUrl(filePath);
 
-      // Update user profile in database
-      const { error: updateError } = await supabase
-        .from('users')
-        .update({ avatar_url: publicUrl })
-        .eq('id', session.user.id);
+       // Update user profile in database
+       const { error: updateError } = await supabase
+         .from('users')
+         .update({ avatar_url: publicUrl })
+         .eq('id', session.user.id);
 
-      if (updateError) {
-        console.error('Database update error:', updateError);
-        Alert.alert("Error", "Failed to update profile. Image uploaded but profile not updated.");
-        return;
-      }
+       if (updateError) {
+         logger.error('Database update error:', updateError);
+         Alert.alert("Error", "Failed to update profile. Image uploaded but profile not updated.");
+         return;
+       }
 
-      // Update local state
-      setProfileData((prev: any) => prev ? { ...prev, avatarUri: publicUrl } : null);
+       // Update local state
+       setProfileData((prev: any) => prev ? { ...prev, avatarUri: publicUrl } : null);
 
-      // Update cached data
-      const cachedData = await AsyncStorage.getItem("profile_data");
-      if (cachedData) {
-        const parsed = JSON.parse(cachedData);
-        parsed.avatarUri = publicUrl;
-        await AsyncStorage.setItem("profile_data", JSON.stringify(parsed));
-      }
+       // Update cached data
+       const cachedData = await AsyncStorage.getItem("profile_data");
+       if (cachedData) {
+         const parsed = JSON.parse(cachedData);
+         parsed.avatarUri = publicUrl;
+         await AsyncStorage.setItem("profile_data", JSON.stringify(parsed));
+       }
 
-      Alert.alert("Success", "Profile picture updated successfully!");
-    } catch (error) {
-      console.error('Image upload error:', error);
-      Alert.alert("Error", "An unexpected error occurred. Please try again.");
-    }
-  };
+       Alert.alert("Success", "Profile picture updated successfully!");
+     } catch (error) {
+       logger.error('Image upload error:', error);
+       Alert.alert("Error", "An unexpected error occurred. Please try again.");
+     }
+   };
 
   return (
     <SafeAreaView style={styles.safeArea}>

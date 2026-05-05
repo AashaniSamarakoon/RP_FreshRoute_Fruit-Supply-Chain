@@ -1,5 +1,6 @@
 import { useModal } from "@/components/modals/ModalProvider";
 import api from "@/services/api";
+import { logger } from "@/utils/logger";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
@@ -262,7 +263,7 @@ export default function BuyerOrders() {
           } catch (e: any) {
             // try legacy path
             if (e?.message?.includes("404")) {
-              console.warn("order matching fallback for", o.id);
+              logger.warn("[BuyerOrders] matching fallback", { orderId: o.id });
               return await api.get(`/api/buyer/matching/${o.id}`);
             }
             throw e;
@@ -303,7 +304,7 @@ export default function BuyerOrders() {
     try {
       if (!silent) setLoading(true);
       const body: any = await api.get(`/api/buyer/place-order`);
-      console.log("[BuyerOrders] fetchOrders response", body);
+      logger.log("[BuyerOrders] orders count", body?.orders?.length ?? 0);
       const list: PlacedOrder[] = (body.orders || []).map((o: any) => {
         const raw = o.totalPrice ?? o.total_price ?? null;
         let tx = o.blockchain_tx_id;
@@ -323,7 +324,7 @@ export default function BuyerOrders() {
       setOrders(list);
       fetchProposalCounts(list);
     } catch (e) {
-      console.error("[BuyerOrders] fetchOrders failed", e);
+      logger.error("[BuyerOrders] fetchOrders failed", e);
       if (!silent) setOrders([]);
     } finally {
       if (!silent) setLoading(false);

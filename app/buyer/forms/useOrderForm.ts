@@ -1,4 +1,5 @@
 import api from "@/services/api";
+import { logger } from "@/utils/logger";
 import { supabase } from "@/utils/supabaseClient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from "expo-location";
@@ -45,11 +46,13 @@ export const useOrderForm = () => {
     try {
       const saved = await AsyncStorage.getItem("order_form");
       if (saved) {
-        console.log("[useOrderForm] restoring saved order form", saved);
+        logger.log("[useOrderForm] restoring saved order form", {
+          size: saved.length,
+        });
         return JSON.parse(saved);
       }
     } catch (e) {
-      console.warn("[useOrderForm] failed to load saved form", e);
+      logger.warn("[useOrderForm] failed to load saved form", e);
     }
     return null;
   };
@@ -102,15 +105,38 @@ export const useOrderForm = () => {
 
         let raw: any;
         try {
-          console.log("[useOrderForm] requesting /api/fruit-properties");
+          logger.log("[useOrderForm] requesting /api/fruit-properties");
           raw = await api.get(`/api/fruit-properties`);
-          console.log("[useOrderForm] raw response:", raw);
+          const responseSummary = Array.isArray(raw)
+            ? { type: "array", count: raw.length }
+            : {
+                type: typeof raw,
+                fruitsCount: raw?.fruits?.length,
+                dataCount: raw?.data?.length,
+                itemsCount: raw?.items?.length,
+                keys:
+                  raw && typeof raw === "object"
+                    ? Object.keys(raw).slice(0, 6)
+                    : undefined,
+              };
+          logger.log(
+            "[useOrderForm] fruit properties response",
+            responseSummary,
+          );
         } catch (err: any) {
-          console.log("[useOrderForm] Failed to fetch fruit properties", err);
+          logger.warn(
+            "[useOrderForm] failed to fetch fruit properties",
+            err?.message ?? err,
+          );
           // if the error message looks like a JSON string, log it separately
           try {
             const parsed = JSON.parse(err.message);
-            console.log("[useOrderForm] error body:", parsed);
+            logger.log("[useOrderForm] error body keys", {
+              keys:
+                parsed && typeof parsed === "object"
+                  ? Object.keys(parsed).slice(0, 6)
+                  : undefined,
+            });
           } catch {}
           setState((prev) => ({ ...prev, loading: false }));
           return;
@@ -124,35 +150,40 @@ export const useOrderForm = () => {
           ? raw
           : (raw?.fruits ?? raw?.data ?? raw?.items ?? []);
 
-        console.log("[useOrderForm] Extracted data array:", data);
+        logger.log("[useOrderForm] extracted data count", {
+          count: Array.isArray(data) ? data.length : 0,
+        });
         if (!Array.isArray(data)) {
-          console.log("[useOrderForm] Data not array, showing form anyway");
+          logger.warn("[useOrderForm] data not array, showing form anyway");
           setState((prev) => ({ ...prev, loading: false }));
           return;
         }
 
         setRows(data);
-        console.log("[useOrderForm] Set rows with data length:", data.length);
+        logger.log("[useOrderForm] set rows", { count: data.length });
 
         // unique fruit names
         const unique = Array.from(new Set(data.map((r) => r.name)));
-        console.log("[useOrderForm] Unique fruit names:", unique);
+        logger.log("[useOrderForm] unique fruit names", {
+          count: unique.length,
+          sample: unique.slice(0, 5),
+        });
         const fruitItems = unique.map((name) => ({ label: name, value: name }));
 
-        console.log("[useOrderForm] Setting fruitItems and loading false");
+        logger.log("[useOrderForm] fruit items ready", {
+          count: fruitItems.length,
+        });
         setState((prev) => ({
           ...prev,
           fruitItems,
           loading: false,
         }));
-        console.log(
-          "[useOrderForm] loadFruitProperties completed successfully",
-        );
+        logger.log("[useOrderForm] loadFruitProperties completed");
       } catch (e) {
         // Silently suppress errors and show form anyway
         if (e instanceof Error && e.name !== "AbortError") {
-          console.log(
-            "[useOrderForm] Error loading fruit properties, showing form",
+          logger.warn(
+            "[useOrderForm] error loading fruit properties, showing form",
           );
         }
         setState((prev) => ({ ...prev, loading: false }));
@@ -167,10 +198,16 @@ export const useOrderForm = () => {
     const loadBuyerLocation = async () => {
       try {
         const userStr = await AsyncStorage.getItem("user");
-        console.log("[useOrderForm] loadBuyerLocation userStr=", userStr);
+        logger.log("[useOrderForm] loadBuyerLocation", {
+          hasUserStr: !!userStr,
+          size: userStr?.length ?? 0,
+        });
         if (!userStr) return;
         const user = JSON.parse(userStr);
-        console.log("[useOrderForm] loadBuyerLocation user=", user);
+        logger.log("[useOrderForm] user", {
+          id: user?.id,
+          role: user?.user_metadata?.role,
+        });
         if (!user?.id) return;
 
         const { data, error } = await supabase
@@ -179,13 +216,14 @@ export const useOrderForm = () => {
           .eq("user_id", user.id)
           .single();
 
-        console.log("[useOrderForm] supabase buyers fetch result", {
-          data,
-          error,
+        logger.log("[useOrderForm] buyer profile fetch", {
+          hasData: !!data,
+          hasError: !!error,
+          errorCode: error?.code,
         });
 
         if (error) {
-          console.warn("Unable to fetch buyer profile:", error.message);
+          logger.warn("Unable to fetch buyer profile:", error.message);
           return;
         }
 
@@ -238,12 +276,12 @@ export const useOrderForm = () => {
                 }));
               }
             } catch (err) {
-              console.warn("Reverse geocode failed", err);
+              logger.warn("Reverse geocode failed", err);
             }
           }
         }
       } catch (err) {
-        console.error("Failed to load buyer location", err);
+        logger.error("Failed to load buyer location", err);
       }
     };
 
@@ -293,7 +331,7 @@ export const useOrderForm = () => {
 
   const updateField = (field: keyof OrderFormData, value: any) => {
     if (__DEV__) {
-      console.log("[useOrderForm] updateField", {
+      logger.log("[useOrderForm] updateField", {
         field,
         value: formatLogValue(value),
       });
@@ -314,7 +352,7 @@ export const useOrderForm = () => {
           JSON.stringify(state.formData),
         );
       } catch (e) {
-        console.warn("[useOrderForm] failed to persist form", e);
+        logger.warn("[useOrderForm] failed to persist form", e);
       }
     };
     save();
@@ -395,9 +433,12 @@ export const useOrderForm = () => {
       let body: any;
       try {
         body = await api.post(`/api/buyer/place-order`, payload);
-        console.log("Place order response:", body);
+        logger.log("[useOrderForm] place order response", {
+          orderId: body?.id ?? body?.orderId ?? body?.order?.id,
+          farmersFound: body?.farmersFound ?? false,
+        });
       } catch (err) {
-        console.error("Submit error:", err);
+        logger.error("[useOrderForm] submit error", err);
         return {
           success: false,
           farmersFound: false,
@@ -426,7 +467,7 @@ export const useOrderForm = () => {
 
   const handleDateChange = (event: any, selectedDate?: Date) => {
     if (__DEV__) {
-      console.log("[useOrderForm] handleDateChange", {
+      logger.log("[useOrderForm] handleDateChange", {
         eventType: event?.type,
         selectedDate: selectedDate?.toISOString?.() ?? null,
         currentDate: state.dateValue?.toISOString?.() ?? null,

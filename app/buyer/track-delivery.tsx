@@ -2,16 +2,17 @@
 // import { BuyerColors } from "@/constants/theme";
 // import { supabase } from "@/utils/supabaseClient";
 // import { Ionicons } from "@expo/vector-icons";
+// import { logger } from "@/utils/logger";
 // import { useLocalSearchParams, useRouter } from "expo-router";
 // import React, { useEffect, useMemo, useRef, useState } from "react";
 // import {
-//   ActivityIndicator,
-//   Dimensions,
-//   Linking,
-//   StyleSheet,
-//   Text,
-//   TouchableOpacity,
-//   View,
+//     ActivityIndicator,
+//     Dimensions,
+//     Linking,
+//     StyleSheet,
+//     Text,
+//     TouchableOpacity,
+//     View,
 // } from "react-native";
 // import MapView, { Marker } from "react-native-maps";
 // import { SafeAreaView } from "react-native-safe-area-context";
@@ -411,6 +412,7 @@ import Header from "@/components/Header";
 import { BuyerColors } from "@/constants/theme";
 import { supabase } from "@/utils/supabaseClient";
 import { Ionicons } from "@expo/vector-icons";
+import { logger } from "@/utils/logger";
 import BottomSheet, { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -643,11 +645,11 @@ export default function TrackDeliveryScreen() {
 
           trackingChannel.subscribe();
         }
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
-      }
+       } catch (e) {
+         logger.error(e);
+       } finally {
+         setLoading(false);
+       }
     };
 
     fetchAndSubscribe();

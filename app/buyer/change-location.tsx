@@ -1,5 +1,6 @@
 import LocationPicker, { PickerPayload } from "@/components/LocationPicker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { logger } from "@/utils/logger";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
 
@@ -21,58 +22,58 @@ export default function ChangeLocationScreen() {
     string | undefined
   >(undefined);
 
-  // whenever screen comes into focus, recompute from params and storage
-  React.useEffect(() => {
-    const compute = async () => {
-      console.log("[ChangeLocation] focus params", params);
-      let lat = params.latitude ? parseFloat(params.latitude) : undefined;
-      let lng = params.longitude ? parseFloat(params.longitude) : undefined;
-      let addr = params.location || undefined;
+   // whenever screen comes into focus, recompute from params and storage
+   React.useEffect(() => {
+     const compute = async () => {
+       logger.log("[ChangeLocation] focus params", params);
+       let lat = params.latitude ? parseFloat(params.latitude) : undefined;
+       let lng = params.longitude ? parseFloat(params.longitude) : undefined;
+       let addr = params.location || undefined;
 
-      try {
-        const saved = await AsyncStorage.getItem("order_form");
-        if (saved) {
-          const obj = JSON.parse(saved);
-          if (typeof obj.latitude === "number") lat = obj.latitude;
-          if (typeof obj.longitude === "number") lng = obj.longitude;
-          if (typeof obj.deliveryLocation === "string")
-            addr = obj.deliveryLocation;
-        }
-      } catch (e) {
-        console.warn("[ChangeLocation] unable to merge storage", e);
-      }
+       try {
+         const saved = await AsyncStorage.getItem("order_form");
+         if (saved) {
+           const obj = JSON.parse(saved);
+           if (typeof obj.latitude === "number") lat = obj.latitude;
+           if (typeof obj.longitude === "number") lng = obj.longitude;
+           if (typeof obj.deliveryLocation === "string")
+             addr = obj.deliveryLocation;
+         }
+       } catch (e) {
+         logger.warn("[ChangeLocation] unable to merge storage", e);
+       }
 
-      setInitialLat(lat);
-      setInitialLng(lng);
-      setInitialAddress(addr);
-      console.log("[ChangeLocation] computed initial", { lat, lng, addr });
-    };
-    compute();
-  }, [params.latitude, params.longitude, params.location]);
+       setInitialLat(lat);
+       setInitialLng(lng);
+       setInitialAddress(addr);
+       logger.log("[ChangeLocation] computed initial", { lat, lng, addr });
+     };
+     compute();
+   }, [params.latitude, params.longitude, params.location]);
 
-  const handleDone = async (payload: PickerPayload) => {
-    console.log("[ChangeLocation] done payload", payload, "initial stored", {
-      initialLat,
-      initialLng,
-    });
-    // persist into order_form storage so the form always has the latest
-    try {
-      const existing = await AsyncStorage.getItem("order_form");
-      const obj = existing ? JSON.parse(existing) : {};
-      const updated = {
-        ...obj,
-        deliveryLocation: payload.location,
-        latitude: payload.lat,
-        longitude: payload.lng,
-      };
-      await AsyncStorage.setItem("order_form", JSON.stringify(updated));
-    } catch (e) {
-      console.warn("[ChangeLocation] failed to save to storage", e);
-    }
+   const handleDone = async (payload: PickerPayload) => {
+     logger.log("[ChangeLocation] done payload", payload, "initial stored", {
+       initialLat,
+       initialLng,
+     });
+     // persist into order_form storage so the form always has the latest
+     try {
+       const existing = await AsyncStorage.getItem("order_form");
+       const obj = existing ? JSON.parse(existing) : {};
+       const updated = {
+         ...obj,
+         deliveryLocation: payload.location,
+         latitude: payload.lat,
+         longitude: payload.lng,
+       };
+       await AsyncStorage.setItem("order_form", JSON.stringify(updated));
+     } catch (e) {
+       logger.warn("[ChangeLocation] failed to save to storage", e);
+     }
 
-    // simply go back to the previous screen; PlaceOrder focusEffect will rehydrate
-    router.back();
-  };
+     // simply go back to the previous screen; PlaceOrder focusEffect will rehydrate
+     router.back();
+   };
 
   return (
     <LocationPicker

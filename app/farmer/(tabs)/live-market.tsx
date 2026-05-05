@@ -1,4 +1,5 @@
 import api from "@/services/api";
+import { logger } from "@/utils/logger";
 import { supabase } from "@/utils/supabaseClient";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -213,53 +214,53 @@ export default function LiveMarketScreen() {
     };
   };
 
-  const loadLiveMarketPrices = async () => {
-    console.log(
-      "[LIVE-MARKET] Loading prices for date:",
-      selectedDate.toISOString().split("T")[0],
-    );
-    setLoading(true);
-    try {
-      // log session metadata for troubleshooting
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      console.log(
-        "[LIVE-MARKET] session metadata",
-        session?.user?.user_metadata,
-      );
+   const loadLiveMarketPrices = async () => {
+     logger.log(
+       "[LIVE-MARKET] Loading prices for date:",
+       selectedDate.toISOString().split("T")[0],
+     );
+     setLoading(true);
+     try {
+       // log session metadata for troubleshooting
+       const {
+         data: { session },
+       } = await supabase.auth.getSession();
+       logger.log(
+         "[LIVE-MARKET] session metadata",
+         session?.user?.user_metadata,
+       );
 
-      // Format date as YYYY-MM-DD for filtering
-      const dateStr = selectedDate.toISOString().split("T")[0];
-      console.log("[LIVE-MARKET] Selected date for filtering:", dateStr);
+       // Format date as YYYY-MM-DD for filtering
+       const dateStr = selectedDate.toISOString().split("T")[0];
+       logger.log("[LIVE-MARKET] Selected date for filtering:", dateStr);
 
-      // Build path including optional location query
-      let path = "/api/farmer/live-market";
-      if (selectedTab !== "All") {
-        path += `?location=${encodeURIComponent(selectedTab)}`;
-      }
+       // Build path including optional location query
+       let path = "/api/farmer/live-market";
+       if (selectedTab !== "All") {
+         path += `?location=${encodeURIComponent(selectedTab)}`;
+       }
 
-      console.log("[LIVE-MARKET] calling api.get", path);
-      const data = await api.get(path);
-      console.log("[LIVE-MARKET] Response data:", data);
+       logger.log("[LIVE-MARKET] calling api.get", path);
+       const data = await api.get(path);
+       logger.log("[LIVE-MARKET] Response data:", data);
 
-      // Format the fruit data - show all records regardless of date
-      const formattedFruits = (data.fruits || data.data || data || []).map(
-        formatFruitData,
-      );
+       // Format the fruit data - show all records regardless of date
+       const formattedFruits = (data.fruits || data.data || data || []).map(
+         formatFruitData,
+       );
 
-      setFruits(formattedFruits);
-      setLastUpdated(data.lastUpdated || new Date().toISOString());
-      console.log("[LIVE-MARKET] Loaded", formattedFruits.length, "fruits");
-    } catch (err) {
-      console.error("[LIVE-MARKET] Error:", err);
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      Alert.alert("Error", "Failed to load market prices: " + errorMsg);
-      setFruits([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+       setFruits(formattedFruits);
+       setLastUpdated(data.lastUpdated || new Date().toISOString());
+       logger.log("[LIVE-MARKET] Loaded", formattedFruits.length, "fruits");
+     } catch (err) {
+       logger.error("[LIVE-MARKET] Error:", err);
+       const errorMsg = err instanceof Error ? err.message : String(err);
+       Alert.alert("Error", "Failed to load market prices: " + errorMsg);
+       setFruits([]);
+     } finally {
+       setLoading(false);
+     }
+   };
 
   const handleDateChange = (event: any, date?: Date) => {
     if (Platform.OS === "android") {

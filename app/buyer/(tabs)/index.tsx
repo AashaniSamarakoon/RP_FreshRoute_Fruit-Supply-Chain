@@ -1,6 +1,7 @@
 import DashboardHeader from "@/components/DashboardHeader";
 import api from "@/services/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { logger } from "@/utils/logger";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
@@ -32,84 +33,84 @@ export default function BuyerDashboardScreen(): React.JSX.Element {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Fetch matching deals for the buyer
-  const fetchMatchingDeals = async (showLoadingSpinner = true) => {
-    try {
-      if (showLoadingSpinner) setLoading(true);
-      const token = await AsyncStorage.getItem("token");
-      const userStr = await AsyncStorage.getItem("user");
+   // Fetch matching deals for the buyer
+   const fetchMatchingDeals = async (showLoadingSpinner = true) => {
+     try {
+       if (showLoadingSpinner) setLoading(true);
+       const token = await AsyncStorage.getItem("token");
+       const userStr = await AsyncStorage.getItem("user");
 
-      if (!token || !userStr) {
-        console.warn("No auth token or user data found");
-        setDeals([]); // No deals if not authenticated
-        return;
-      }
+       if (!token || !userStr) {
+         logger.warn("No auth token or user data found");
+         setDeals([]); // No deals if not authenticated
+         return;
+       }
 
-      const user = JSON.parse(userStr);
-      // the API used to expect the "idx" primary key from the
-      // purchases table, which meant we had to look up the buyer row
-      // first. the backend has since been changed to query by
-      // `user_id` (the UUID contained in the Supabase session), so we
-      // can pass the user.id directly.
-      const buyerId = user.id;
+       const user = JSON.parse(userStr);
+       // the API used to expect the "idx" primary key from the
+       // purchases table, which meant we had to look up the buyer row
+       // first. the backend has since been changed to query by
+       // `user_id` (the UUID contained in the Supabase session), so we
+       // can pass the user.id directly.
+       const buyerId = user.id;
 
-      if (!buyerId) {
-        console.warn("No buyer ID found");
-        setDeals([]);
-        return;
-      }
+       if (!buyerId) {
+         logger.warn("No buyer ID found");
+         setDeals([]);
+         return;
+       }
 
-      let data: any;
-      try {
-        // primary endpoint expects user UUID after `buyer/`
-        data = await api.get(`/api/buyer/matching/buyer/${buyerId}`);
-      } catch (err: any) {
-        // if backend still using old route without "buyer" segment,
-        // fall back to legacy path on 404
-        console.warn("primary matching endpoint failed", err?.message);
-        if (err?.message?.includes("404")) {
-          try {
-            data = await api.get(`/api/buyer/matching/${buyerId}`);
-            console.log("fell back to legacy matching path");
-          } catch (err2: any) {
-            console.error("fallback matching failed", err2?.message);
-            throw err2;
-          }
-        } else {
-          throw err;
-        }
-      }
-      console.log("Matching deals data:", data);
+       let data: any;
+       try {
+         // primary endpoint expects user UUID after `buyer/`
+         data = await api.get(`/api/buyer/matching/buyer/${buyerId}`);
+       } catch (err: any) {
+         // if backend still using old route without "buyer" segment,
+         // fall back to legacy path on 404
+         logger.warn("primary matching endpoint failed", err?.message);
+         if (err?.message?.includes("404")) {
+           try {
+             data = await api.get(`/api/buyer/matching/${buyerId}`);
+             logger.log("fell back to legacy matching path");
+           } catch (err2: any) {
+             logger.error("fallback matching failed", err2?.message);
+             throw err2;
+           }
+         } else {
+           throw err;
+         }
+       }
+      //  logger.log("Matching deals data:", data);
 
-      // Transform API response to DealData format
-      // ensure proposals array exists
-      const proposalsList: any[] =
-        Array.isArray(data.proposals) ? data.proposals : data.proposals ? [data.proposals] : [];
-      const matchingDeals = proposalsList.map((proposal: any) => {
-        console.log("Raw proposal from backend:", proposal);
-        return {
-          id: proposal.id,
-          title:
-            `${proposal.stock?.fruit_type || "Unknown"} ${proposal.stock?.variant || ""}`.trim(),
-          price: proposal.stock?.price_per_kg || "",
-          unit: "kg",
-          location: proposal.stock?.farmer?.location || "Unknown",
-          grade: proposal.order?.grade || "Unknown",
-          quality: proposal.order?.grade || "Unknown", // Using grade as quality for now
-          quantity_proposed: proposal.quantity_proposed || "0",
-        };
-      });
+       // Transform API response to DealData format
+       // ensure proposals array exists
+       const proposalsList: any[] =
+         Array.isArray(data.proposals) ? data.proposals : data.proposals ? [data.proposals] : [];
+       const matchingDeals = proposalsList.map((proposal: any) => {
+        //  logger.log("Raw proposal from backend:", proposal);
+         return {
+           id: proposal.id,
+           title:
+             `${proposal.stock?.fruit_type || "Unknown"} ${proposal.stock?.variant || ""}`.trim(),
+           price: proposal.stock?.price_per_kg || "",
+           unit: "kg",
+           location: proposal.stock?.farmer?.location || "Unknown",
+           grade: proposal.order?.grade || "Unknown",
+           quality: proposal.order?.grade || "Unknown", // Using grade as quality for now
+           quantity_proposed: proposal.quantity_proposed || "0",
+         };
+       });
 
-      // Only set deals if there are matching deals, otherwise empty array
-      setDeals(matchingDeals.length > 0 ? matchingDeals : []);
-    } catch (error) {
-      console.error("Error fetching matching deals:", error);
-      // Set empty array on error - don't show section
-      setDeals([]);
-    } finally {
-      if (showLoadingSpinner) setLoading(false);
-    }
-  };
+       // Only set deals if there are matching deals, otherwise empty array
+       setDeals(matchingDeals.length > 0 ? matchingDeals : []);
+     } catch (error) {
+       logger.error("Error fetching matching deals:", error);
+       // Set empty array on error - don't show section
+       setDeals([]);
+     } finally {
+       if (showLoadingSpinner) setLoading(false);
+     }
+   };
 
   const onRefresh = async () => {
     setRefreshing(true);

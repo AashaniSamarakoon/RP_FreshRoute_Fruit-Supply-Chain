@@ -1,3 +1,4 @@
+import { logger } from "@/utils/logger";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -26,6 +27,17 @@ const PickerSelect = RNPickerSelect as React.ComponentType<PickerSelectProps>;
 
 const PRIMARY_GREEN = "#2E7D32";
 const LIGHT_GRAY = "#f5f5f5";
+
+const summarizeFormData = (formData: any) => ({
+  fruit: formData?.fruit,
+  category: formData?.category,
+  quantity: formData?.quantity,
+  grade: formData?.grade,
+  estimatedDate: formData?.estimatedDate,
+  deliveryLocation: formData?.deliveryLocation,
+  latitude: formData?.latitude,
+  longitude: formData?.longitude,
+});
 
 const SkeletonLoader = () => {
   const fadeAnim = useRef(new Animated.Value(0.3)).current;
@@ -159,17 +171,22 @@ export default function AddStock() {
       const restore = async () => {
         try {
           const saved = await AsyncStorage.getItem("order_form");
-          console.log("[PlaceOrder] focusEffect fired, saved=", saved);
+          logger.log("[PlaceOrder] focusEffect fired", {
+            hasSaved: !!saved,
+            size: saved?.length ?? 0,
+          });
           if (saved) {
             const obj = JSON.parse(saved);
-            console.log("[PlaceOrder] focus restore obj", obj);
+            logger.log("[PlaceOrder] focus restore keys", {
+              keys: Object.keys(obj || {}).slice(0, 10),
+            });
             Object.entries(obj).forEach(([key, value]) => {
-              console.log("[PlaceOrder] restoring field", key, value);
+              logger.log("[PlaceOrder] restoring field", { key });
               updateField(key as any, value);
             });
           }
         } catch (e) {
-          console.warn("[PlaceOrder] focus restore failed", e);
+          logger.warn("[PlaceOrder] focus restore failed", e);
         }
       };
       restore();
@@ -179,33 +196,41 @@ export default function AddStock() {
   // apply returned location params after coming back from picker
   // debug incoming params and update state
   useEffect(() => {
-    console.log("[PlaceOrder] params", {
+    logger.log("[PlaceOrder] params", {
       paramLocation,
       paramLatitude,
       paramLongitude,
     });
-    console.log("[PlaceOrder] before update formData", formData);
+    logger.log(
+      "[PlaceOrder] before update formData",
+      summarizeFormData(formData),
+    );
 
     if (paramLocation && paramLocation !== formData.deliveryLocation) {
-      console.log("[PlaceOrder] updating deliveryLocation to", paramLocation);
+      logger.log("[PlaceOrder] updating deliveryLocation", {
+        deliveryLocation: paramLocation,
+      });
       updateField("deliveryLocation", String(paramLocation));
     }
     if (paramLatitude) {
       const lat = parseFloat(String(paramLatitude));
       if (!isNaN(lat) && lat !== formData.latitude) {
-        console.log("[PlaceOrder] updating latitude to", lat);
+        logger.log("[PlaceOrder] updating latitude", { latitude: lat });
         updateField("latitude", lat);
       }
     }
     if (paramLongitude) {
       const lng = parseFloat(String(paramLongitude));
       if (!isNaN(lng) && lng !== formData.longitude) {
-        console.log("[PlaceOrder] updating longitude to", lng);
+        logger.log("[PlaceOrder] updating longitude", { longitude: lng });
         updateField("longitude", lng);
       }
     }
 
-    console.log("[PlaceOrder] after update formData", formData);
+    logger.log(
+      "[PlaceOrder] after update formData",
+      summarizeFormData(formData),
+    );
     // if latitude/longitude changed, compute human-readable address
     if (paramLatitude || paramLongitude) {
       const lat = parseFloat(String(paramLatitude || formData.latitude));
@@ -224,12 +249,14 @@ export default function AddStock() {
                   .replace(/^[ ,]+/, "")
                   .trim();
               if (addr && addr !== formData.deliveryLocation) {
-                console.log("[PlaceOrder] reverse geocoded address", addr);
+                logger.log("[PlaceOrder] reverse geocoded address", {
+                  deliveryLocation: addr,
+                });
                 updateField("deliveryLocation", addr);
               }
             }
           } catch (e) {
-            console.warn("[PlaceOrder] reverse geocode failed", e);
+            logger.warn("[PlaceOrder] reverse geocode failed", e);
           }
         })();
       }
@@ -274,7 +301,7 @@ export default function AddStock() {
         }, 300);
       }
     } catch (error) {
-      console.error("Error placing order:", error);
+      logger.error("[PlaceOrder] error placing order", error);
     } finally {
       setSubmitting(false);
     }
@@ -376,13 +403,17 @@ export default function AddStock() {
                 </View>
 
                 <View style={styles.gradeRow}>
-                  <Text style={[styles.label, styles.gradeLabelInRow]}>Grade</Text>
+                  <Text style={[styles.label, styles.gradeLabelInRow]}>
+                    Grade
+                  </Text>
                   <TouchableOpacity
                     style={[
                       styles.gradingGuideBtn,
                       !formData.fruit && styles.gradingGuideBtnDisabled,
                     ]}
-                    onPress={() => formData.fruit && setGradingGuideVisible(true)}
+                    onPress={() =>
+                      formData.fruit && setGradingGuideVisible(true)
+                    }
                     activeOpacity={0.8}
                     disabled={!formData.fruit}
                   >
@@ -468,7 +499,7 @@ export default function AddStock() {
                   </Text>
                   <TouchableOpacity
                     onPress={() => {
-                      console.log("[PlaceOrder] navigating to change with", {
+                      logger.log("[PlaceOrder] navigating to change", {
                         lat: formData.latitude,
                         lng: formData.longitude,
                         location: formData.deliveryLocation,

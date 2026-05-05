@@ -1,4 +1,5 @@
 import api from "@/services/api";
+import { logger } from "@/utils/logger";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Sprout } from "lucide-react-native";
@@ -104,7 +105,7 @@ const parseImageUrls = (rawImage: any): string[] => {
       return rawImage.flat(Infinity).filter(Boolean);
     }
   } catch (e) {
-    console.warn("Failed to parse image URLs", e);
+    logger.warn("Failed to parse image URLs", e);
   }
   return [];
 };
@@ -210,35 +211,35 @@ function useOrdersData() {
   // removing it from local state. the UI previously just removed the
   // item locally which is why the user saw the card disappear but no
   // network request was issued.
-  const deleteHarvest = useCallback(async (id: string) => {
-    setProcessing(id, true);
-    try {
-      try {
-        // use the 'add-predict-stock' route which handles both add/update/delete
-        await api.del(`/api/farmer/add-predict-stock/${id}`);
-      } catch (innerErr: any) {
-        // older backend versions may still use the predictStock path,
-        // so fall back if we see a 404
-        if (innerErr.message && innerErr.message.includes("404")) {
-          console.warn(
-            "deleteHarvest: fallback to /predictStock because first call returned 404",
-          );
-          await api.del(`/predictStock/${id}`);
-        } else {
-          throw innerErr;
-        }
-      }
+   const deleteHarvest = useCallback(async (id: string) => {
+     setProcessing(id, true);
+     try {
+       try {
+         // use the 'add-predict-stock' route which handles both add/update/delete
+         await api.del(`/api/farmer/add-predict-stock/${id}`);
+       } catch (innerErr: any) {
+         // older backend versions may still use the predictStock path,
+         // so fall back if we see a 404
+         if (innerErr.message && innerErr.message.includes("404")) {
+           logger.warn(
+             "deleteHarvest: fallback to /predictStock because first call returned 404",
+           );
+           await api.del(`/predictStock/${id}`);
+         } else {
+           throw innerErr;
+         }
+       }
 
-      // update local state optimistically
-      setHarvests((prev) => prev.filter((h) => h.id !== id));
-      showSuccess("Deleted", "Harvest prediction removed.");
-    } catch (err: any) {
-      console.error("[deleteHarvest] failed", err);
-      showError("Error", err?.message ?? "Failed to delete harvest");
-    } finally {
-      setProcessing(id, false);
-    }
-  }, [showSuccess, showError]);
+       // update local state optimistically
+       setHarvests((prev) => prev.filter((h) => h.id !== id));
+       showSuccess("Deleted", "Harvest prediction removed.");
+     } catch (err: any) {
+       logger.error("[deleteHarvest] failed", err);
+       showError("Error", err?.message ?? "Failed to delete harvest");
+     } finally {
+       setProcessing(id, false);
+     }
+   }, [showSuccess, showError]);
 
   const updateHarvest = useCallback(async (id: string, updates: Partial<Harvest>) => {
     // optimistic local update
@@ -246,13 +247,13 @@ function useOrdersData() {
       prev.map((h) => (h.id === id ? { ...h, ...updates } : h)),
     );
 
-    try {
-      // propagate change to backend using the documented update endpoint
-      await api.put(`/api/farmer/add-predict-stock/${id}`, updates);
-    } catch (err: any) {
-      console.error("[updateHarvest] server update failed", err);
-      // optionally show error or rollback; keeping simple for now
-    }
+     try {
+       // propagate change to backend using the documented update endpoint
+       await api.put(`/api/farmer/add-predict-stock/${id}`, updates);
+     } catch (err: any) {
+       logger.error("[updateHarvest] server update failed", err);
+       // optionally show error or rollback; keeping simple for now
+     }
   }, []);
 
   const deleteProposal = useCallback((id: string) => {
@@ -275,21 +276,21 @@ function useOrdersData() {
   );
 
 
-  const load = useCallback(async (silent = false) => {
-    if (!silent) { setLoading(true); setError(null); }
-    try {
-      let harvestRes: any;
-      try {
-        harvestRes = await api.get("/api/farmer/estimated-stocks");
-      } catch (err: any) {
-        console.warn("[DEBUG] estimated-stocks endpoint failed, trying predictStock", err);
-        try {
-          harvestRes = await api.get("/api/farmer/predictStock");
-        } catch (err2: any) {
-          if (!silent) setError(err2?.message ?? "Failed to load harvests");
-          return;
-        }
-      }
+   const load = useCallback(async (silent = false) => {
+     if (!silent) { setLoading(true); setError(null); }
+     try {
+       let harvestRes: any;
+       try {
+         harvestRes = await api.get("/api/farmer/estimated-stocks");
+       } catch (err: any) {
+         logger.warn("[DEBUG] estimated-stocks endpoint failed, trying predictStock", err);
+         try {
+           harvestRes = await api.get("/api/farmer/predictStock");
+         } catch (err2: any) {
+           if (!silent) setError(err2?.message ?? "Failed to load harvests");
+           return;
+         }
+       }
 
       const stocks: Harvest[] = Array.isArray(harvestRes)
         ? harvestRes
@@ -298,15 +299,15 @@ function useOrdersData() {
       const activeStocks = stocks.filter(s => s.status !== "MATCHED");
       setHarvests(activeStocks);
 
-      try {
-        const proposalRes = await api.get("/api/farmer/proposals");
-        let ordersRes: any = null;
-        try {
-          ordersRes = await api.get("/api/farmer/orders");
-        } catch (err) {
-          console.warn("[DEBUG] failed to fetch farmer orders", err);
-          ordersRes = null;
-        }
+       try {
+         const proposalRes = await api.get("/api/farmer/proposals");
+         let ordersRes: any = null;
+         try {
+           ordersRes = await api.get("/api/farmer/orders");
+         } catch (err) {
+           logger.warn("[DEBUG] failed to fetch farmer orders", err);
+           ordersRes = null;
+         }
 
         const ordersArr: any[] = Array.isArray(ordersRes)
           ? ordersRes

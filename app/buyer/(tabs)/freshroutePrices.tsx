@@ -1,4 +1,5 @@
 import api from "@/services/api";
+import { logger } from "@/utils/logger";
 import { supabase } from "@/utils/supabaseClient";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -137,34 +138,34 @@ export default function FreshroutePricesForBuyer() {
     }
   };
 
-  const loadPrices = async () => {
-    setLoading(true);
-    try {
-      // log the current session so we can troubleshoot role issues
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      console.log(
-        "[FreshroutePrices] session metadata",
-        session?.user?.user_metadata,
-      );
+   const loadPrices = async () => {
+     setLoading(true);
+     try {
+       // log the current session so we can troubleshoot role issues
+       const {
+         data: { session },
+       } = await supabase.auth.getSession();
+       logger.log(
+         "[FreshroutePrices] session metadata",
+         session?.user?.user_metadata,
+       );
 
-      const token = await AsyncStorage.getItem("token");
-      if (!token) {
-        setErrorModal({
-          visible: true,
-          title: "Authentication Error",
-          message: "Authentication required. Please log in again.",
-        });
-        setLoading(false);
-        return;
-      }
+       const token = await AsyncStorage.getItem("token");
+       if (!token) {
+         setErrorModal({
+           visible: true,
+           title: "Authentication Error",
+           message: "Authentication required. Please log in again.",
+         });
+         setLoading(false);
+         return;
+       }
 
-      // we only use the canonical endpoint. earlier code tried fallbacks,
-      // but the backend has settled on this single path.
-      const path = `/api/prices/freshroute?date=${selectedDate}`;
-      const data = await api.get(path);
-      console.log("[FreshroutePrices] fetched", path);
+       // we only use the canonical endpoint. earlier code tried fallbacks,
+       // but the backend has settled on this single path.
+       const path = `/api/prices/freshroute?date=${selectedDate}`;
+       const data = await api.get(path);
+       logger.log("[FreshroutePrices] fetched", path);
 
       const mapFromFruits = (fruitsArr: any[]): FruitEntry[] =>
         fruitsArr.map((fruit: any) => {

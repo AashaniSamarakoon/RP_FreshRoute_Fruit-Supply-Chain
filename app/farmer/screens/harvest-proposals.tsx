@@ -174,7 +174,7 @@ export default function HarvestProposalsScreen() {
         const dateParam = item.order?.required_date?.slice(0,10);
         console.log("[forecast] requesting for", fruitKey, dateParam);
         const res: any = await api.get(`/forecast/fruit?fruit=${encodeURIComponent(fruitKey)}&date=${encodeURIComponent(dateParam||"")}`);
-        console.log("[forecast] response", res);
+        // console.log("[forecast] response", res);
         // response returns an array of {date, forecast_value, target}
         const priceEntry = Array.isArray(res?.forecast)
           ? res.forecast.find((e: any) => e.date === dateParam && e.target === "price")

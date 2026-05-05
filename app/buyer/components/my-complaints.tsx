@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { logger } from "@/utils/logger";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
@@ -80,7 +81,7 @@ export default function MyComplaints() {
 
         setComplaints(mockComplaints);
       } catch (error) {
-        console.error("Error loading complaints:", error);
+         logger.error("Error loading complaints:", error);
       }
     };
 
